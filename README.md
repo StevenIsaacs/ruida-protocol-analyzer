@@ -183,8 +183,11 @@ This tool is for educational and research purposes. The Ruida protocol is propri
 - Developed for understanding CNC/laser cutter communications
 - Inspired by the need for open tools in the CNC/laser space
 - Built with insights from the embedded systems and maker communities
-    Sources: MeerK40T: https://github.com/meerk40t/meerk40t/tree/main/meerk40t/ruida
-             Ruida: https://edutechwiki.unige.ch/en/Ruida
+
+### Sources
+
+ - MeerK40T: https://github.com/meerk40t/meerk40t/tree/main/meerk40t/ruida
+ - Ruida: https://edutechwiki.unige.ch/en/Ruida
 
 ## Support
 
