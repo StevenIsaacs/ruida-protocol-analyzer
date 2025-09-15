@@ -92,6 +92,7 @@ python ruida_analyzer.py --quiet --stop-on-error -o results.txt capture.log
 | Option | Description |
 |--------|-------------|
 | `--on-the-fly` | Spawn tshark and process output in real time |
+| `--ip` | The Ruida controller IP address. Required when --on-the-fly is used |
 | `--out <file>`, `-o <file>` | Write decoded data to specified file |
 | `--quiet`, `-q` | Suppress stdout output |
 | `--verbose` | Generate detailed output with additional information |
@@ -180,8 +181,10 @@ This tool is for educational and research purposes. The Ruida protocol is propri
 ## Acknowledgments
 
 - Developed for understanding CNC/laser cutter communications
-- Built with insights from the embedded systems and maker communities
 - Inspired by the need for open tools in the CNC/laser space
+- Built with insights from the embedded systems and maker communities
+    Sources: MeerK40T: https://github.com/meerk40t/meerk40t/tree/main/meerk40t/ruida
+             Ruida: https://edutechwiki.unige.ch/en/Ruida
 
 ## Support
 
