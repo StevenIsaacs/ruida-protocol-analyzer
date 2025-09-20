@@ -1,0 +1,195 @@
+import argparse
+import sys
+import subprocess
+
+import ruida_analyzer as rpa
+from rda_emitter import RdaEmitter
+
+def parse_arguments():
+    """Parse command line arguments for Ruida protocol analyzer"""
+    parser = argparse.ArgumentParser(
+        description='''
+Ruida Protocol Analyzer - Parse and decode Ruida CNC protocol packets.
+
+The decoded data is emitted to the console (stdout) which can be redirected to
+a file.
+        ''',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  %(prog)s capture.log                      # Analyze existing tshark log
+  %(prog)s --on-the-fly --ip 192.168.1.100  # Real-time analysis
+  %(prog)s -o output.txt capture.log        # Save decoded output to file
+  %(prog)s --verbose --raw capture.log      # Detailed output with raw data
+  %(prog)s --magic 0x88 capture.log         # Use specific magic number
+        '''
+    )
+
+    # Input source
+    parser.add_argument(
+        'input_file',
+        nargs='?',
+        help='Tshark log file to analyze (not needed with --on-the-fly).'
+    )
+
+    # Real-time processing
+    parser.add_argument(
+        '--on-the-fly',
+        action='store_true',
+        help='Spawn tshark and process the output in real time (requires --ip).'
+    )
+
+    # Ruida controller IP address
+    parser.add_argument(
+        '--ip',
+        metavar='<ip_address>',
+        help='The IP address of the Ruida controller (required when using --on-the-fly.)'
+    )
+
+    # Magic number
+    parser.add_argument(
+        '--magic',
+        metavar='<magic_number>',
+        help='Specify the swizzle magic number rather than attempt to discover it in the capture.'
+    )
+
+    # Output file
+    parser.add_argument(
+        '--out', '-o',
+        dest='output_file',
+        metavar='<file>',
+        help='Write the decoded data to <file> in addition to the console.'
+    )
+
+    # Quiet mode
+    parser.add_argument(
+        '--quiet', '-q',
+        action='store_true',
+        help='Do not output to stdout -- disables --verbose, --raw, and --unswizzled.'
+    )
+
+    # Verbose output
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Generate verbose output.'
+    )
+
+    # Raw dump output
+    parser.add_argument(
+        '--raw',
+        action='store_true',
+        help='Output the raw dump lines with the decoded output.'
+    )
+
+    # Raw dump output
+    parser.add_argument(
+        '--unswizzled',
+        action='store_true',
+        help='Output the unswizzled and unprocessed data.'
+    )
+
+    # Stop on error
+    parser.add_argument(
+        '--stop-on-error',
+        action='store_true',
+        help='Stop decode when an error is detected -- do not attempt to resync.'
+    )
+
+    args = parser.parse_args()
+
+    # Validation
+    if not args.on_the_fly and not args.input_file:
+        parser.error("Input file required unless using --on-the-fly")
+
+    if args.on_the_fly and args.input_file:
+        parser.error("Cannot specify input file with --on-the-fly")
+
+    if args.on_the_fly and not args.ip:
+        parser.error("--ip is required when using --on-the-fly")
+
+    if args.quiet and args.verbose:
+        parser.error("--quiet and --verbose are mutually exclusive")
+
+    # Parse magic number if provided
+    if args.magic:
+        try:
+            # Handle hex format (0x prefix) or decimal
+            if args.magic.lower().startswith('0x'):
+                args.magic = int(args.magic, 16) & 0xFF
+            else:
+                raise ValueError
+        except ValueError:
+            parser.error(f"Invalid magic number format: {args.magic}")
+
+    return args
+
+def open_input(args):
+    '''Either open the input file or spawn tshark. Both support the
+    readline method so either can be passed to the parser.'''
+    _file = args.input_file
+    if args.input_file:
+        input = open(_file, 'r')
+    else:
+        # Build tshark command with the specified IP
+        _tshark_cmd = [
+            'tshark',
+            '-Y', f'(ip.addr == {args.ip} && udp.payload)',
+            '-T', 'fields',
+            '-e', 'frame.time',
+            '-e', 'udp.port',
+            '-e', 'udp.length',
+            '-e', 'data.data'
+        ]
+        try:
+            input = subprocess.Popen(
+                _tshark_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufszie=1,
+                universal_newlines=True
+            )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                'tshark not found. Please install Wireshark/tshark')
+    return input
+
+def main():
+    """Main function with command line argument processing"""
+    args = parse_arguments()
+    input = open_input(args)
+
+    # Set up output handling
+    if args.output_file:
+        try:
+            output = open(args.output_file, 'w')
+        except Exception as e:
+            print(f"Error opening output file '{args.output_file}': {e}", file=sys.stderr)
+            sys.exit(1)
+    output = RdaEmitter(args)
+    output.open()
+
+    # Initialize analyzer with magic number if provided
+    analyzer = rpa.RuidaProtocolAnalyzer(args, input, output)
+    try:
+        analyzer.decode() # Does not return until decode is complete.
+        output.info('Decode complete.')
+        output.close()
+    except LookupError as e:
+        output.critical(f'{e}')
+        output.critical(
+            'Verify incoming data is a tshark dump of a Ruida UDP session.')
+        exit(1)
+    except SyntaxError as e:
+        output.critical(f'{e}')
+        exit(1)
+    except RuntimeError as e:
+        output.critical(f'Shutting down: {e}')
+        exit(1)
+    except Exception as e:
+        output.critical(f'Unhandled error:{e}')
+        exit(1)
+
+if __name__ == "__main__":
+    main()

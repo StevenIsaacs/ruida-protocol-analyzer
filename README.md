@@ -67,24 +67,24 @@ tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
 
 #### Basic Analysis
 ```bash
-python ruida_analyzer.py capture.log
+python rda.py capture.log
 ```
 
 #### Real-time Analysis
 ```bash
-python ruida_analyzer.py --on-the-fly
+python rda.py --on-the-fly
 ```
 
 #### Advanced Options
 ```bash
 # Verbose output with raw packet data
-python ruida_analyzer.py --verbose --raw capture.log
+python rda.py --verbose --raw capture.log
 
 # Save decoded output to file
-python ruida_analyzer.py -o decoded.txt capture.log
+python rda.py -o decoded.txt capture.log
 
 # Quiet mode, stop on first error
-python ruida_analyzer.py --quiet --stop-on-error -o results.txt capture.log
+python rda.py --quiet --stop-on-error -o results.txt capture.log
 ```
 
 ## Command Line Options
@@ -187,7 +187,7 @@ This tool is for educational and research purposes. The Ruida protocol is propri
 ### Sources
 
  - MeerK40T: https://github.com/meerk40t/meerk40t/tree/main/meerk40t/ruida
- - Ruida: https://edutechwiki.unige.ch/en/Ruida
+ - Ruida protocol: https://edutechwiki.unige.ch/en/Ruida
 
 ## Support
 
