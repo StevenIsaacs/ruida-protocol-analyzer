@@ -192,7 +192,7 @@ This tool is for educational and research purposes. The Ruida protocol is propri
 ## Support
 
 - **Issues**: Please report bugs and feature requests via GitHub issues
-- **Discussions**: Use GitHub discussions for questions and protocol insights
+- **Discussions**: Use Discord or GitHub discussions for questions and protocol insights
 - **Documentation**: Help improve protocol documentation through pull requests
 
 ---
