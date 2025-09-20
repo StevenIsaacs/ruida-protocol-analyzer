@@ -1,4 +1,5 @@
 '''Message emitter for the Ruida Protocol Analyzer'''
+import sys
 
 class RdaEmitter():
     '''
@@ -10,6 +11,8 @@ class RdaEmitter():
     def __init__(self, args):
         self.args = args
         self._out_fp = None
+        self.id = 0
+        self._msg_n = 0
 
     def open(self):
         if self.args.output_file:
@@ -19,16 +22,21 @@ class RdaEmitter():
         if self._out_fp is not None:
             self._out_fp.close()
 
+    def set_id(self, id: int):
+        self.id = id
+        self._msg_n = 1
+
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.
 
         The analyzer calls this method while decoding the input file. This
         then writes to the console or the output file.'''
-        _msg = '\n' + message
+        _msg = f'\n{self.id:04d}:{self._msg_n:03d}:{message}'
+        self._msg_n += 1
         if self._out_fp is not None:
             self._out_fp.write(_msg)
         if not self.args.quiet:
-            print(_msg)
+            sys.stdout.write(_msg)
 
     def reader(self, message: str):
         '''Emit packet information messages from a reader.'''
@@ -55,6 +63,11 @@ class RdaEmitter():
         if self.args.verbose:
             self.write('PRT:vrb:' + message)
 
+    def raw(self, message: str):
+        '''Emit raw unprocessed data messages or packets.'''
+        if self.args.raw:
+            self.write('PRT:raw:\n' + message)
+
     # Internal messages.
     def protocol(self, message: str):
         '''A problem with the protocol definitions or state machines.'''
@@ -66,7 +79,7 @@ class RdaEmitter():
 
     def info(self, message: str):
         '''Emit message related to the protocol analyzer and parser.'''
-        self.write('INT:INF:' + message)
+        self.write('INT:---:' + message)
 
     def warn(self, message: str):
         '''A warning about a correctable error.'''

@@ -46,6 +46,7 @@ class UdpDumpReader():
         self.line = None
         self.line_number = 0
         self.ts = None
+        self.last_ts = None
         self.to_port = None
         self.from_port = None
         self.length = 0
@@ -63,7 +64,9 @@ class UdpDumpReader():
         '''
         try:
             self.line = self.input.readline()
+            self.out.raw(self.line)
             self.line_number += 1
+            self.out.set_id(self.line_number)
             _fields:list[str] = self.line.strip().split('\t')
 
             _ts = _fields[0].split(' ')
@@ -75,14 +78,20 @@ class UdpDumpReader():
             _df = '%Y-%b-%d %H:%M:%S.%f'
             _dto = datetime.strptime(_ds, _df)
             self.ts = _dto.timestamp()
+            if self.last_ts == None:
+                self.last_ts = self.ts
+            self.delta_time = (self.ts - self.last_ts)
+            self.last_ts = self.ts
+            self.out.reader(f'Interval:{self.delta_time:.6f}uS')
+
             _ports = _fields[1].split(',')
-            self.from_port = int(_ports[0])
-            self.to_port = int(_ports[1])
+            self.to_port = int(_ports[0])
+            self.from_port = int(_ports[1])
             self.length = int(_fields[2]) - 8 # Subtract length of UDP header.
             self.data = bytes.fromhex(_fields[3])
             _n = len(self.data)
             if _n != self.length:
-                raise ValueError(
+                self.out.fatal(
                     f'Length MISMATCH: UDP=({self.length}) payload=({_n})')
         except EOFError:
             self.line = None
@@ -92,9 +101,11 @@ class UdpDumpReader():
     def reset(self):
         '''Reset the file pointer to the beginning of the dump file.'''
         try:
+            self.out.verbose('Resetting input stream.')
             self.input.seek(0)
+            self.line_number = 0
         except AttributeError:
-            pass # An input stream from a process doesn't have a seek method.
+            self.out.info("An input stream from a process doesn't have a seek method.")
 
 class RdPacket():
     '''Unswizzled packet data.
@@ -199,7 +210,7 @@ class RdPacket():
         else:
             # Verify checksum and return only the data portion of the payload.
             # NOTE: The checksum is not swizzled.
-            _chk = self.reader.data[0:2]
+            _chk = int.from_bytes(self.reader.data[0:2])
             _data = self.reader.data[2:]
             _chk_sum = (sum(_data) & 0xFFFF)
             self.chk_ok = (_chk == _chk_sum)
@@ -213,6 +224,7 @@ class RdPacket():
                 self.data.append(self.un_swizzle_byte(b))
         else:
             self.data = _data
+        self.out.raw(self.data.hex())
         self.length = len(self.data) # Does not include any checksum.
         # Update stats.
         if self.reply:
@@ -224,7 +236,6 @@ class RdPacket():
             self.total_host_bytes += self.length
 
         self._take = 0
-
         return self.length
 
     def set_magic(self, magic=None):
@@ -246,10 +257,12 @@ class RdPacket():
             _tries = 4  # Should discover magic within a few packets.
             while True:
                 self.reader.next_packet()
-                if self.reply and self.reader.length == 1:
+                if self.reader.from_port == 40200 and self.reader.length == 1:
                     _r = self.reader.data[0]
                     if _r in self.MAGIC_LUT:
                         self.magic = self.MAGIC_LUT[_r]
+                        self.out.verbose(
+                            f'Detected magic: 0x{self.magic:02X}')
                         break
                     else:
                         if _tries:
@@ -260,6 +273,7 @@ class RdPacket():
             self.reader.reset()
         else:
             self.magic = magic
+            self.out.verbose(f'Using magic: 0x{self.magic:02X}')
 
     def next_byte(self) -> int:
         '''Return the next data byte from the input file.
@@ -344,13 +358,11 @@ class RuidaProtocolAnalyzer():
         self.out = output
         self.new_packet = False
         self.expect_ack = False
-        self.verbose = args.verbose
         self._reader = UdpDumpReader(input, output)
         self._pkt = RdPacket(self._reader, output)
         self._pkt.set_magic(args.magic)
         self._parser = rp.RdParser(output)
         self._line_number = 0
-        self._delta_time = 0.0
 
     def check_handshake(self):
         '''Verify the ack/nak handshake.
@@ -364,11 +376,6 @@ class RuidaProtocolAnalyzer():
         '''
         # Getting the byte required reading another packet.
         self._line_number = self._reader.line_number
-        if _last_time:
-            self._delta_time = self._reader.ts - _last_time
-            _last_time = self._reader.ts
-        else:
-            self._delta_time = 0.0
         _msg = ''
         if self._pkt.reply:
             _dir = '<--'
@@ -394,9 +401,8 @@ class RuidaProtocolAnalyzer():
         else:
             _dir = '-->'
             self.expect_ack = True
-        self.out.reader(
-            f'{self._line_number:04d}:{self._delta_time:06.03f}:{_dir}:{_msg}')
-        self.out.verbose(self._reader.line)
+            _msg = 'Expecting ACK'
+        self.out.reader(f'{_dir}:{_msg}')
 
     def decode(self):
         '''Step through each byte of the input stream and decode each packet.
@@ -413,5 +419,5 @@ class RuidaProtocolAnalyzer():
             if not self._pkt.handshake:
                 _decoded = self._parser.step(
                     _b, is_reply=self._pkt.reply, remaining=self._pkt.remaining)
-            if _decoded is not None:
-                self.out.parser(_decoded)
+                if _decoded is not None:
+                    self.out.parser(_decoded)

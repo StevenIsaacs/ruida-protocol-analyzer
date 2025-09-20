@@ -161,12 +161,6 @@ def main():
     input = open_input(args)
 
     # Set up output handling
-    if args.output_file:
-        try:
-            output = open(args.output_file, 'w')
-        except Exception as e:
-            print(f"Error opening output file '{args.output_file}': {e}", file=sys.stderr)
-            sys.exit(1)
     output = RdaEmitter(args)
     output.open()
 
