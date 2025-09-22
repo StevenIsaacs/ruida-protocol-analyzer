@@ -145,6 +145,7 @@ class RdDecoder():
             self.value = ' ON'
         else:
             self.value = 'OFF'
+        return self.formatted
 
     def rd_mt(self, data: bytearray):
         # This is a special case where the data is a reference to an entry
