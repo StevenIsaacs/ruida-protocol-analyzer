@@ -32,7 +32,9 @@ class RdaEmitter():
         self.dir = dir
 
     def pause(self, message='Press Enter'):
-        input('\n' + message + ': ')
+        if input('\n' + message + ': ') == 'quit':
+            self.write('Exiting...')
+            exit(0)
 
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.
