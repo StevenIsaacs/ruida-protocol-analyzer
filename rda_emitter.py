@@ -12,6 +12,7 @@ class RdaEmitter():
         self.args = args
         self._out_fp = None
         self.id = 0
+        self.dir = '---'
         self._msg_n = 0
 
     def open(self):
@@ -25,6 +26,9 @@ class RdaEmitter():
     def set_id(self, id: int):
         self.id = id
         self._msg_n = 1
+
+    def set_direction(self, dir: str):
+        self.dir = dir
 
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.
@@ -40,33 +44,33 @@ class RdaEmitter():
 
     def reader(self, message: str):
         '''Emit packet information messages from a reader.'''
-        self.write('PRT:RDR:' + message)
+        self.write(f'PRT:RDR:{self.dir}:' + message)
 
     def parser(self, message: str):
         '''Emit a message related to parsing the incoming data.'''
-        self.write('PRT:PRS:' + message)
+        self.write(f'PRT:PRS:{self.dir}:' + message)
 
     def error(self, message: str):
         '''Emit error messages related to the incoming stream.'''
-        self.write('PRT:ERR:' + message)
+        self.write(f'PRT:ERR:{self.dir}:' + message)
         if self.args.stop_on_error:
             raise SyntaxError('Stopping...')
 
     def shutdown(self, message: str):
         '''This is used to shutdown the analyzer when an uncorrectable error
         is detected (cannot sync).'''
-        self.write('PRT:FTL:' + message)
+        self.write(f'PRT:FTL:{self.dir}:' + message)
         raise SyntaxError('Stopping...')
 
     def verbose(self, message: str):
         '''Emit verbose messages.'''
         if self.args.verbose:
-            self.write('PRT:vrb:' + message)
+            self.write('vrb:' + message)
 
     def raw(self, message: str):
         '''Emit raw unprocessed data messages or packets.'''
         if self.args.raw:
-            self.write('PRT:raw:\n' + message)
+            self.write(f'PRT:raw:{self.dir}:\n' + message)
 
     # Internal messages.
     def protocol(self, message: str):

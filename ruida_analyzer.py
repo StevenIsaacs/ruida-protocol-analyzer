@@ -378,7 +378,7 @@ class RuidaProtocolAnalyzer():
         self._line_number = self._reader.line_number
         _msg = ''
         if self._pkt.reply:
-            _dir = '<--'
+            self.out.set_direction('<--')
             if self._pkt.handshake:
                 _b = self._pkt.data[0]
                 if _b == rp.ACK:
@@ -399,10 +399,10 @@ class RuidaProtocolAnalyzer():
             else:
                 self.out.reader('Reply data')
         else:
-            _dir = '-->'
+            self.out.set_direction('-->')
             self.expect_ack = True
             _msg = 'Expecting ACK'
-        self.out.reader(f'{_dir}:{_msg}')
+        self.out.reader(_msg)
 
     def decode(self):
         '''Step through each byte of the input stream and decode each packet.
