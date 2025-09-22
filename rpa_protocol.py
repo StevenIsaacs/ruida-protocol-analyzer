@@ -27,6 +27,7 @@ RD_TYPES = {
     'uint_35':  [   32,     5], # Top three bits are dropped.
     'cstring':  [   7,      1], # The values are multiplied by the length
                                 # of the string.
+    'on_off':   [   1,      1], # An ON or OFF switch (flag).
     'mt':       [   14,     2], # Special handling for a controller memory
                                 # access (read).
     'tbd':      [   -1,    -1],  # Type is unknown signal read to end of packet.
@@ -89,7 +90,7 @@ PARSE_POWER = ('Power:{:1f}%', 'power', 'uint_14')
 PARSE_SPEED = ('Speed:{:3f}mm/S', 'speed', 'int_35')
 PARSE_FREQUENCY = ('Freq:{:3f}KHz', 'frequency', 'int_35')
 PARSE_TIME = ('{:3f}mS', 'time', 'int_35')
-
+SWITCH = ('State: {}', 'on_off', 'uint_7')
 # A memory access triggers special processing using MT.
 MEMORY = ('Addr:{:04X}', 'mt', 'mt')
 
@@ -283,7 +284,7 @@ MT = {
         0x53: ('Total Work Length 4', TBD), # 0x253
     },
     0x05: {
-        0x7E: ('Card ID', TBD), # 0x2FE
+        0x7E: ('Card ID', HEX35), # 0x2FE
         0x7F: ('Mainboard Version', TBD), # 0x2FF
     },
     0x07: {
@@ -444,6 +445,9 @@ CT = {
         0x02: 'DOCUMENT_FILE_END',
         0x05: 'SET_FILE_SUM',
     },
+    0xE6: {
+        0x01: 'SET_ABSOLUTE',
+    },
     0xE7: {
         0x00: 'DOCUMENT_FILE_UPLOAD', # TODO: Reply?
         0x01: ('SET_FILE_NAME', FNAME),
@@ -466,7 +470,7 @@ CT = {
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ('SET_FILE_EMPTY', UINT7),
         0x37: 'ARRAY_EVEN_DISTANCE',
-        0x38: 'SET_FEED_AUTO_PAUSE',
+        0x38: ('SET_FEED_AUTO_PAUSE', SWITCH),
         0x3A: 'UNION_BLOCK_PROPERTY',
         0x50: ('DOCUMENT_MIN_POINT', XABSCOORD, YABSCOORD),
         0x51: ('DOCUMENT_MAX_POINT', XABSCOORD, YABSCOORD),

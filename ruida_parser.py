@@ -140,6 +140,12 @@ class RdDecoder():
     def rd_rapid(data):
         return rdap.ROT[data[0]]
 
+    def rd_on_off(self, data: bytearray):
+        if data[0]:
+            self.value = ' ON'
+        else:
+            self.value = 'OFF'
+
     def rd_mt(self, data: bytearray):
         # This is a special case where the data is a reference to an entry
         # in the memory table (rdap.MT). This is used to setup the reply or
@@ -258,6 +264,10 @@ class RdParser():
                         The sub-command byte from a reply from the controller.
         command_bytes   The accumulated command bytes -- including sub-command
                         and parameters.
+        host_bytes      The bytes from the host since the last parser output.
+                        These are displayed when verbose is enabled.
+        controller_byres The bytes from the controller since the last parser
+                        output. These are displayed when verbose is enabled.
         param_bytes     The accumulated parameter bytes for the current parameter.
         reply_bytes     The accumulated reply bytes.
         decoded         The decoded command string. This string grows as a
@@ -291,6 +301,8 @@ class RdParser():
         self.parameters = []
         self.command_bytes = []
         self.param_bytes = []
+        self.host_bytes: bytearray = bytearray([])
+        self.controller_bytes: bytearray = bytearray([])
         self.decoder = RdDecoder(output)
         self.decoded = ''
 
@@ -457,6 +469,7 @@ class RdParser():
                     self.out.protocol(
                         f'Unknown MT address LSB (0x{datum:02X}.)')
             self.mt_address_lsb = datum
+            self.decoded += f'{datum:02X}'
             self._enter_state('mt_decode_reply')
         else:
             self.out.error(
@@ -474,6 +487,7 @@ class RdParser():
                 self.out.protocol(
                     f'Unknown MT address MSB (0x{datum:02X}.)')
             self.mt_address_msb = datum
+            self.decoded += f' Addr:{datum:02X}'
             self._enter_state('mt_address_lsb')
         else:
             self.out.error(
@@ -491,6 +505,7 @@ class RdParser():
             if self._h_is_known_command(datum):
                 if type(self._ct[datum]) is tuple:
                     self.reply_sub_command = datum
+                    self.decoded = self._ct[datum][0]
                     self._enter_state('mt_address_msb')
                 else:
                     self.out.protocol(
@@ -599,13 +614,13 @@ class RdParser():
                         f'Decoded parameter {self.which_param}={_r}.')
                     self.decoded += (' ' + _r)
                     # A controller memory reference requires special handling.
-                    if self.param_list[self.which_param][1] == 'mt':
+                    if 'mt' in self.param_list[self.which_param]:
                         self._enter_state('mt_command')
                         return self.decoded
                     else:
                         # Advance to the next parameter.
                         _next = self.which_param + 1
-                        if _next > len(self.param_list):
+                        if _next >= len(self.param_list):
                             self.out.verbose('Parameters decoded.')
                             self._enter_state('expect_command')
                             return self.decoded
@@ -617,7 +632,6 @@ class RdParser():
     def _tr_decode_parameters(self):
         '''Prepare to parse a parameter. Prime the parameter decoder
         state machine.'''
-        self.decoded += ':' + self.param_list[0]
         self.which_param = 1
         if 'mt' in self.param_list:
             self._enter_state('mt_command')
@@ -641,9 +655,9 @@ class RdParser():
                     self.sub_command = datum
                     _t = type(self._ct[datum])
                     if _t is str:
-                        _msg = self._format_decoded(self._ct[datum])
+                        self.decoded = self._ct[datum]
                         self._enter_state('expect_command')
-                        return _msg
+                        return self.decoded
                     elif _t is dict:
                         self.out.protocol(
                             f'Too many sub-levels for sub-command 0x{datum:02X}')
@@ -693,9 +707,9 @@ class RdParser():
                     self.command = datum
                     _t = type(self._ct[datum])
                     if _t is str:
-                        _msg = self._format_decoded(self._ct[datum])
+                        self.decoded = self._ct[datum]
                         self._enter_state('expect_command')
-                        return _msg
+                        return self.decoded
                     elif _t is dict:
                         self._enter_state('expect_sub_command')
                     elif _t is tuple:
@@ -739,9 +753,9 @@ class RdParser():
                     self.command = datum
                     _t = type(self._ct[datum])
                     if _t is str:
-                        _msg = self._format_decoded(self._ct[datum])
+                        self._format_decoded(self._ct[datum])
                         self._enter_state('expect_command')
-                        return _msg
+                        return self.decoded
                     elif _t is dict:
                         self._enter_state('expect_sub_command')
                     elif _t is tuple:
@@ -778,5 +792,16 @@ class RdParser():
         self.last_is_reply = self.is_reply
         self.is_reply = is_reply
         self.remaining = remaining
+        # Accumulate bytes.
+        if self.is_reply:
+            self.controller_bytes.append(datum)
+        else:
+            self.host_bytes.append(datum)
         # Step the machine.
-        return self._stepper(datum)
+        _r = self._stepper(datum)
+        if _r is not None:
+            self.out.verbose(f'-->:{self.host_bytes.hex()}')
+            self.out.verbose(f'<--:{self.controller_bytes.hex()}')
+            self.controller_bytes = bytearray([])
+            self.host_bytes = bytearray([])
+        return _r

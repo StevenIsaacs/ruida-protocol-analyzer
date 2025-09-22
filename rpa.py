@@ -96,6 +96,27 @@ Examples:
         help='Stop decode when an error is detected -- do not attempt to resync.'
     )
 
+    # Single step mode -- packets
+    parser.add_argument(
+        '--step-packets',
+        action='store_true',
+        help='Pause output after each host packet has been parsed (ignored when --on-the-fly).'
+    )
+
+    # Single step mode -- commands
+    parser.add_argument(
+        '--step-decode',
+        action='store_true',
+        help='Pause output after each decode message (disables --on-the-fly).'
+    )
+
+    # Enter interactive mode (CLI)
+    parser.add_argument(
+        '--interactive',
+        action='store_true',
+        help='Enter an interactive mode on the console (disables --on-the-fly).'
+    )
+
     args = parser.parse_args()
 
     # Validation
@@ -110,6 +131,9 @@ Examples:
 
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
+
+    if (args.step_decode or args.step_packets) and args.on_the_fly:
+        parser.error('Cannot step when --on-the-fly is enabled')
 
     # Parse magic number if provided
     if args.magic:

@@ -83,7 +83,7 @@ class UdpDumpReader():
                 self.last_ts = self.ts
             self.delta_time = (self.ts - self.last_ts)
             self.last_ts = self.ts
-            self.out.reader(f'Interval:{self.delta_time:.6f}uS')
+            self.out.reader(f'Interval:{self.delta_time:.6f}S')
 
             _ports = _fields[1].split(',')
             self.to_port = int(_ports[0])
