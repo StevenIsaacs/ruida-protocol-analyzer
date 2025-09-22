@@ -5,8 +5,8 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
-from rda_emitter import RdaEmitter
-import rda_protocol as rdap
+from rpa_emitter import RdaEmitter
+import rpa_protocol as rdap
 
 class RdDecoder():
     '''A parameter or reply decoder.
@@ -375,7 +375,6 @@ class RdParser():
         self.parameters = []
         self.command_bytes = []
         self.param_bytes = []
-        self.decoded = None
         self._ct = rdap.CT
 
     def _h_check_for_reply(self):
@@ -414,10 +413,10 @@ class RdParser():
                 # Parameter has been decoded.
                 self.out.verbose(
                     f'Decoded reply parameter {self.which_param}={_r}.')
-                self.decoded += (' ' + _r)
+                self.decoded += (':Reply:' + _r)
                 # Advance to the next parameter.
                 _next = self.which_param + 1
-                if _next > len(self.param_list):
+                if _next >= len(self.param_list):
                     self.out.verbose('Reply decoded.')
                     self._enter_state('expect_command')
                     return self.decoded
@@ -426,7 +425,7 @@ class RdParser():
                     self.decoder.prime(self.param_list[self.which_param])
         else:
             self.out.error('Packet from host when decoding reply data.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
 
     def _tr_mt_decode_reply(self):
         if self.mt_address_msb not in rdap.MT:
@@ -439,9 +438,9 @@ class RdParser():
             self.out.verbose(f'Memory reference: {_msb:02X}{_lsb:02X}')
             _reply = rdap.MT[_msb][_lsb]
         self.param_list = _reply
-        self.decoded += _reply[0]
+        self.decoded += ':' + _reply[0]
         self.which_param = 1
-        if 'tbd' in _reply:
+        if 'tbd' in _reply[1]:
             self.decoder.prime(_reply[1], length=self.remaining)
         else:
             self.decoder.prime(_reply[1])
@@ -452,17 +451,17 @@ class RdParser():
         if self.is_reply:
             if self.mt_address_msb not in rdap.MT:
                 # Setup a generic decode for an unknown address.
-                self.decoded += rdap.UNKNOWN_ADDRESS[0]
+                self.decoded += ':' + rdap.UNKNOWN_ADDRESS[0]
             else:
                 if datum not in rdap.MT[self.mt_address_msb]:
                     self.out.protocol(
                         f'Unknown MT address LSB (0x{datum:02X}.)')
             self.mt_address_lsb = datum
-            self._enter_state('mt_decode')
+            self._enter_state('mt_decode_reply')
         else:
             self.out.error(
                 'Packet from host when expecting reply memory address.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
 
     def _tr_mt_address_lsb(self):
         self.mt_address_lsb = None
@@ -479,7 +478,7 @@ class RdParser():
         else:
             self.out.error(
                 'Packet from host when expecting reply memory address.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
 
     def _tr_mt_address_msb(self):
         self.mt_address_msb = None
@@ -488,27 +487,22 @@ class RdParser():
     #++++
     def _st_mt_sub_command(self, datum):
         if self.is_reply:
-            if self._h_is_command(datum):
-                # A reply to a memory access always has a sub-command.
-                if self._h_is_known_command(datum):
-                    if type(self._ct[datum]) is tuple:
-                        self.reply_sub_command = datum
-                        self._enter_state('mt_address_msb')
-                    else:
-                        self.out.protocol(
-                            f'A reply data type should be a tuple.')
-                        self._enter_state('sync')
+            # A reply to a memory access always has a sub-command.
+            if self._h_is_known_command(datum):
+                if type(self._ct[datum]) is tuple:
+                    self.reply_sub_command = datum
+                    self._enter_state('mt_address_msb')
                 else:
-                    self.out.error(
-                        f'Datum (0x{datum:02X} is not a known reply sub_command)')
+                    self.out.protocol(
+                        f'A reply data type should be a tuple.')
                     self._enter_state('sync')
             else:
                 self.out.error(
-                    f'Datum (0x{datum:02X} is not a reply sub_command byte.)')
+                    f'Datum (0x{datum:02X} is not a known reply sub_command)')
                 self._enter_state('sync')
         else:
             self.out.error('Packet from host when expecting reply sub_command.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
 
     def _tr_mt_sub_command(self):
         self._ct = rdap.RT[self.reply_command]
@@ -537,7 +531,7 @@ class RdParser():
                 self._enter_state('sync')
         else:
             self.out.error('Current packet is NOT a reply packet.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
 
     def _tr_mt_command(self):
         '''Setup to parse a reply to a memory read command.
@@ -545,24 +539,11 @@ class RdParser():
         This state is triggered when the command parameter list contains
         a MEMORY spec and the memory command has been decoded.'''
         if self.command == 0xDA: # Reading from controller.
-            _msb = self.decoder.data[0]
-            _lsb = self.decoder.data[1]
-            if _msb in rdap.MT:
-                if _lsb in rdap.MT[_msb]:
-                    # A new parameter list for a memory reference.
-                    self.param_list = rdap.MT[_msb][_lsb]
-                    self.which_param = 1
-                    self.decoded += (':' + self.param_list[0])
-                else:
-                    self.out.protocol(
-                        f'Memory reference LSB ({_lsb}) not in rdap.MT.')
-            else:
-                self.out.protocol(
-                    f'Memory reference MSB ({_msb}) not in rdap.MT.')
+            self.reply_command = None
+            self._ct = rdap.RT
         else:
             self.out.protocol(
                 f'Memory reference with wrong command: 0x{self.command:02X}')
-        self._rt = rdap.RT
     #----
 
     #---- MEMORY reply states
@@ -575,7 +556,7 @@ class RdParser():
         The reply data is appended to the parameter list.'''
         if not self.is_reply:
             self.out.error('Packet from host when expecting reply.')
-            self._enter_state('sync')
+            self._forward_to_state('sync')
         else:
             if self._h_is_command(datum):
                 self.out.error(
@@ -620,6 +601,7 @@ class RdParser():
                     # A controller memory reference requires special handling.
                     if self.param_list[self.which_param][1] == 'mt':
                         self._enter_state('mt_command')
+                        return self.decoded
                     else:
                         # Advance to the next parameter.
                         _next = self.which_param + 1
@@ -635,9 +617,12 @@ class RdParser():
     def _tr_decode_parameters(self):
         '''Prepare to parse a parameter. Prime the parameter decoder
         state machine.'''
-        self.decoded = self.param_list[0]
+        self.decoded += ':' + self.param_list[0]
         self.which_param = 1
-        self._h_check_for_reply()
+        if 'mt' in self.param_list:
+            self._enter_state('mt_command')
+        else:
+            self._h_check_for_reply()
     #----
 
     #++++
@@ -665,6 +650,7 @@ class RdParser():
                         self._enter_state('sync')
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
+                        self.decoded = self.param_list[0]
                         self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
@@ -714,6 +700,7 @@ class RdParser():
                         self._enter_state('expect_sub_command')
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
+                        self.decoded = self.param_list[0]
                         self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the

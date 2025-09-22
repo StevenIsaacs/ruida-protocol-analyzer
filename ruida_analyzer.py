@@ -14,7 +14,8 @@ import typing
 import os
 
 import ruida_parser as rp
-from rda_emitter import RdaEmitter
+import rpa_protocol as rdap
+from rpa_emitter import RdaEmitter
 
 class UdpDumpReader():
     '''Parse lines from the dump file or a live stream.
@@ -381,14 +382,14 @@ class RuidaProtocolAnalyzer():
             self.out.set_direction('<--')
             if self._pkt.handshake:
                 _b = self._pkt.data[0]
-                if _b == rp.ACK:
+                if _b == rdap.ACK:
                     _msg += 'ACK'
                     self.expect_ack = False
-                elif _b == rp.NAK:
+                elif _b == rdap.NAK:
                     _msg += 'NAK'
-                elif _b == rp.ERR:
+                elif _b == rdap.ERR:
                     _msg += 'ERR'
-                elif _b == rp.ENQ:
+                elif _b == rdap.ENQ:
                     _msg += 'ENQ'
                 else:
                     self.out.error(f'Unexpected reply byte 0x{_b:02X}')

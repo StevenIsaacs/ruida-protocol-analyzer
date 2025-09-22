@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 import ruida_analyzer as rpa
-from rda_emitter import RdaEmitter
+from rpa_emitter import RdaEmitter
 
 def parse_arguments():
     """Parse command line arguments for Ruida protocol analyzer"""
