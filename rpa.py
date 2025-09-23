@@ -11,6 +11,11 @@ def parse_arguments():
         description='''
 Ruida Protocol Analyzer - Parse and decode Ruida CNC protocol packets.
 
+The tshark log file must be in a specific format. Use this command to capture:
+
+tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
+       -e frame.time -e udp.port -e udp.length -e data.data > capture.log
+
 The decoded data is emitted to the console (stdout) which can be redirected to
 a file.
         ''',
@@ -22,6 +27,7 @@ Examples:
   %(prog)s -o output.txt capture.log        # Save decoded output to file
   %(prog)s --verbose --raw capture.log      # Detailed output with raw data
   %(prog)s --magic 0x88 capture.log         # Use specific magic number
+  %(prog)s --step-decode capture.log        # Pause for each decoded output
         '''
     )
 
@@ -133,7 +139,8 @@ Examples:
         parser.error("--quiet and --verbose are mutually exclusive")
 
     if (args.step_decode or args.step_packets) and args.on_the_fly:
-        parser.error('Cannot step when --on-the-fly is enabled')
+        args.on_the_fly = False
+        parser.print('Cannot step when --on-the-fly is enabled -- disabled --on-the-fly')
 
     # Parse magic number if provided
     if args.magic:
