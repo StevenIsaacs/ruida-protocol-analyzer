@@ -25,6 +25,7 @@ class UdpDumpReader():
         -e frame.time -e udp.port -e udp.length -e data.data>
 
     Parameters:
+        args        The command line arguments.
         input       The input stream to read capture data from. This stream
                     must support the readline method.
         output      Where to write messages to.
@@ -41,7 +42,8 @@ class UdpDumpReader():
         length      The length of the payload (not including the checksum)
         data        The binary swizzled data payload (not including checksum).
     '''
-    def __init__(self, input, output: RdaEmitter):
+    def __init__(self, args, input, output: RdaEmitter):
+        self.args = args
         self.input = input
         self.out = output
         self.line = None
@@ -100,13 +102,14 @@ class UdpDumpReader():
         return self.length
 
     def reset(self):
-        '''Reset the file pointer to the beginning of the dump file.'''
-        try:
+        '''Reset the file pointer to the beginning of the dump file.
+
+        NOTE: This has no effect if --on-the-fly is used.
+        '''
+        if not self.args.on_the_fly:
             self.out.verbose('Resetting input stream.')
             self.input.seek(0)
             self.line_number = 0
-        except AttributeError:
-            self.out.info("An input stream from a process doesn't have a seek method.")
 
 class RdPacket():
     '''Unswizzled packet data.
@@ -153,13 +156,15 @@ class RdPacket():
         # TODO: Add more magic numbers.
     }
 
-    def __init__(self, reader: UdpDumpReader, output: RdaEmitter):
+    def __init__(self, args, reader: UdpDumpReader, output: RdaEmitter):
         '''
         Parameters:
+        args        The command line arguments.
         reader      The packet reader to get input data from.
         output      The stream to write messages to.
 
         '''
+        self.args = args
         self.reader = reader
         self.out = output
         self.magic = None
@@ -345,7 +350,7 @@ class RuidaProtocolAnalyzer():
                     be text mode and have a "write" method.
 
     Attributes:
-        args        The arguments parameter.
+        args        The command line arguments.
         magic       The swizzle magic number.
         new_packet  When True a new packet is being processed.
         expect_ack  When True a host packet has been received. The next packet
@@ -359,8 +364,8 @@ class RuidaProtocolAnalyzer():
         self.out = output
         self.new_packet = False
         self.expect_ack = False
-        self._reader = UdpDumpReader(input, output)
-        self._pkt = RdPacket(self._reader, output)
+        self._reader = UdpDumpReader(args, input, output)
+        self._pkt = RdPacket(args, self._reader, output)
         self._pkt.set_magic(args.magic)
         self._parser = rp.RdParser(output)
         self._line_number = 0

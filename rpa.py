@@ -178,13 +178,13 @@ def open_input(args):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufszie=1,
+                bufsize=1,
                 universal_newlines=True
             )
         except FileNotFoundError:
             raise FileNotFoundError(
                 'tshark not found. Please install Wireshark/tshark')
-    return input
+    return input.stdout
 
 def main():
     """Main function with command line argument processing"""
