@@ -93,11 +93,17 @@ python rda.py --quiet --stop-on-error -o results.txt capture.log
 |--------|-------------|
 | `--on-the-fly` | Spawn tshark and process output in real time |
 | `--ip` | The Ruida controller IP address. Required when --on-the-fly is used |
+| `--magic <magic_number>` | Specify the swizzle magic number rather than attempt to discover it in the capture. |
 | `--out <file>`, `-o <file>` | Write decoded data to specified file |
 | `--quiet`, `-q` | Suppress stdout output |
 | `--verbose` | Generate detailed output with additional information |
 | `--raw` | Include raw packet dumps with decoded output |
-| `--stop-on-error` | Stop processing on first decode error |
+| `--unswizzled` | Output the unswizzled and unprocessed data. |
+  | `--stop-on-error` | Stop processing on first decode error |
+| `--step-packets` | Pause output after each host packet has been parsed (ignored when --on-the-fly) |
+| `--step-decode` | Pause output after each decode message (disables --on-the-fly) |
+| `--interactive` | (Future) Enter an interactive mode on the console (disables --on-the-fly) |
+
 
 ## Output Format
 
@@ -107,19 +113,58 @@ The analyzer produces human-readable output showing:
 - Parameter values with appropriate units
 - Error messages for malformed packets
 
+Where (see example):
+- pkt_n = Current packet number.
+- msg_n = Message number in the current packet.
+- msg_class = Message classes can be either:
+  - PRT = Protocol related
+  - INT = Internal engine related
+- msg_type = The message type.
+  - For protocol messages:
+    - RDR = Packet reader
+    - PRS = Data parser
+    - ERR = Errors with parsing or incoming data
+    - FTL = Fatal errors (will trigger an exit)
+    - vrb = Verbose message (when --verbose is used)
+    - raw = Raw tshark and unswizzled packets or other raw data.
+    - --> = Packets from the host
+    - <-- = Packets from the controller
+  - For internal messages:
+    - PRT = An error caused by a protocol specification
+    - INF = Informaton only
+    - WRN = A warning about a correctable error
+    - CRT = A critical error -- will continue to run
+    - FTL = A fatal error which triggers an exit
+
+
 ### Example Output
 ```
-Line 1: 12:34:56.789: Port 50200 (8 bytes) - 0x88 MOVE_ABS_XY(X=1000um, Y=2000um)
-Line 2: 12:34:57.123: Port 50200 (3 bytes) - 0xC0 IMD_POWER_2(Power:75%)
-Line 3: 12:34:57.456: Port 50200 (2 bytes) - 0xD8/0x00 START_PROCESS
-```
+# <pkt_n>:<msg_n>:<msg_class>:<msg_type>:<offset>:<decode>
+0001:016:PRT:raw:-->:
+Sep 10, 2025 13:08:54.507278575 PDT	50200,40200	9	c6
 
+0002:001:PRT:RDR:-->:Interval:0.000127S
+0002:002:PRT:raw:-->:
+cc
+0002:003:PRT:RDR:<--:ACK
+....
+0003:021:PRT:PRS:<--:0009:GET_SETTING Addr:057E:Card ID:Reply:65106510
+```
 ### Verbose Output
 With `--verbose`, additional details are shown:
 ```
-Line 1: 12:34:56.789: Port 50200 (8 bytes) - 0x88 MOVE_ABS_XY(X=1000um, Y=2000um)
-    Raw bytes: 88 E8 03 00 00 D0 07 00 00
-    Command structure: Single command
+0003:010:vrb:Entering state: mt_address_lsb
+0003:011:vrb:Exiting state: mt_address_lsb
+0003:012:vrb:Entering state: mt_decode_reply
+0003:013:vrb:Memory reference: 057E
+0003:014:vrb:Priming: ('{:08X}', 'uint35', 'uint_35')
+0003:015:vrb:Decoded reply parameter 1=65106510.
+0003:016:vrb:Reply decoded.
+0003:017:vrb:Exiting state: mt_decode_reply
+0003:018:vrb:Entering state: expect_command
+0003:019:vrb:-->:
+0003:020:vrb:<--:da01057e0628414a10
+
 ```
 
 ## Protocol Structure
