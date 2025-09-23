@@ -201,9 +201,9 @@ Contributions are welcome! This is an ongoing reverse engineering project. Areas
 - **Testing**: Validating against different Ruida controller models
 - **Features**: Additional analysis and export capabilities
 
-### Adding New Commands
+### Adding New Protocol Specificatons
 
-Commands are defined in the protocol tables. For example:
+Protocol specifications are defined in the protocol tables. For example:
 ```python
 # In CT (Command Table)
 0x88: ('MOVE_ABS_XY', XCOORD, YCOORD),
