@@ -121,6 +121,10 @@ class RdDecoder():
         return self.formatted
 
     # Ruida Parameter Types
+    def rd_coord(self, data: bytearray):
+        self.value = self.to_int(data) / 1000.0
+        return self.formatted
+
     def rd_power(self, data: bytearray):
         self.value = self.to_int(data) / (0x4000 / 100)
         return self.formatted
@@ -415,6 +419,24 @@ class RdParser():
                     'Invalid action marker in parameter list.')
         else:
             self.out.protocol('Unexpected type in parameter list.')
+
+    def _h_show_parse_data(self):
+        self.out.write(f'Spec:{self.param_list}')
+        self.out.write(f'-->:{self.host_bytes.hex()}')
+        self.out.write(f'<--:{self.controller_bytes.hex()}')
+
+    def _h_data_error(self, message):
+        '''Display and error with incoming data and bytes leading up to
+        the error.'''
+        self._h_show_parse_data()
+        self.out.error(message)
+
+    def _h_protocol_error(self, message):
+        '''Display and error with incoming data and bytes leading up to
+        the error.'''
+        self._h_show_parse_data()
+        self.out.protocol(message)
+
     #---- Helpers
 
     #++++ MEMORY reply
@@ -575,7 +597,7 @@ class RdParser():
             self._forward_to_state('sync')
         else:
             if self._h_is_command(datum):
-                self.out.error(
+                self._h_data_error(
                     f'Datum 0x{datum:02X} is a command -- expected data.')
                 self._forward_to_state('sync')
             else:
@@ -604,7 +626,7 @@ class RdParser():
             if self._h_is_command(datum):
                 # This can either be a problem with the incoming data or
                 # the definition in the protocol table.
-                self.out.error(
+                self._h_data_error(
                     f'Datum 0x{datum:02X} is a command -- expected data.')
                 return self._forward_to_state('sync')
             else:
