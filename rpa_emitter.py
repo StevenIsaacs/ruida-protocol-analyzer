@@ -32,8 +32,8 @@ class RdaEmitter():
         self.dir = dir
 
     def pause(self, message='Press Enter'):
-        if input('\n' + message + ': ') == 'quit':
-            self.write('Exiting...')
+        if input('\n' + message + '(quit to exit): ') == 'quit':
+            self.write('Exiting...\n')
             exit(0)
 
     def write(self, message: str):
@@ -62,7 +62,7 @@ class RdaEmitter():
         '''Emit error messages related to the incoming stream.'''
         self.write(f'PRT:ERR:{self.dir}:' + message)
         if self.args.stop_on_error:
-            raise SyntaxError('Stopping...')
+            self.pause()
 
     def shutdown(self, message: str):
         '''This is used to shutdown the analyzer when an uncorrectable error
