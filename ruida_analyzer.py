@@ -172,12 +172,12 @@ class RdPacket():
         self.total_host_bytes = 0
         self.total_reply_packets = 0
         self.total_reply_bytes = 0
-        self._take = 0      # Take index for reading byte by byte.
+        self.take = 0      # Take index for reading byte by byte.
 
     @property
     def remaining(self):
         '''Return the number of unread bytes in the packet data buffer.'''
-        return self.length - self._take
+        return self.length - self.take
 
     def un_swizzle_byte(self, b):
         '''Un-swizzle a byte using the magic number.
@@ -236,7 +236,7 @@ class RdPacket():
             self.total_host_packets += 1
             self.total_host_bytes += self.length
 
-        self._take = 0
+        self.take = 0
         return self.length
 
     def set_magic(self, magic=None):
@@ -296,8 +296,8 @@ class RdPacket():
         _b = None
         while _b is None:
             if self.remaining > 0:
-                _b = self.data[self._take]
-                self._take += 1
+                _b = self.data[self.take]
+                self.take += 1
             else:
                 # The end of the input file has been reached when _next_packet
                 # returns None.
@@ -421,4 +421,4 @@ class RuidaProtocolAnalyzer():
                 _decoded = self._parser.step(
                     _b, is_reply=self._pkt.reply, remaining=self._pkt.remaining)
                 if _decoded is not None:
-                    self.out.parser(_decoded)
+                    self.out.parser(f'{self._pkt.take:04d}:{_decoded}')
