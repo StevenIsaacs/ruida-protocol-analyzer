@@ -12,7 +12,11 @@
             "program": "${file}",
             "console": "externalTerminal",
             // "args": "${command:pickArgs}"
-            "args": ["--verbose", "--step-decode", "--raw", "~/tmp/test.log"]
+            "args": ["--verbose",
+                     "--step-decode",
+                     "--raw",
+                     "--stop-on-error",
+                     "~/tmp/test.log"]
         }
     ]
 }
