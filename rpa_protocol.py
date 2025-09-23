@@ -16,23 +16,6 @@ CMD_MASK = 0x80 # Only the first byte of a command has the top bit set.
 
 # This table defines the number of bit and corresponding number of incoming
 # data bytes for each basic data type.
-RD_TYPES = {
-#   Type            bits    bytes
-    'bool_7':   [   7,      1], # Boolean value -- True or False.
-    'int_7':    [   7,      1],
-    'uint_7':   [   7,      1],
-    'int_14':   [   14,     2],
-    'uint_14':  [   14,     2],
-    'int_35':   [   32,     5], # Top three bits are dropped.
-    'uint_35':  [   32,     5], # Top three bits are dropped.
-    'cstring':  [   7,      1], # The values are multiplied by the length
-                                # of the string.
-    'on_off':   [   1,      1], # An ON or OFF switch (flag).
-    'mt':       [   14,     2], # Special handling for a controller memory
-                                # access (read).
-    'tbd':      [   -1,    -1],  # Type is unknown signal read to end of packet.
-                                # Use this for reverse engineering data.
-}
 # Indexes into the RD_TYPES table.
 # e.g. to get the number of bytes needed to decode the value:
 #  n_bytes = RD_TYPES[DTYP][RDT_BYTES]
@@ -41,59 +24,39 @@ RDT_BITS = 0    # The number of bits in a decoded value.
                 # bits in a larger variable. e.g. A
 RDT_BYTES = 1   # The number of data bytes to decode.
 
+RD_TYPES = {
+#   Type            RDT_BITS    RDT_BYTES
+    'bool_7':   [   7,          1], # Boolean value -- True or False.
+    'int_7':    [   7,          1],
+    'uint_7':   [   7,          1],
+    'int_14':   [   14,         2],
+    'uint_14':  [   14,         2],
+    'int_35':   [   32,         5], # Top three bits are dropped.
+    'uint_35':  [   32,         5], # Top three bits are dropped.
+    'cstring':  [   7,          1], # The values are multiplied by the length
+                                    # of the string.
+    'on_off':   [   1,          1], # An ON or OFF switch (flag).
+    'mt':       [   14,         2], # Special handling for a controller memory
+                                    # access (read).
+    'tbd':      [   -1,        -1], # Type is unknown signal read to end of packet.
+                                    # Use this for reverse engineering data.
+}
 # Rapid option table.
 ROT = {
-    0x00: 'RAPID_OPTION_ORIGIN',
-    0x01: 'RAPID_OPTION_LIGHT_ORIGIN',
-    0x02: 'RAPID_OPTION_NONE',
-    0x03: 'RAPID_OPTION_LIGHT',
+    0x00: 'RAPID_ORIGIN',
+    0x01: 'RAPID_LIGHT_ORIGIN',
+    0x02: 'RAPID_NONE',
+    0x03: 'RAPID_LIGHT',
 }
+
+# Type format strings.
+COORD_FMT = '{:.3f}mm'
 
 # Parameter specifications. NOTE: These are command specific where possible.
 # These need to be tuples because the type is used for determining next
 # states in the state machine.
 # Basic types:
 #  Format, decoder, ruida type
-INT7 = ('{}', 'int7', 'int_7')
-UINT7 = ('{}', 'uint7', 'uint_7')
-HEX7 = ('{:02X}', 'uint7', 'uint_7')
-BOOL7 = ('{}', 'bool', 'bool_7')
-INT14 = ('{}', 'int14', 'int_14')
-UINT14 = ('{}', 'uint14', 'uint_14')
-HEX14 = ('{:04X}', 'uint14', 'uint_14')
-INT35 = ('{}', 'int35', 'int_35')
-UINT35 = ('{}', 'uint35', 'uint_35')
-HEX35 = ('{:08X}', 'uint35', 'uint_35')
-CSTRING = ('{}', 'cstring', 'cstring')
-# Parameter types:
-FNAME = ('File:{}', 'cstring','cstring') # File name.
-FNUM = ('FNum: {}', 'uint14', 'uint_14')
-ENAME = ('Elem:{}', 'cstring', 'cstring')
-PART = ('Part:{}', 'int7', 'int_7') # or layer.
-LASER = ('Laser:{}', 'int7', 'int_7') # For dual head lasers.
-VALUE = ('{}', 'int7', 'int_7')
-RAPID_OPTION = ('Option:{}', 'rapid', 'int_7')
-COLOR = ('Color:#{:06X}', 'uint35', 'uint_35')
-SETTING = ('Set:{:08X}', 'uint35', 'uint_35')
-ID = ('ID:{}', 'uint14', 'uint_14')
-DIRECTION = ('Dir:{}', 'int7', 'int_7') # Table-ize the direction?
-ABSCOORD = ('{}um', 'int35', 'int_35')
-XABSCOORD = ('X={}um', 'int35', 'int_35')
-YABSCOORD = ('Y={}um', 'int35', 'int_35')
-ZABSCOORD = ('Z={}um', 'int35', 'int_35')
-AABSCOORD = ('A={}um', 'int35', 'int_35')
-UABSCOORD = ('U={}um', 'int35', 'int_35')
-RELCOORD = ('{}um', 'int35', 'int_35')
-XRELCOORD = ('RelX={}um', 'int35', 'int_35')
-YRELCOORD = ('RelY={}um', 'int35', 'int_35')
-PARSE_POWER = ('Power:{:1f}%', 'power', 'uint_14')
-PARSE_SPEED = ('Speed:{:3f}mm/S', 'speed', 'int_35')
-PARSE_FREQUENCY = ('Freq:{:3f}KHz', 'frequency', 'int_35')
-PARSE_TIME = ('{:3f}mS', 'time', 'int_35')
-SWITCH = ('State: {}', 'on_off', 'uint_7')
-# A memory access triggers special processing using MT.
-MEMORY = ('Addr:{:04X}', 'mt', 'mt')
-
 # Decoder list indexes.
 # e.g. To retrieve the print format for a decoder:
 #  format = INT7[DFMT]
@@ -104,13 +67,58 @@ MEMORY = ('Addr:{:04X}', 'mt', 'mt')
 DFMT = 0 # Print format string.
 DDEC = 1 # Decoder function to call.
 DTYP = 2 # Basic type (used to determine how many bytes to process.)
+#               DFMT                DDEC        DTYP
+INT7 = (        '{}',               'int7',     'int_7')
+UINT7 = (       '{}',               'uint7',    'uint_7')
+HEX7 = (        '{:02X}',           'uint7',    'uint_7')
+BOOL7 = (       '{}',               'bool',     'bool_7')
+INT14 = (       '{}',               'int14',    'int_14')
+UINT14 = (      '{}',               'uint14',   'uint_14')
+HEX14 = (       '{:04X}',           'uint14',   'uint_14')
+INT35 = (       '{}',               'int35',    'int_35')
+UINT35 = (      '{}',               'uint35',   'uint_35')
+HEX35 = (       '{:08X}',           'uint35',   'uint_35')
+CSTRING = (     '{}',               'cstring',  'cstring')
+# Parameter types:
+FNAME = (       'File:{}',          'cstring',  'cstring') # File name.
+FNUM = (        'FNum: {}',         'uint14',   'uint_14')
+ENAME = (       'Elem:{}',          'cstring',  'cstring')
+PART = (        'Part:{}',          'int7',     'int_7') # or layer.
+LASER = (       'Laser:{}',         'int7',     'int_7') # For dual head lasers.
+VALUE = (       '{}',               'int7',     'int_7')
+RAPID = (       'Option:{}',        'rapid',    'int_7')
+COLOR = (       'Color:#{:06X}',    'uint35',   'uint_35')
+SETTING = (     'Set:{:08X}',       'uint35',   'uint_35')
+ID = (          'ID:{}',            'uint14',   'uint_14')
+DIRECTION = (   'Dir:{}',           'int7',     'int_7') # Table-ize the direction?
+ABSCOORD = (    'ABS=' + COORD_FMT, 'coord',    'int_35')
+XABSCOORD = (   'X=' + COORD_FMT,   'coord',    'int_35')
+YABSCOORD = (   'Y=' + COORD_FMT,   'coord',    'int_35')
+ZABSCOORD = (   'Z=' + COORD_FMT,   'coord',    'int_35')
+AABSCOORD = (   'A=' + COORD_FMT,   'coord',    'int_35')
+UABSCOORD = (   'U=' + COORD_FMT,   'coord',    'int_35')
+RELCOORD = (    'Rel=' + COORD_FMT, 'coord',    'int_35')
+XRELCOORD = (   'RelX=' + COORD_FMT,'coord',    'int_35')
+YRELCOORD = (   'RelY=' + COORD_FMT,'coord',    'int_35')
+POWER = (       'Power:{:.1f}%',    'power',    'uint_14')
+SPEED = (       'Speed:{:.3f}mm/S', 'speed',    'int_35')
+FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
+TIME = (        '{:.3f}mS',         'time',     'int_35')
+SWITCH = (      'State: {}',        'on_off',   'uint_7')
+# A memory access triggers special processing using MT.
+MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
+
+# For when the format and type of data is not known.
+# Use this for data that needs to be reverse engineered
+TBD = (         'TBD:{}',           'tbd',      'tbd')
 
 # Reply types.
 # Action markers are integers.
 REPLY = -1  # An integer to indicate when a reply to a command is expected.
-# Decoder formats.
-TBD = ('TBD:{}', 'tbd', 'tbd')  # Use this for data that needs to be reverse
-                                # engineered.
+PAUSE = -2  # Can add this to a parameter table to act as a break during decode.
+            # This is ignored when verbose is not enabled.
+
+
 
 # Buttons (keys) found on a Ruida control panel.
 KT_KEYS = {
@@ -328,47 +336,47 @@ CT = {
     0xA9: ('CUT_REL_XY', XRELCOORD, YRELCOORD),
     0xAA: ('CUT_REL_X', XRELCOORD),
     0xAB: ('CUT_REL_Y', YRELCOORD),
-    0xC0: ('IMD_POWER_2', PARSE_POWER),
-    0xC1: ('END_POWER_2', PARSE_POWER),
-    0xC2: ('IMD_POWER_3', PARSE_POWER),
-    0xC3: ('IMD_POWER_4', PARSE_POWER),
-    0xC4: ('END_POWER_3', PARSE_POWER),
-    0xC5: ('END_POWER_4', PARSE_POWER),
+    0xC0: ('IMD_POWER_2', POWER),
+    0xC1: ('END_POWER_2', POWER),
+    0xC2: ('IMD_POWER_3', POWER),
+    0xC3: ('IMD_POWER_4', POWER),
+    0xC4: ('END_POWER_3', POWER),
+    0xC5: ('END_POWER_4', POWER),
     0xC6: {
-        0x01: ('MIN_POWER_1', PARSE_POWER),
-        0x02: ('MAX_POWER_1', PARSE_POWER),
-        0x05: ('MIN_POWER_3', PARSE_POWER),
-        0x06: ('MAX_POWER_3', PARSE_POWER),
-        0x07: ('MIN_POWER_4', PARSE_POWER),
-        0x08: ('MAX_POWER_4', PARSE_POWER),
-        0x10: ('LASER_INTERVAL', PARSE_TIME),
-        0x11: ('ADD_DELAY', PARSE_TIME),
-        0x12: ('LASER_ON_DELAY', PARSE_TIME),
-        0x13: ('LASER_OFF_DELAY', PARSE_TIME),
-        0x15: ('LASER_ON_DELAY2', PARSE_TIME),
-        0x16: ('LASER_OFF_DELAY2', PARSE_TIME),
-        0x31: ('MIN_POWER_1_PART', PART, PARSE_POWER),
-        0x32: ('MAX_POWER_1_PART', PART, PARSE_POWER),
-        0x35: ('MIN_POWER_3_PART', PART, PARSE_POWER),
-        0x36: ('MAX_POWER_3_PART', PART, PARSE_POWER),
-        0x37: ('MIN_POWER_4_PART', PART, PARSE_POWER),
-        0x38: ('MAX_POWER_4_PART', PART, PARSE_POWER),
-        0x41: ('MIN_POWER_2_PART', PART, PARSE_POWER),
-        0x42: ('MAX_POWER_2_PART', PART, PARSE_POWER),
-        0x50: ('THROUGH_POWER_1', PARSE_POWER),
-        0x51: ('THROUGH_POWER_2', PARSE_POWER),
-        0x55: ('THROUGH_POWER_3', PARSE_POWER),
-        0x56: ('THROUGH_POWER_4', PARSE_POWER),
-        0x60: ('FREQUENCY_PART', LASER, PART, PARSE_FREQUENCY),
+        0x01: ('MIN_POWER_1', POWER),
+        0x02: ('MAX_POWER_1', POWER),
+        0x05: ('MIN_POWER_3', POWER),
+        0x06: ('MAX_POWER_3', POWER),
+        0x07: ('MIN_POWER_4', POWER),
+        0x08: ('MAX_POWER_4', POWER),
+        0x10: ('LASER_INTERVAL', TIME),
+        0x11: ('ADD_DELAY', TIME),
+        0x12: ('LASER_ON_DELAY', TIME),
+        0x13: ('LASER_OFF_DELAY', TIME),
+        0x15: ('LASER_ON_DELAY2', TIME),
+        0x16: ('LASER_OFF_DELAY2', TIME),
+        0x31: ('MIN_POWER_1_PART', PART, POWER),
+        0x32: ('MAX_POWER_1_PART', PART, POWER),
+        0x35: ('MIN_POWER_3_PART', PART, POWER),
+        0x36: ('MAX_POWER_3_PART', PART, POWER),
+        0x37: ('MIN_POWER_4_PART', PART, POWER),
+        0x38: ('MAX_POWER_4_PART', PART, POWER),
+        0x41: ('MIN_POWER_2_PART', PART, POWER),
+        0x42: ('MAX_POWER_2_PART', PART, POWER),
+        0x50: ('THROUGH_POWER_1', POWER),
+        0x51: ('THROUGH_POWER_2', POWER),
+        0x55: ('THROUGH_POWER_3', POWER),
+        0x56: ('THROUGH_POWER_4', POWER),
+        0x60: ('FREQUENCY_PART', LASER, PART, FREQUENCY),
     },
-    0xC7: ('IMD_POWER_1', PARSE_POWER),
-    0xC8: ('END_POWER_1', PARSE_POWER),
+    0xC7: ('IMD_POWER_1', POWER),
+    0xC8: ('END_POWER_1', POWER),
     0xC9: {
-        0x02: ('SPEED_LASER_1', PARSE_SPEED),
-        0x03: ('SPEED_AXIS', PARSE_SPEED),
-        0x04: ('SPEED_LASER_1_PART', PART, PARSE_SPEED),
-        0x05: ('FORCE_ENG_SPEED', PARSE_SPEED),
-        0x06: ('SPEED_AXIS_MOVE', PARSE_SPEED),
+        0x02: ('SPEED_LASER_1', SPEED),
+        0x03: ('SPEED_AXIS', SPEED),
+        0x04: ('SPEED_LASER_1_PART', PART, SPEED),
+        0x05: ('FORCE_ENG_SPEED', SPEED),
+        0x06: ('SPEED_AXIS_MOVE', SPEED),
     },
     0xCA: {
         0x01: {
@@ -428,13 +436,13 @@ CT = {
         0x37: 'KEYUP_U_BACKWARDS',
     },
     0xD9: {
-        0x00: ('RAPID_MOVE_X', RAPID_OPTION, XABSCOORD),
-        0x01: ('RAPID_MOVE_Y', RAPID_OPTION, YABSCOORD),
-        0x02: ('RAPID_MOVE_Z', RAPID_OPTION, ZABSCOORD),
-        0x03: ('RAPID_MOVE_U', RAPID_OPTION, UABSCOORD),
-        0x0F: ('RAPID_FEED_AXIS_MOVE', RAPID_OPTION),
-        0x10: ('RAPID_MOVE_XY', RAPID_OPTION, XABSCOORD, YABSCOORD),
-        0x30: ('RAPID_MOVE_XYU', RAPID_OPTION, XABSCOORD, YABSCOORD, UABSCOORD),
+        0x00: ('RAPID_MOVE_X', RAPID, XABSCOORD),
+        0x01: ('RAPID_MOVE_Y', RAPID, YABSCOORD),
+        0x02: ('RAPID_MOVE_Z', RAPID, ZABSCOORD),
+        0x03: ('RAPID_MOVE_U', RAPID, UABSCOORD),
+        0x0F: ('RAPID_FEED_AXIS_MOVE', RAPID),
+        0x10: ('RAPID_MOVE_XY', RAPID, XABSCOORD, YABSCOORD),
+        0x30: ('RAPID_MOVE_XYU', RAPID, XABSCOORD, YABSCOORD, UABSCOORD),
     },
     0xDA: {
         0x00: ('GET_SETTING', MEMORY),  # Triggers using the memory table MT.
