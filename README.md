@@ -203,15 +203,15 @@ Contributions are welcome! This is an ongoing reverse engineering project. Areas
 
 ### Adding New Commands
 
-Commands are defined in the protocol tables:
+Commands are defined in the protocol tables. For example:
 ```python
 # In CT (Command Table)
-0x88: ('MOVE_ABS_XY', ParameterType.XCOORD, ParameterType.YCOORD),
+0x88: ('MOVE_ABS_XY', XCOORD, YCOORD),
 ```
 
 Parameter decoders are defined as tuples:
 ```python
-XCOORD = ('X={}um', abscoord, 'int_35')
+XCOORD = ('X={}mm', coord, 'int_35')
 #         ^format   ^decoder ^raw_type
 ```
 
