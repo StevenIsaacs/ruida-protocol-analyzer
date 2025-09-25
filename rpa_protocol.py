@@ -91,6 +91,7 @@ COLOR = (       'Color:#{:06X}',    'uint35',   'uint_35')
 SETTING = (     'Set:{:08X}',       'uint35',   'uint_35')
 ID = (          'ID:{}',            'uint14',   'uint_14')
 DIRECTION = (   'Dir:{}',           'int7',     'int_7') # Table-ize the direction?
+COORD = (       'POS=' + COORD_FMT, 'coord',    'int_35')
 ABSCOORD = (    'ABS=' + COORD_FMT, 'coord',    'int_35')
 XABSCOORD = (   'X=' + COORD_FMT,   'coord',    'int_35')
 YABSCOORD = (   'Y=' + COORD_FMT,   'coord',    'int_35')
@@ -355,6 +356,8 @@ CT = {
         0x13: ('LASER_OFF_DELAY', TIME),
         0x15: ('LASER_ON_DELAY2', TIME),
         0x16: ('LASER_OFF_DELAY2', TIME),
+        0x21: ('MIN_POWER_2', POWER), # Source: ruida-laser
+        0x22: ('MAX_POWER_2', POWER), # Source: ruida-laser
         0x31: ('MIN_POWER_1_PART', PART, POWER),
         0x32: ('MAX_POWER_1_PART', PART, POWER),
         0x35: ('MIN_POWER_3_PART', PART, POWER),
