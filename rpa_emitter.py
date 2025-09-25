@@ -33,8 +33,7 @@ class RdaEmitter():
 
     def pause(self, message='Press Enter'):
         if input('\n' + message + '(quit to exit): ') == 'quit':
-            self.write('Exiting...\n')
-            exit(0)
+            raise KeyboardInterrupt
 
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.
@@ -47,6 +46,7 @@ class RdaEmitter():
             self._out_fp.write(_msg)
         if not self.args.quiet:
             sys.stdout.write(_msg)
+            sys.stdout.flush()
 
     def reader(self, message: str):
         '''Emit packet information messages from a reader.'''
