@@ -133,7 +133,7 @@ class RdDecoder():
         return self.formatted
 
     def rd_frequency(self, data: bytearray):
-        self.value = self.to_int(data) / 1000.0
+        self.value = self.to_int(data)
         return self.formatted
 
     def rd_speed(self, data: bytearray):
@@ -785,7 +785,7 @@ class RdParser():
                     elif _t is dict:
                         self._enter_state('expect_sub_command')
                     elif _t is tuple:
-                        self._enter_state('expect_parameter')
+                        self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
