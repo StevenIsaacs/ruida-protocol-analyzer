@@ -407,6 +407,7 @@ CT = {
         0x22: ('MAX_LAYER_PART', PART),
         0x30: ('U_FILE_ID', ID),
         0x40: ('ZU_MAP', VALUE),
+        0x41: ('LAYER_SELECT', PART, UINT7), # Source: ruida-laser
     },
     0xD7: 'EOF',
     0xD8: {
