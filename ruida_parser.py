@@ -73,13 +73,16 @@ class RdDecoder():
         else:
             _n = n_bytes
         _v = 0
+        _m = 0 # For 2's complement later.
         for _i in range(_n):
             _b = data[_i]
             if _i == 0:
                 _b &= 0x3F
-            _v += (_v << 7) + _b
+            _v = (_v << 7) + _b
+            _m = (_m << 7) + 0x7F
         if data[0] & 0x40:
-            _v *= -1
+            # Two's complement -- sorta.
+            _v = ((~_v & (_m >> 1)) + 1) * -1
         return _v
 
     def to_uint(self, data: bytearray, n_bytes=0):
@@ -141,7 +144,7 @@ class RdDecoder():
         self.value = self.to_int(data) / 1000.0
         return self.formatted
 
-    def rd_rapid(data):
+    def rd_rapid(self, data: bytearray):
         return rdap.ROT[data[0]]
 
     def rd_on_off(self, data: bytearray):
