@@ -170,10 +170,11 @@ def open_input(args):
             '-e', 'frame.time',
             '-e', 'udp.port',
             '-e', 'udp.length',
-            '-e', 'data.data'
+            '-e', 'data.data',
+            '-l'
         ]
         try:
-            input = subprocess.Popen(
+            _in = subprocess.Popen(
                 _tshark_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -184,7 +185,8 @@ def open_input(args):
         except FileNotFoundError:
             raise FileNotFoundError(
                 'tshark not found. Please install Wireshark/tshark')
-    return input.stdout
+        input = _in.stdout
+    return input
 
 def main():
     """Main function with command line argument processing"""
@@ -215,6 +217,11 @@ def main():
     except Exception as e:
         output.critical(f'Unhandled error:{e}')
         exit(1)
+    except KeyboardInterrupt:
+        output.info('Exiting at user request.\n')
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
