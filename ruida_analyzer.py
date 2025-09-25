@@ -67,6 +67,9 @@ class UdpDumpReader():
         '''
         try:
             self.line = self.input.readline()
+            # Empty file.
+            if self.line == '':
+                return None
             self.out.raw(self.line)
             self.line_number += 1
             self.out.set_id(self.line_number)
@@ -238,6 +241,7 @@ class RdPacket():
             self.total_reply_packets += 1
             self.total_reply_bytes += self.length
         else:
+            self.handshake = False
             self.total_host_packets += 1
             self.total_host_bytes += self.length
 
@@ -262,7 +266,8 @@ class RdPacket():
             self.reader.reset()
             _tries = 4  # Should discover magic within a few packets.
             while True:
-                self.reader.next_packet()
+                if self.reader.next_packet() is None:
+                    break
                 if self.reader.from_port == 40200 and self.reader.length == 1:
                     _r = self.reader.data[0]
                     if _r in self.MAGIC_LUT:
@@ -353,7 +358,7 @@ class RuidaProtocolAnalyzer():
         args        The command line arguments.
         magic       The swizzle magic number.
         new_packet  When True a new packet is being processed.
-        expect_ack  When True a host packet has been received. The next packet
+        acks_expected  When True a host packet has been received. The next packet
                     must be a reply with an ACK. This is reset when the ACK has
                     been received.
         MAGIC_LUT   A lookup table to convert a RAW ACK or NAK to a magic number
@@ -363,7 +368,7 @@ class RuidaProtocolAnalyzer():
         self.args = args
         self.out = output
         self.new_packet = False
-        self.expect_ack = False
+        self.acks_expected = 0
         self._reader = UdpDumpReader(args, input, output)
         self._pkt = RdPacket(args, self._reader, output)
         self._pkt.set_magic(args.magic)
@@ -374,41 +379,40 @@ class RuidaProtocolAnalyzer():
         '''Verify the ack/nak handshake.
 
         Basically, all packets from the host require an ack/nak from the
-        controller and the host must wait for the ack/nak before sending
-        another packet.
+        controller and the host should wait for the ack/nak before sending
+        another packet but isn't required to.
 
         A handshake packet is a packet having a length equal to 1.
 
         '''
         # Getting the byte required reading another packet.
         self._line_number = self._reader.line_number
-        _msg = ''
         if self._pkt.reply:
             self.out.set_direction('<--')
             if self._pkt.handshake:
                 _b = self._pkt.data[0]
                 if _b == rdap.ACK:
-                    _msg += 'ACK'
-                    self.expect_ack = False
+                    _msg = 'ACK'
+                    self.acks_expected -= 1
                 elif _b == rdap.NAK:
-                    _msg += 'NAK'
+                    _msg = 'NAK'
                 elif _b == rdap.ERR:
-                    _msg += 'ERR'
+                    _msg = 'ERR'
                 elif _b == rdap.ENQ:
-                    _msg += 'ENQ'
+                    _msg = 'ENQ'
                 else:
-                    self.out.error(f'Unexpected reply byte 0x{_b:02X}')
-                if self.expect_ack:
-                    self.out.error(
-                        f'Received 0x{_b:02X} when ACK was expected.')
-                self.expect_ack = False
+                    self.out.error('Handshake')
+                    if self.acks_expected:
+                        _msg = f'Received 0x{_b:02X} when ACK was expected.'
+                    else:
+                        _msg = f'Unexpected reply byte 0x{_b:02X}'
             else:
-                self.out.reader('Reply data')
+                _msg = 'Reply data'
         else:
             self.out.set_direction('-->')
-            self.expect_ack = True
+            self.acks_expected += 1
             _msg = 'Expecting ACK'
-        self.out.reader(_msg)
+        self.out.reader(f'SHK:{self.acks_expected:03d}:{_msg}')
 
     def decode(self):
         '''Step through each byte of the input stream and decode each packet.
@@ -418,7 +422,7 @@ class RuidaProtocolAnalyzer():
             _b = self._pkt.next_byte()
             if _b is None:
                 # The end of the input stream.
-                break
+                return
             if self._pkt.new_packet:
                 self.check_handshake()
             # Handshake bytes are not passed to the state machine.
