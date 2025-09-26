@@ -38,6 +38,7 @@ class RdDecoder():
         self.data: bytearray = bytearray([])
         self.value = None   # The actual type is not known until after decode.
         self.datum = None
+        self.cstring = False # True when accumulating a cstring.
         self._rd_decoder = None
         self._length = 0
         self._remaining = 0
@@ -111,15 +112,24 @@ class RdDecoder():
         self.value = self.to_uint(data)
         return self.formatted
 
-    def cstring(self, data: bytearray):
+    def rd_cstring(self, data: bytearray):
         _i = 0
         _s = ''
+        _na = False
         while True:
+            if _i >= len(data):
+                self.out.error('End of string not found.')
+                break
             _c = data[_i]
             if _c == 0:
                 break
             _s += chr(_c)
+            if not _s.isprintable():
+                _na = True
             _i += 1
+        if _na:
+            self.out.error(
+                f'Non-printable characters in string: {data}')
         self.value = _s
         return self.formatted
 
@@ -167,7 +177,7 @@ class RdDecoder():
 
         This is intended to be used for data discovery.
         '''
-        self.value = data.hex()
+        self.value = self.to_int(data)
         return self.formatted
 
     #--------------
@@ -192,6 +202,7 @@ class RdDecoder():
         self.data: bytearray = bytearray([])
         self.value = None   # The actual type is not known until after decode.
         self.datum = None
+        self.cstring = self.rd_type == 'cstring'
         # An error with getattr indicates a problem with the type table -- not
         # the incoming data.
         self._rd_decoder = getattr(self, f'rd_{spec[1]}')
@@ -224,6 +235,10 @@ class RdDecoder():
             A formatted string containing the decoded data or None if still
             accumulating.
         '''
+        if datum == 0 and self.cstring:
+            self.accumulating = False
+            self.cstring = False
+            return self._rd_decoder(self.data)
         if datum & rdap.CMD_MASK:
             # A possible error in the input stream. Not enough data for the
             # indicated type. Instead, a command byte has been detected. Or,
@@ -495,12 +510,15 @@ class RdParser():
         if self.mt_address_msb not in rdap.MT:
             # Setup a generic decode for an unknown address.
             _reply = rdap.UNKNOWN_ADDRESS
-            self.out.verbose('Setting up for unknown memory address.')
         else:
             _msb = self.mt_address_msb
             _lsb = self.mt_address_lsb
             self.out.verbose(f'Memory reference: {_msb:02X}{_lsb:02X}')
-            _reply = rdap.MT[_msb][_lsb]
+            if not _lsb in rdap.MT[_msb]:
+                # Setup a generic decode for an unknown address.
+                _reply = rdap.UNKNOWN_ADDRESS
+            else:
+                _reply = rdap.MT[_msb][_lsb]
         self.param_list = _reply
         self.decoded += ':' + _reply[0]
         self.which_param = 1
@@ -519,7 +537,7 @@ class RdParser():
             else:
                 if datum not in rdap.MT[self.mt_address_msb]:
                     self.out.protocol(
-                        f'Unknown MT address LSB (0x{datum:02X}.)')
+                        f'Unknown MT address LSB (0x{datum:02X}).')
             self.mt_address_lsb = datum
             self.decoded += f'{datum:02X}'
             self._enter_state('mt_decode_reply')

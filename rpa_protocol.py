@@ -112,8 +112,21 @@ MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
 
 # For when the format and type of data is not known.
 # Use this for data that needs to be reverse engineered
-TBD = (         'TBD:{}',           'tbd',      'tbd')
-
+TBD = (         'TBD:{0:035b}:{0:08x}:{0}',
+                                    'tbd',      'tbd')
+# Use these once the size is known but needs further investigation.
+TBDU7 = (       'TBDU7:{0:07b}:{0:02x}:{0}',
+                                    'uint7',    'uint_7')
+TBDU14 = (      'TBDU14:{0:014b}:{0:04x}:{0}',
+                                    'uint14',   'uint_14')
+TBDU35 = (      'TBDU35:{0:035b}:{0:08x}:{0}',
+                                    'uint35',   'uint_35')
+TBD7 = (        'TBD7:{0:07b}:{0:02x}:{0}',
+                                    'int7',     'int_7')
+TBD14 = (       'TBD14:{0:014b}:{0:04x}:{0}',
+                                    'int14',    'int_14')
+TBD35 = (       'TBD35:{0:035b}:{0:08x}:{0}',
+                                    'int35',    'int_35')
 # Reply types.
 # Action markers are integers.
 REPLY = -1  # An integer to indicate when a reply to a command is expected.
@@ -158,7 +171,7 @@ KT = {
 # is a multiple of 128.
 MT = {
     0x00: {
-        0x04: ('IO Enable', TBD), # 0x004
+        0x04: ('IO Enable', TBDU35), # 0x004
         0x05: ('G0 Velocity', TBD), # 0x005
         0x0B: ('Eng Facula', TBD), # 0x00B
         0x0C: ('Home Velocity', TBD), # 0x00C
@@ -177,29 +190,29 @@ MT = {
         0x1d: ('Laser Standby Pulse 2', TBD), # 0x01D
         0x1e: ('Auto Type Space', TBD), # 0x01E
         0x20: ('Axis Control Para 1', TBD), # 0x020
-        0x21: ('Axis Precision 1', TBD), # 0x021
+        0x21: ('Axis Precision 1', TBDU35), # 0x021
         0x23: ('Axis Max Velocity 1', TBD), # 0x023
         0x24: ('Axis Start Velocity 1', TBD), # 0x024
         0x25: ('Axis Max Acc 1', TBD), # 0x025
-        0x26: ('Axis Range 1', TBD), # 0x026
+        0x26: ('Axis Range 1', TBDU35), # 0x026
         0x27: ('Axis Btn Start Vel 1', TBD), # 0x027
         0x28: ('Axis Btn Acc 1', TBD), # 0x028
         0x29: ('Axis Estp Acc 1', TBD), # 0x029
         0x2A: ('Axis Home Offset 1', TBD), # 0x02A
         0x2B: ('Axis Backlash 1', TBD), # 0x02B
         0x30: ('Axis Control Para 2', TBD), # 0x030
-        0x31: ('Axis Precision 2', TBD), # 0x031
+        0x31: ('Axis Precision 2', TBDU35), # 0x031
         0x33: ('Axis Max Velocity 2', TBD), # 0x033
         0x34: ('Axis Start Velocity 2', TBD), # 0x034
         0x35: ('Axis Max Acc 2', TBD), # 0x035
-        0x36: ('Axis Range 2', TBD), # 0x036
+        0x36: ('Axis Range 2', TBDU35), # 0x036
         0x37: ('Axis Btn Start Vel 2', TBD), # 0x037
         0x38: ('Axis Btn Acc 2', TBD), # 0x038
         0x39: ('Axis Estp Acc 2', TBD), # 0x039
         0x3A: ('Axis Home Offset 2', TBD), # 0x03A
         0x3B: ('Axis Backlash 2', TBD), # 0x03B
         0x40: ('Axis Control Para 3', TBD), # 0x040
-        0x41: ('Axis Precision 3', TBD), # 0x041
+        0x41: ('Axis Precision 3', TBDU35), # 0x041
         0x43: ('Axis Max Velocity 3', TBD), # 0x043
         0x44: ('Axis Start Velocity 3', TBD), # 0x044
         0x45: ('Axis Max Acc 3', TBD), # 0x045
@@ -210,7 +223,7 @@ MT = {
         0x4A: ('Axis Home Offset 3', TBD), # 0x04A
         0x4B: ('Axis Backlash 3', TBD), # 0x04B
         0x50: ('Axis Control Para 4', TBD), # 0x050
-        0x51: ('Axis Precision 4', TBD), # 0x051
+        0x51: ('Axis Precision 4', TBDU35), # 0x051
         0x53: ('Axis Max Velocity 4', TBD), # 0x053
         0x54: ('Axis Start Velocity 4', TBD), # 0x054
         0x55: ('Axis Max Acc 4', TBD), # 0x055
@@ -253,7 +266,7 @@ MT = {
         0x21: ('Rotate D', TBD), # 0x121
         0x24: ('X Minimum Eng Velocity', TBD), # 0x124
         0x25: ('X Eng Acc', TBD), # 0x125
-        0x26: ('User Para 1', TBD), # 0x126
+        0x26: ('User Para 1', TBDU35), # 0x126
         0x28: ('Z Home Velocity', TBD), # 0x128
         0x29: ('Z Work Velocity', TBD), # 0x129
         0x2A: ('Z G0 Velocity', TBD), # 0x12A
@@ -278,11 +291,12 @@ MT = {
         0x11: ('Total Laser Work Time', TBD), # 0x211
     },
     0x04: {
-        0x00: ('Machine Status (0b00110111 relevant bits).', TBD), # 0x200
+        0x00: ('Machine Status (0b00110111 relevant bits).', TBDU35), # 0x200
         0x01: ('Total Open Time', TBD), # 0x201
         0x02: ('Total Work Time', TBD), # 0x202
         0x03: ('Total Work Number', TBD), # 0x203
-        0x05: ('Total Doc Number', TBD), # 0x205
+        0x05: ('Total Doc Number', TBDU35), # 0x205
+        0x07: ('Unknown', TBDU35), # LightBurn uses this
         0x08: ('Pre Work Time', TBD), # 0x208
         0x21: ('Axis Preferred Position 1', TBD), # 0x221
         0x23: ('Total Work Length 1', TBD), # 0x223
@@ -302,6 +316,7 @@ MT = {
     },
     0x0B: {
         0x11: ('Card Lock', TBD), # 0x591
+        0x12: ('Unknown', TBD), # LightBurn uses this.
     },
 }
 # Unknown address generic decode.
@@ -515,7 +530,7 @@ CT = {
     0xF2: {
         0x00: ('ELEMENT_INDEX', UINT7),
         0x01: ('ELEMENT_NAME_INDEX', UINT7),
-        0x02: ('ELEMENT_NAME', ENAME),
+        0x02: ('ELEMENT_NAME', UINT7),
         0x03: ('ELEMENT_ARRAY_MIN_POINT', XABSCOORD, YABSCOORD),
         0x04: ('ELEMENT_ARRAY_MAX_POINT', XABSCOORD, YABSCOORD),
         0x05: ('ELEMENT_ARRAY',
