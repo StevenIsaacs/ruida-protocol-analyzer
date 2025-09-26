@@ -13,6 +13,7 @@ CMD_MASK = 0x80 # Only the first byte of a command has the top bit set.
                 # protocol is used.
                 # This can be used to re-sync or to check the length of
                 # data associated with a command for validity.
+EOD = 0xFF      # To signal end of incoming data to the decoder.
 
 # This table defines the number of bit and corresponding number of incoming
 # data bytes for each basic data type.
@@ -98,9 +99,9 @@ YABSCOORD = (   'Y=' + COORD_FMT,   'coord',    'int_35')
 ZABSCOORD = (   'Z=' + COORD_FMT,   'coord',    'int_35')
 AABSCOORD = (   'A=' + COORD_FMT,   'coord',    'int_35')
 UABSCOORD = (   'U=' + COORD_FMT,   'coord',    'int_35')
-RELCOORD = (    'Rel=' + COORD_FMT, 'coord',    'int_35')
-XRELCOORD = (   'RelX=' + COORD_FMT,'coord',    'int_35')
-YRELCOORD = (   'RelY=' + COORD_FMT,'coord',    'int_35')
+RELCOORD = (    'Rel=' + COORD_FMT, 'coord',    'int_14')
+XRELCOORD = (   'RelX=' + COORD_FMT,'coord',    'int_14')
+YRELCOORD = (   'RelY=' + COORD_FMT,'coord',    'int_14')
 POWER = (       'Power:{:.1f}%',    'power',    'uint_14')
 SPEED = (       'Speed:{:.3f}mm/S', 'speed',    'int_35')
 FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
@@ -399,7 +400,7 @@ CT = {
             0x55: 'WORK_MODE_5',
         },
         0x02: ('LAYER_NUMBER_PART', PART),
-        0x03: ('EN_LASER_TUBE_START', PART),
+        0x03: ('EN_LASER_TUBE_START'),
         0x04: ('X_SIGN_MAP', VALUE),
         0x05: ('LAYER_COLOR', COLOR),
         0x06: ('LAYER_COLOR_PART', PART, COLOR),
@@ -472,7 +473,7 @@ CT = {
         0x08: ('ARRAY_REPEAT',
                 INT14, INT14, INT14, INT14, INT14, INT14, INT14),
         0x09: ('FEED_LENGTH', INT35),
-        0x0A: 'FEED_INFO', # TODO: Reply?
+        0x0A: ('FEED_INFO', TBD), # TODO: A 35 bit value? What for?
         0x0B: ('ARRAY_EN_MIRROR_CUT', UINT7),
         0x13: ('ARRAY_MIN_POINT', XABSCOORD, YABSCOORD),
         0x17: ('ARRAY_MAX_POINT', XABSCOORD, YABSCOORD),
@@ -488,8 +489,8 @@ CT = {
         0x51: ('DOCUMENT_MAX_POINT', XABSCOORD, YABSCOORD),
         0x52: ('PART_MIN_POINT', PART, XABSCOORD, YABSCOORD),
         0x53: ('PART_MAX_POINT', PART, XABSCOORD, YABSCOORD),
-        0x54: ('PEN_OFFSET: Axis=', UINT7, RELCOORD),
-        0x55: ('LAYER_OFFSET: Axis=', UINT7, RELCOORD),
+        0x54: ('PEN_OFFSET: Axis=', UINT7, ABSCOORD),
+        0x55: ('LAYER_OFFSET: Axis=', UINT7, ABSCOORD),
         0x60: ('SET_CURRENT_ELEMENT_INDEX', UINT7),
         0x61: ('PART_MIN_POINT_EX', PART, XABSCOORD, YABSCOORD),
         0x62: ('PART_MAX_POINT_EX', PART, XABSCOORD, XABSCOORD),
