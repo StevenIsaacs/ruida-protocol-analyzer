@@ -169,6 +169,13 @@ KT = {
 # NOTE: Because only command bytes have the top bit set, the codes
 # are limited to 128 for the lower order byte. The upper order byte therefore
 # is a multiple of 128.
+# Unknown address generic decode.
+UNKNOWN_ADDRESS = ('TBD:Unknown address', TBD)  # Use when address discovered but data is
+                                    # unknown.
+# These are used when SETTING at an address.
+UNKNOWN_MSB = 'MSB TBD'
+UNKNOWN_LSB = 'LSB TBD'
+
 MT = {
     0x00: {
         0x04: ('IO Enable', TBDU35), # 0x004
@@ -311,6 +318,9 @@ MT = {
         0x7E: ('Card ID', HEX35), # 0x2FE
         0x7F: ('Mainboard Version', TBD), # 0x2FF
     },
+    0x06: {
+        0x20: UNKNOWN_ADDRESS, #  Discovered running LB.
+    },
     0x07: {
         0x10: ('Document Time', TBD), # 0x390
     },
@@ -319,9 +329,6 @@ MT = {
         0x12: ('Unknown', TBD35), # LightBurn uses this.
     },
 }
-# Unknown address generic decode.
-UNKNOWN_ADDRESS = ('Unknown', TBD)
-
 # Reply table
 RT = {
     # TBD Learn during debug.
@@ -466,7 +473,7 @@ CT = {
     },
     0xDA: {
         0x00: ('GET_SETTING', MEMORY),  # Expect reply data.
-        0x01: ('SET_SETTING', MEMORY, SETTING, SETTING),
+        0x01: ('SET_SETTING', MEMORY, TBDU35, TBDU35),
     },
     0xE5: {
         0x00: ('DOCUMENT_FILE_UPLOAD', FNUM, UINT35, UINT35),
