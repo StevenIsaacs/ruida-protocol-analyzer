@@ -167,6 +167,33 @@ With `--verbose`, additional details are shown:
 
 ```
 
+### Unknown Data Output
+All unknowns are marked with "TBD". These can be either newly discovered commands
+or addresses or unknown data formats for previously discovered commands or
+addresses. This indicates data which requires further investigation.
+
+Unknown parameter values are output in binary, hex, and decimal.
+```
+0116:2643:vrb:Decoded parameter 1=Addr:0620:TBD:Unknown address.
+0116:2644:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0116:2645:vrb:Decoding parameter 2.
+0116:2646:vrb:Decoded parameter 2=
+TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496.
+0116:2647:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0116:2648:vrb:Decoding parameter 3.
+0116:2649:vrb:Decoded parameter 3=
+TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496.
+0116:2650:vrb:Parameters decoded.
+0116:2651:vrb:Exiting state: decode_parameters
+0116:2652:vrb:Entering state: expect_command
+0116:2653:vrb:-->:da0106200000000b580000000b58
+0116:2654:vrb:<--:
+0116:2655:PRT:PRS:-->:0986:SET_SETTING Addr:0620:TBD:Unknown address
+TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496
+TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496
+
+```
+
 ## Protocol Structure
 
 The Ruida protocol uses a hierarchical binary command structure:
