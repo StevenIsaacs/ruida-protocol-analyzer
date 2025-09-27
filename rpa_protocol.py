@@ -71,14 +71,14 @@ DTYP = 2 # Basic type (used to determine how many bytes to process.)
 #               DFMT                DDEC        DTYP
 INT7 = (        '{}',               'int7',     'int_7')
 UINT7 = (       '{}',               'uint7',    'uint_7')
-HEX7 = (        '{:02X}',           'uint7',    'uint_7')
+HEX7 = (        '0x{:02X}',           'uint7',    'uint_7')
 BOOL7 = (       '{}',               'bool',     'bool_7')
 INT14 = (       '{}',               'int14',    'int_14')
 UINT14 = (      '{}',               'uint14',   'uint_14')
-HEX14 = (       '{:04X}',           'uint14',   'uint_14')
+HEX14 = (       '0x{:04X}',           'uint14',   'uint_14')
 INT35 = (       '{}',               'int35',    'int_35')
 UINT35 = (      '{}',               'uint35',   'uint_35')
-HEX35 = (       '{:08X}',           'uint35',   'uint_35')
+HEX35 = (       '0x{:010X}',           'uint35',   'uint_35')
 CSTRING = (     '{}',               'cstring',  'cstring')
 # Parameter types:
 FNAME = (       'File:{}',          'cstring',  'cstring') # File name.
@@ -109,6 +109,9 @@ TIME = (        '{:.3f}mS',         'time',     'int_35')
 SWITCH = (      'State: {}',        'on_off',   'uint_7')
 # A memory access triggers special processing using MT.
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
+
+FILE_SUM = (    'Sum:0x{0:010X} ({0})',
+                                    'uint35',   'uint_35')
 
 # For when the format and type of data is not known.
 # Use this for data that needs to be reverse engineered
@@ -432,7 +435,7 @@ CT = {
         0x40: ('ZU_MAP', VALUE),
         0x41: ('LAYER_SELECT', PART, UINT7), # Source: ruida-laser
     },
-    0xD7: 'EOF',
+    0xD7: '\n ---- EOF ----',
     0xD8: {
         0x00: 'START_PROCESS',
         0x01: 'STOP_PROCESS',
@@ -478,7 +481,7 @@ CT = {
     0xE5: {
         0x00: ('DOCUMENT_FILE_UPLOAD', FNUM, UINT35, UINT35),
         0x02: 'DOCUMENT_FILE_END',
-        0x05: 'SET_FILE_SUM',
+        0x05: ('SET_FILE_SUM', FILE_SUM),
     },
     0xE6: {
         0x01: 'SET_ABSOLUTE',
