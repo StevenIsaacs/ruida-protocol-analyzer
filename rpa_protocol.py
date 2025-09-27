@@ -112,20 +112,20 @@ MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
 
 # For when the format and type of data is not known.
 # Use this for data that needs to be reverse engineered
-TBD = (         'TBD:{0:035b}:{0:08x}:{0}',
+TBD = (         '\nTBD:{0:035b}b: 0x{0:08x}: {0}',
                                     'tbd',      'tbd')
 # Use these once the size is known but needs further investigation.
-TBDU7 = (       'TBDU7:{0:07b}:{0:02x}:{0}',
+TBDU7 = (       '\nTBDU7:{0:07b}b: 0x{0:02x}: {0}',
                                     'uint7',    'uint_7')
-TBDU14 = (      'TBDU14:{0:014b}:{0:04x}:{0}',
+TBDU14 = (      '\nTBDU14:{0:014b}b: 0x{0:04x}: {0}',
                                     'uint14',   'uint_14')
-TBDU35 = (      'TBDU35:{0:035b}:{0:08x}:{0}',
+TBDU35 = (      '\nTBDU35:{0:035b}b: 0x{0:08x}: {0}',
                                     'uint35',   'uint_35')
-TBD7 = (        'TBD7:{0:07b}:{0:02x}:{0}',
+TBD7 = (        '\nTBD7:{0:07b}b: 0x{0:02x}: {0}',
                                     'int7',     'int_7')
-TBD14 = (       'TBD14:{0:014b}:{0:04x}:{0}',
+TBD14 = (       '\nTBD14:{0:014b}b: 0x{0:04x}: {0}',
                                     'int14',    'int_14')
-TBD35 = (       'TBD35:{0:035b}:{0:08x}:{0}',
+TBD35 = (       '\nTBD35:{0:035b}b: 0x{0:08x}: {0}',
                                     'int35',    'int_35')
 # Reply types.
 # Action markers are integers.
@@ -316,7 +316,7 @@ MT = {
     },
     0x0B: {
         0x11: ('Card Lock', TBD), # 0x591
-        0x12: ('Unknown', TBD), # LightBurn uses this.
+        0x12: ('Unknown', TBD35), # LightBurn uses this.
     },
 }
 # Unknown address generic decode.
@@ -465,7 +465,7 @@ CT = {
         0x30: ('RAPID_MOVE_XYU', RAPID, XABSCOORD, YABSCOORD, UABSCOORD),
     },
     0xDA: {
-        0x00: ('GET_SETTING', MEMORY),  # Triggers using the memory table MT.
+        0x00: ('GET_SETTING', MEMORY),  # Expect reply data.
         0x01: ('SET_SETTING', MEMORY, SETTING, SETTING),
     },
     0xE5: {
