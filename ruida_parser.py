@@ -168,8 +168,17 @@ class RdDecoder():
         # This is a special case where the data is a reference to an entry
         # in the memory table (rdap.MT). This is used to setup the reply or
         # setting spec.
-        self.value = (data[0] << 8) + data[1]
-        return self.formatted
+        _msb = data[0]
+        _lsb = data[1]
+        if _msb in rdap.MT:
+            if _lsb in rdap.MT[_msb]:
+                _lbl = rdap.MT[_msb][_lsb][0]
+            else:
+                _lbl = rdap.UNKNOWN_LSB
+        else:
+            _lbl = rdap.UNKNOWN_MSB
+        self.value = (_msb << 8) + _lsb
+        return self.formatted + ':' + _lbl
 
     # Ruida Reply Types
     def rd_tbd(self, data: bytearray):
