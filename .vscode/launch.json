@@ -9,13 +9,15 @@
             "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "rpa.py",
             "console": "externalTerminal",
             // "args": "${command:pickArgs}"
-            "args": ["--verbose",
-                     "--step-decode",
+            "args": [
+                    "--verbose",
+                     // "--step-decode",
                      "--raw",
-                     "--stop-on-error",
+                     // "--stop-on-error",
+                     "-o", "~/tmp/test.txt",
                      "~/tmp/test.log"]
         }
     ]

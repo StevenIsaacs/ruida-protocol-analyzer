@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Use this script to run tshark to capture a log file which can then be processed
+# using decode.
+#
+# Parameters:
+#  1 The Ruida controller IP address.
+#  2 The capture file name -- not including extension. This saves to $2.log.
+# WARNING: No parameter checking.
+tshark -Y "(ip.addr == $1)" -l -T fields \
+    -e frame.time -e udp.port -e udp.length -e data.data | tee $2.log

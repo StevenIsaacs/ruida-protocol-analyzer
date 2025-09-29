@@ -12,7 +12,8 @@ class RdaEmitter():
     def __init__(self, args):
         self.args = args
         self._out_fp = None
-        self.id = 0
+        self.pkt_n = 0
+        self.cmd_n = 0
         self.dir = '---'
         self._msg_n = 0
 
@@ -24,8 +25,11 @@ class RdaEmitter():
         if self._out_fp is not None:
             self._out_fp.close()
 
-    def set_id(self, id: int):
-        self.id = id
+    def set_pkt_n(self, pkt_n: int):
+        self.pkt_n = pkt_n
+
+    def set_cmd_n(self, cmd_n: int):
+        self.cmd_n = cmd_n
         self._msg_n = 1
 
     def set_direction(self, dir: str):
@@ -40,7 +44,7 @@ class RdaEmitter():
 
         The analyzer calls this method while decoding the input file. This
         then writes to the console or the output file.'''
-        _msg = f'\n{self.id:04d}:{self._msg_n:03d}:{message}'
+        _msg = f'\n{self.pkt_n:04d}:{self.cmd_n:06d}:{self._msg_n:03d}:{message}'
         self._msg_n += 1
         if self._out_fp is not None:
             self._out_fp.write(_msg)

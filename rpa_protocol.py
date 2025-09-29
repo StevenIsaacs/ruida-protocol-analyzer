@@ -13,6 +13,10 @@ CMD_MASK = 0x80 # Only the first byte of a command has the top bit set.
                 # protocol is used.
                 # This can be used to re-sync or to check the length of
                 # data associated with a command for validity.
+EOF = 0xD7      # Indicates the end of the Ruida file and the checksum will
+                # follow.
+
+# Internal and not part of the Ruida protocol.
 EOD = 0xFF      # To signal end of incoming data to the decoder.
 
 # This table defines the number of bit and corresponding number of incoming
@@ -36,9 +40,11 @@ RD_TYPES = {
     'uint_35':  [   32,         5], # Top three bits are dropped.
     'cstring':  [   7,          1], # The values are multiplied by the length
                                     # of the string.
+    'string8':  [   50,         10],# An 8 character string.
     'on_off':   [   1,          1], # An ON or OFF switch (flag).
     'mt':       [   14,         2], # Special handling for a controller memory
                                     # access (read).
+    'chksum':   [   32,         5], # For file checksum calculation.
     'tbd':      [   -1,        -1], # Type is unknown signal read to end of packet.
                                     # Use this for reverse engineering data.
 }
@@ -78,10 +84,11 @@ UINT14 = (      '{}',               'uint14',   'uint_14')
 HEX14 = (       '0x{:04X}',           'uint14',   'uint_14')
 INT35 = (       '{}',               'int35',    'int_35')
 UINT35 = (      '{}',               'uint35',   'uint_35')
-HEX35 = (       '0x{:010X}',           'uint35',   'uint_35')
+HEX35 = (       '0x{:010X}',        'uint35',   'uint_35')
 CSTRING = (     '{}',               'cstring',  'cstring')
 # Parameter types:
 FNAME = (       'File:{}',          'cstring',  'cstring') # File name.
+STRING8 = (     'String: "{}"',     'string8',  'string8') # 8 char string from 2 uint35s.
 FNUM = (        'FNum: {}',         'uint14',   'uint_14')
 ENAME = (       'Elem:{}',          'cstring',  'cstring')
 PART = (        'Part:{}',          'int7',     'int_7') # or layer.
@@ -111,7 +118,7 @@ SWITCH = (      'State: {}',        'on_off',   'uint_7')
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
 
 FILE_SUM = (    'Sum:0x{0:010X} ({0})',
-                                    'uint35',   'uint_35')
+                                    'checksum', 'uint_35')
 
 # For when the format and type of data is not known.
 # Use this for data that needs to be reverse engineered
@@ -179,6 +186,14 @@ UNKNOWN_ADDRESS = ('TBD:Unknown address', TBD)  # Use when address discovered bu
 UNKNOWN_MSB = 'MSB TBD'
 UNKNOWN_LSB = 'LSB TBD'
 
+# Commands which change checksum enable.
+KEYPRESS = 0xA7
+SETTING = 0xDA
+CHK_DISABLES = (KEYPRESS, SETTING)
+
+SETTING_READ = 0x00
+SETTING_WRITE = 0x01
+
 MT = {
     0x00: {
         0x04: ('IO Enable', TBDU35), # 0x004
@@ -204,7 +219,7 @@ MT = {
         0x23: ('Axis Max Velocity 1', TBD), # 0x023
         0x24: ('Axis Start Velocity 1', TBD), # 0x024
         0x25: ('Axis Max Acc 1', TBD), # 0x025
-        0x26: ('Axis Range 1', TBDU35), # 0x026
+        0x26: ('Bed Size X', XABSCOORD), # Deduced from LB
         0x27: ('Axis Btn Start Vel 1', TBD), # 0x027
         0x28: ('Axis Btn Acc 1', TBD), # 0x028
         0x29: ('Axis Estp Acc 1', TBD), # 0x029
@@ -215,7 +230,7 @@ MT = {
         0x33: ('Axis Max Velocity 2', TBD), # 0x033
         0x34: ('Axis Start Velocity 2', TBD), # 0x034
         0x35: ('Axis Max Acc 2', TBD), # 0x035
-        0x36: ('Axis Range 2', TBDU35), # 0x036
+        0x36: ('Bed Size Y', YABSCOORD), # Deduce from LB
         0x37: ('Axis Btn Start Vel 2', TBD), # 0x037
         0x38: ('Axis Btn Acc 2', TBD), # 0x038
         0x39: ('Axis Estp Acc 2', TBD), # 0x039
@@ -335,7 +350,7 @@ MT = {
 # Reply table
 RT = {
     # TBD Learn during debug.
-    0xDA: {
+    SETTING: {
         0x01: ('GET_SETTING', MEMORY),
     },
 }
@@ -358,7 +373,7 @@ CT = {
         0x00: ('AXIS_A_MOVE', AABSCOORD),
         0x08: ('AXIS_U_MOVE', UABSCOORD),
     },
-    0xA5: KT, # Keypad presses.
+    0xA7: KT, # KEYPRESS
     0xA8: ('CUT_ABS_XY', XABSCOORD, YABSCOORD),
     0xA9: ('CUT_REL_XY', XRELCOORD, YRELCOORD),
     0xAA: ('CUT_REL_X', XRELCOORD),
@@ -425,7 +440,7 @@ CT = {
             0x55: 'WORK_MODE_5',
         },
         0x02: ('LAYER_NUMBER_PART', PART),
-        0x03: ('EN_LASER_TUBE_START'),
+        0x03: ('EN_LASER_TUBE_START', SWITCH),
         0x04: ('X_SIGN_MAP', VALUE),
         0x05: ('LAYER_COLOR', COLOR),
         0x06: ('LAYER_COLOR_PART', PART, COLOR),
@@ -474,11 +489,11 @@ CT = {
         0x10: ('RAPID_MOVE_XY', RAPID, XABSCOORD, YABSCOORD),
         0x30: ('RAPID_MOVE_XYU', RAPID, XABSCOORD, YABSCOORD, UABSCOORD),
     },
-    0xDA: {
-        0x00: ('GET_SETTING', MEMORY),  # Expect reply data.
-        0x01: ('SET_SETTING', MEMORY, TBDU35, TBDU35),
+    0xDA: { # SETTING
+        0x00: ('GET_SETTING', MEMORY),  # SETTING_READ
+        0x01: ('SET_SETTING', MEMORY, TBDU35, TBDU35), # SETTING_WRITE
     },
-    0xE5: {
+    0xE5: { # FILE
         0x00: ('DOCUMENT_FILE_UPLOAD', FNUM, UINT35, UINT35),
         0x02: 'DOCUMENT_FILE_END',
         0x05: ('SET_FILE_SUM', FILE_SUM),
@@ -487,7 +502,7 @@ CT = {
         0x01: 'SET_ABSOLUTE',
     },
     0xE7: {
-        0x00: 'DOCUMENT_FILE_UPLOAD', # TODO: Reply?
+        0x00: 'BLOCK_END',
         0x01: ('SET_FILE_NAME', FNAME),
         0x03: ('PROCESS_TOP_LEFT', XABSCOORD, YABSCOORD),
         0x04: ('PROCESS_REPEAT',
@@ -507,7 +522,7 @@ CT = {
         0x35: ('BLOCK_X_SIZE', XABSCOORD, YABSCOORD),
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ('SET_FILE_EMPTY', UINT7),
-        0x37: 'ARRAY_EVEN_DISTANCE',
+        0x37: ('ARRAY_EVEN_DISTANCE', TBDU35, TBDU35),
         0x38: ('SET_FEED_AUTO_PAUSE', SWITCH),
         0x3A: 'UNION_BLOCK_PROPERTY',
         0x50: ('DOCUMENT_MIN_POINT', XABSCOORD, YABSCOORD),
@@ -540,7 +555,7 @@ CT = {
     0xF2: {
         0x00: ('ELEMENT_INDEX', UINT7),
         0x01: ('ELEMENT_NAME_INDEX', UINT7),
-        0x02: ('ELEMENT_NAME', UINT7),
+        0x02: ('ELEMENT_NAME', STRING8),
         0x03: ('ELEMENT_ARRAY_MIN_POINT', XABSCOORD, YABSCOORD),
         0x04: ('ELEMENT_ARRAY_MAX_POINT', XABSCOORD, YABSCOORD),
         0x05: ('ELEMENT_ARRAY',

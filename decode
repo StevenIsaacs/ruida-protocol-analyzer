@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Use this script to run rpa.py to process a log file previously captured
+# by the capture script.
+#
+# Parameters:
+#  1 The capture file name -- not including extension. Processes $1.log.
+#    The output is written to $1.txt.
+# WARNING: No parameter checking.
+python rpa.py --verbose --raw -o $1.txt $1.log

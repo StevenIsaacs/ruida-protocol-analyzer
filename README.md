@@ -1,4 +1,4 @@
-# Ruida Protocol Analyzer
+# Ruida Protocol Analyzer -- RPA
 
 A comprehensive Python-based protocol analyzer for reverse engineering and analyzing Ruida CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary Ruida protocol used in laser cutters, engravers, and CNC machines.
 
@@ -114,8 +114,13 @@ The analyzer produces human-readable output showing:
 - Error messages for malformed packets
 
 Where (see example):
-- pkt_n = Current packet number.
-- msg_n = Message number in the current packet.
+- pkt_n = Current packet number
+- cmd_n = Current command number for all commands in the captured session
+- msg_n = Message number in the current command
+- dir   = --> or <-- or ---(below)
+- take  = Buffer take index
+- remaining = Number of bytes remaining in the buffer
+- checksum = The calculated file checksum
 - msg_class = Message classes can be either:
   - PRT = Protocol related
   - INT = Internal engine related
@@ -123,48 +128,95 @@ Where (see example):
   - For protocol messages:
     - RDR = Packet reader
     - PRS = Data parser
+    - SHK = Message handshake
     - ERR = Errors with parsing or incoming data
     - FTL = Fatal errors (will trigger an exit)
     - vrb = Verbose message (when --verbose is used)
     - raw = Raw tshark and unswizzled packets or other raw data.
+    - --- = Packet direction not determined
     - --> = Packets from the host
     - <-- = Packets from the controller
   - For internal messages:
     - PRT = An error caused by a protocol specification
-    - INF = Informaton only
+    - INF = Information only
     - WRN = A warning about a correctable error
     - CRT = A critical error -- will continue to run
     - FTL = A fatal error which triggers an exit
 
+Typical messages have the format:
+```
+<pkt_n>:<cmd_n>:<msg_n>:<msg_type>:<message>
+```
+Decoded output has the format:
+```
+<pkt_n>:<cmd_n>:<msg_n>:PRT:PRS:<dir>:T=<take> R=<remaining> SUM=<checksum>
+```
+
+There may be times when the amount of time between packets is important when
+diagnosing a problem. The time between packets in the log file is indicated as:
+```
+0003:000001:023:PRT:RDR:<--:Interval:0.000071S
+```
+
+## File Checksum
+
+The end of a file sent to the controller ends with a SET_FILE_SUM command
+which includes the checksum calculated by the host. It is assumed the
+controller then compares the host's checksum with its internally calculated
+checksum. If the sums do not match the controller may display a message
+indicating the failure.
+
+RPA also calculates a checksum and compares its result with the SET_FILE_SUM
+checksum. If they do not match an ERR message is emitted. e.g.:
+```
+0228:030441:004:PRT:ERR:-->:Checksum mismatch:
+    decoded=9763961
+accumulated=9756933
+difference =7028
+```
+
+It is currently believed the checksum is a simple sum of all the bytes
+in commands related to engraving and cutting.
+
+Excluded commands include:
+- Any commands related to getting or setting controller memory locations
+- Controller keyboard commands (e.g. jogging button presses)
+
+NOTE: It is currently unclear as to which bytes are to be included in the
+checksum calculation. Using LightBurn captures there is currently a consistent
+discrepancy of 220 (shown as a difference). This implies there are only one or
+two bytes missing from the calculation -- at least for LightBurn captures.
 
 ### Example Output
 ```
-# <pkt_n>:<msg_n>:<msg_class>:<msg_type>:<offset>:<decode>
-0001:016:PRT:raw:-->:
-Sep 10, 2025 13:08:54.507278575 PDT	50200,40200	9	c6
+0001:000001:003:PRT:RDR:---:Interval:-0.000101S
+0001:000001:004:PRT:raw:-->:
+Sep 25, 2025 22:33:40.474975135 PDT	40200,50200	14	0261d4890df7
 
-0002:001:PRT:RDR:-->:Interval:0.000127S
-0002:002:PRT:raw:-->:
+0001:000001:005:PRT:raw:-->:
+da00057e
+0001:000001:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0001:000001:007:vrb:Exiting state: sync
+0001:000001:008:vrb:Entering state: expect_sub_command
+0001:000001:009:vrb:Exiting state: expect_sub_command
+0001:000001:010:vrb:Entering state: decode_parameters
+0001:000001:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0001:000001:012:vrb:Decoding parameter 1.
+0001:000001:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0001:000001:014:vrb:Exiting state: decode_parameters
+0001:000001:015:vrb:Entering state: mt_command
+0001:000001:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0001:000001:017:vrb:-->:da00057e
+0001:000001:018:vrb:<--:
+0002:000001:019:PRT:RDR:-->:Interval:0.000101S
+0002:000001:020:PRT:raw:<--:
+Sep 25, 2025 22:33:40.475076666 PDT	50200,40200	9	c6
+
+0002:000001:021:PRT:raw:<--:
 cc
-0002:003:PRT:RDR:<--:ACK
-....
-0003:021:PRT:PRS:<--:0009:GET_SETTING Addr:057E:Card ID:Reply:65106510
-```
-### Verbose Output
-With `--verbose`, additional details are shown:
-```
-0003:010:vrb:Entering state: mt_address_lsb
-0003:011:vrb:Exiting state: mt_address_lsb
-0003:012:vrb:Entering state: mt_decode_reply
-0003:013:vrb:Memory reference: 057E
-0003:014:vrb:Priming: ('{:08X}', 'uint35', 'uint_35')
-0003:015:vrb:Decoded reply parameter 1=65106510.
-0003:016:vrb:Reply decoded.
-0003:017:vrb:Exiting state: mt_decode_reply
-0003:018:vrb:Entering state: expect_command
-0003:019:vrb:-->:
-0003:020:vrb:<--:da01057e0628414a10
-
+0002:000001:022:PRT:RDR:<--:SHK:000:ACK
 ```
 
 ### Unknown Data Output
@@ -174,23 +226,52 @@ addresses. This indicates data which requires further investigation.
 
 Unknown parameter values are output in binary, hex, and decimal.
 ```
-0116:2643:vrb:Decoded parameter 1=Addr:0620:TBD:Unknown address.
-0116:2644:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
-0116:2645:vrb:Decoding parameter 2.
-0116:2646:vrb:Decoded parameter 2=
-TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496.
-0116:2647:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
-0116:2648:vrb:Decoding parameter 3.
-0116:2649:vrb:Decoded parameter 3=
-TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496.
-0116:2650:vrb:Parameters decoded.
-0116:2651:vrb:Exiting state: decode_parameters
-0116:2652:vrb:Entering state: expect_command
-0116:2653:vrb:-->:da0106200000000b580000000b58
-0116:2654:vrb:<--:
-0116:2655:PRT:PRS:-->:0986:SET_SETTING Addr:0620:TBD:Unknown address
-TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496
-TBDU35:00000000000000000000000010111011000b: 0x000005d8: 1496
+0010:000393:001:INT:---:Next command...
+0010:000393:002:vrb:Checksum: disabled
+0010:000393:003:vrb:Checksum: ENABLED
+0010:000393:004:vrb:Exiting state: expect_command
+0010:000393:005:vrb:Entering state: expect_sub_command
+0010:000393:006:vrb:Exiting state: expect_sub_command
+0010:000393:007:vrb:Entering state: decode_parameters
+0010:000393:008:vrb:Priming: ('\nTBD:{0:035b}b: 0x{0:08x}: {0}', 'tbd', 'tbd')
+0010:000393:009:vrb:Decoding parameter 1.
+0010:000393:010:vrb:Forwarding 0xEA to state sync
+0010:000393:011:vrb:Exiting state: decode_parameters
+0010:000393:012:vrb:Entering state: sync
+0010:000393:013:PRT:PRS:-->:T=0270 R=0741 SUM=00176437:
+FEED_INFO:
+TBD:00000000000000000000000000000000000b: 0x00000000: 0
+
+0010:000393:014:vrb:-->:e70a0000000000ea
+0010:000393:015:vrb:<--:
+```
+
+### Checksum Message
+The file checksum message triggers the following message sequence. The
+checksum message itself is NOT included in the checksum.
+```
+0228:030440:006:vrb:Checksum: disabled
+0228:030440:007:vrb:Backed out: [229, 5]
+0228:030440:008:vrb:Exiting state: expect_sub_command
+0228:030440:009:vrb:Entering state: decode_parameters
+0228:030440:010:vrb:Priming: ('Sum:0x{0:010X} ({0})', 'checksum', 'uint_35')
+0228:030440:011:vrb:Decoding parameter 1.
+0228:030440:012:vrb:Decoded parameter 1=Sum:0x000094FC79 (9763961).
+0228:030440:013:vrb:Parameters decoded.
+0228:030440:014:vrb:Exiting state: decode_parameters
+0228:030440:015:vrb:Entering state: expect_command
+0228:030440:016:PRT:PRS:-->:T=0925 R=0001 SUM=09756933:
+SET_FILE_SUM Sum:0x000094FC79 (9763961)
+
+0228:030440:017:vrb:-->:e5050004537879
+0228:030440:018:vrb:<--:
+0228:030441:001:INT:---:Next command...
+0228:030441:002:vrb:Checksum: disabled
+0228:030441:003:vrb:Checksum: ENABLED
+0228:030441:004:PRT:ERR:-->:Checksum mismatch:
+    decoded=9763961
+accumulated=9756933
+difference =7028
 
 ```
 

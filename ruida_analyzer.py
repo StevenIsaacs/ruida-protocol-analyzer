@@ -70,9 +70,8 @@ class UdpDumpReader():
             # Empty file.
             if self.line == '':
                 return None
-            self.out.raw(self.line)
             self.line_number += 1
-            self.out.set_id(self.line_number)
+            self.out.set_pkt_n(self.line_number)
             _fields:list[str] = self.line.strip().split('\t')
 
             _ts = _fields[0].split(' ')
@@ -213,10 +212,12 @@ class RdPacket():
         self.reply = self.reader.from_port in [40200, 40207]
 
         if self.reply:
+            self.out.set_direction('<--')
             # Replies don't carry a checksum.
             _data = self.reader.data
             self.chk_ok = True
         else:
+            self.out.set_direction('-->')
             # Verify checksum and return only the data portion of the payload.
             # NOTE: The checksum is not swizzled.
             _chk = int.from_bytes(self.reader.data[0:2])
@@ -233,6 +234,7 @@ class RdPacket():
                 self.data.append(self.un_swizzle_byte(b))
         else:
             self.data = _data
+        self.out.raw(self.reader.line)
         self.out.raw(self.data.hex())
         self.length = len(self.data) # Does not include any checksum.
         # Update stats.
@@ -388,7 +390,6 @@ class RuidaProtocolAnalyzer():
         # Getting the byte required reading another packet.
         self._line_number = self._reader.line_number
         if self._pkt.reply:
-            self.out.set_direction('<--')
             if self._pkt.handshake:
                 _b = self._pkt.data[0]
                 if _b == rdap.ACK:
@@ -409,7 +410,6 @@ class RuidaProtocolAnalyzer():
             else:
                 _msg = 'Reply data'
         else:
-            self.out.set_direction('-->')
             self.acks_expected += 1
             _msg = 'Expecting ACK'
         self.out.reader(f'SHK:{self.acks_expected:03d}:{_msg}')
@@ -427,7 +427,8 @@ class RuidaProtocolAnalyzer():
                 self.check_handshake()
             # Handshake bytes are not passed to the state machine.
             if not self._pkt.handshake:
-                _decoded = self._parser.step(
-                    _b, is_reply=self._pkt.reply, remaining=self._pkt.remaining)
-                if _decoded is not None:
-                    self.out.parser(f'{self._pkt.take:04d}:{_decoded}')
+                self._parser.step(
+                    _b,
+                    is_reply=self._pkt.reply,
+                    take=self._pkt.take,
+                    remaining=self._pkt.remaining)

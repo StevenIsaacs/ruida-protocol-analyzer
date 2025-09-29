@@ -26,19 +26,27 @@ class RdDecoder():
         rd_type The Ruida basic type for the parameter.
         decoder The decoder to call to convert the parameter bytes to
                 a Python variable.
+        accumulating
+                True when accumulating parameter data.
+        datum   The latest data byte.
+        cstring True when accumulating a C formatted string (null terminated)
         data    The parameter data byte array to be converted.
         value   The resulting parameter value after conversion.
-    '''
+        checksum
+                The result of the rd_checksum decoder. This is reset by the
+                parser.
+            '''
     def __init__(self, output: RdaEmitter):
         self.out = output
         self.accumulating = False
         self.format: str = ''
         self.decoder: str = ''
         self.rd_type:str = ''
+        self.datum = None
         self.data: bytearray = bytearray([])
         self.value = None   # The actual type is not known until after decode.
-        self.datum = None
         self.cstring = False # True when accumulating a cstring.
+        self.checksum = 0
         self._rd_decoder = None
         self._length = 0
         self._remaining = 0
@@ -68,7 +76,7 @@ class RdDecoder():
         self.value = data[0] != 0
         return self.formatted
 
-    def to_int(self, data: bytearray, n_bytes=0):
+    def to_int(self, data: bytearray, n_bytes=0) -> int:
         if not n_bytes:
             _n = self._length
         else:
@@ -86,7 +94,7 @@ class RdDecoder():
             _v = ((~_v & (_m >> 1)) + 1) * -1
         return _v
 
-    def to_uint(self, data: bytearray, n_bytes=0):
+    def to_uint(self, data: bytearray, n_bytes=0) -> int:
         if not n_bytes:
             _n = self._length
         else:
@@ -96,19 +104,19 @@ class RdDecoder():
             _v = (_v << 7) + data[_i]
         return _v
 
-    def rd_int14(self, data: bytearray):
+    def rd_int14(self, data: bytearray) -> int:
         self.value = self.to_int(data)
         return self.formatted
 
-    def rd_uint14(self, data: bytearray):
+    def rd_uint14(self, data: bytearray) -> int:
         self.value = self.to_uint(data)
         return self.formatted
 
-    def rd_int35(self, data: bytearray):
+    def rd_int35(self, data: bytearray) -> int:
         self.value = self.to_int(data)
         return self.formatted
 
-    def rd_uint35(self, data: bytearray):
+    def rd_uint35(self, data: bytearray) -> int:
         self.value = self.to_uint(data)
         return self.formatted
 
@@ -131,6 +139,17 @@ class RdDecoder():
             self.out.error(
                 f'Non-printable characters in string: {data}')
         self.value = _s
+        return self.formatted
+
+    def rd_string8(self, data: bytearray):
+        '''Unpack a 10 byte array of 7 bit values into an 8 character string.'''
+        _i1 = self.to_uint(data[:5], n_bytes=5)
+        _i2 = self.to_uint(data[5:], n_bytes=5)
+        _ba1 = _i1.to_bytes(4, byteorder='big')
+        _ba2 = _i2.to_bytes(4, byteorder='big')
+        _s1 = _ba1.decode('utf-8')
+        _s2 = _ba2.decode('utf-8')
+        self.value = _s1 + _s2
         return self.formatted
 
     # Ruida Parameter Types
@@ -179,6 +198,12 @@ class RdDecoder():
             _lbl = rdap.UNKNOWN_MSB
         self.value = (_msb << 8) + _lsb
         return self.formatted + ':' + _lbl
+
+    def rd_checksum(self, data: bytearray):
+        '''Return the checksum calculated by the host.'''
+        self.value = self.to_uint(data)
+        self.checksum = self.value
+        return self.formatted
 
     # Ruida Reply Types
     def rd_tbd(self, data: bytearray):
@@ -293,6 +318,8 @@ class RdParser():
         last_is_reply   When True the last byte was from a reply.
         data            The data accumulated since the last decoded.
         command         The current command being parsed.
+        command_number  The number of commands processed or the number of the
+                        command being processed.
         sub_command     The current sub-command being parsed.
         parameters      The list of decoded parameter values.
         reply_command   The command byte from a reply from the controller.
@@ -308,6 +335,9 @@ class RdParser():
         reply_bytes     The accumulated reply bytes.
         decoded         The decoded command string. This string grows as a
                         command is parsed and decoded.
+        file_checksum   Total checksum of bytes from the host (NOT replies).
+        checksum        When True bytes from the host will be included in the
+                        checksum.
         verbose         The method to call when emitting verbose messages.
     '''
     def __init__(self, output: RdaEmitter):
@@ -325,6 +355,7 @@ class RdParser():
         self.last_is_reply = False
         self.data = bytearray([])
         self.command = None
+        self.command_number = 0
         self.last_command = None
         self.sub_command = None
         self.last_sub_command = None
@@ -341,12 +372,16 @@ class RdParser():
         self.controller_bytes: bytearray = bytearray([])
         self.decoder = RdDecoder(output)
         self.decoded = ''
+        self.file_checksum = 0
+        self.checksum_enabled = False
 
         self._ct = rdap.CT   # The command table to use for parsing. This changes
                             # for sub-commands and for expected replies.
         self._stepper = None        # For commands.
         self._sub_stepper = None    # For parameters.
+        self._transition = None
         self._enter_state('sync')   # Setup the sync state.
+        self._transition()
 
     def _format_decoded(self, message: str, param=None):
         '''Accumulate decoded messages one by one.
@@ -388,11 +423,15 @@ class RdParser():
         if self.state is not None:
             self.out.verbose(f'Exiting state: {self.state}')
         self.out.verbose(f'Entering state: {state}')
-        _tr = getattr(self, f'_tr_{state}')
-        _st = getattr(self, f'_st_{state}')
-        self._stepper = _st
+        self._transition = getattr(self, f'_tr_{state}')
+        self._stepper = getattr(self, f'_st_{state}')
         self.state = state
-        _tr()
+
+    def _next_state(self):
+        '''Transition to the next state.'''
+        if self._transition is not None:
+            self._transition()
+            self._transition = None
 
     def _forward_to_state(self, state: str):
         '''Enter the state and pass the current datum to the state for
@@ -419,12 +458,16 @@ class RdParser():
         self.data = []
         self.last_command = self.command
         self.command = None
+        self.command_number += 1
+        self.out.set_cmd_n(self.command_number)
+        self.out.info('Next command...')
         self.last_sub_command = self.sub_command
         self.sub_command = None
         self.parameters = []
         self.command_bytes = []
         self.param_bytes = []
         self._ct = rdap.CT
+        self._disable_checksum()
 
     def _h_check_for_reply(self):
         _param = self.param_list[self.which_param]
@@ -488,6 +531,48 @@ class RdParser():
         if _rs is not None:
             _r += '\n' + _rs
         return _r
+
+    def _enable_checksum(self):
+        '''When enabled every byte from the host is added to an overall
+        checksum.
+
+        This is used to start a file checksum.
+
+        Only data from the host is included in the checksum.
+        '''
+        self.checksum_enabled = True
+        self.out.verbose('Checksum: ENABLED')
+
+    def _disable_checksum(self):
+        '''Disable checksum calculation.
+
+        This is used to disable checksum calculation.
+        '''
+        self.checksum_enabled = False
+        self.out.verbose('Checksum: disabled')
+
+    def _reset_checksum(self):
+        '''Disable the checksum and reset the overall checksum to 0.'''
+        self.checksum_enabled = True
+        self.file_checksum = 0
+        self.decoder.checksum = 0
+
+    def _add_to_checksum(self, datum):
+        '''Add the datum to the checksum when enabled.'''
+        if self.checksum_enabled:
+            self.file_checksum += datum
+
+    def _backout_checksum(self, data):
+        if type(data) is list:
+            for _d in data:
+                self.file_checksum -= _d
+        else:
+            self.file_checksum -= data
+        self.out.verbose(f'Backed out: {data}')
+
+    def _verify_checksum(self):
+        '''Returns True if the checksums match.'''
+        return self.file_checksum == self.decoder.checksum
 
     #---- Helpers
 
@@ -722,8 +807,8 @@ class RdParser():
         self.which_param = 1
         if 'mt' in self.param_list:
             self._enter_state('mt_command')
-        else:
-            self._h_check_for_reply()
+            return
+        self._h_check_for_reply()
     #----
 
     #++++
@@ -760,6 +845,17 @@ class RdParser():
                 # Is it a known command for this state?
                 if self._h_is_known_command(datum):
                     self.sub_command = datum
+                    if (self.command == rdap.SETTING and
+                        datum == rdap.SETTING_WRITE):
+                        if self.checksum_enabled:
+                            self.out.critical('Checksum should be disabled.')
+                        self._enable_checksum()
+                        self._add_to_checksum(self.command)
+                    # Setting the file checksum signals the end of the checksum region.
+                    if (self.command == 0xE5 and self.sub_command is not None
+                            and self.sub_command == 0x05):
+                        self._disable_checksum()
+                        self._backout_checksum([self.command, self.sub_command])
                     _t = type(self._ct[datum])
                     if _t is str:
                         self.decoded = self._ct[datum]
@@ -776,7 +872,7 @@ class RdParser():
                         # This is a problem with the protocol table -- not the
                         # incoming data.
                         self.out.protocol(
-                            f'Unsupprted or unexpected type ({_t}) in command.')
+                            f'Unsupported or unexpected type ({_t}) in command.')
                 else:
                     self.out.critical(
                         f'Datum 0x{datum:02X} is not a known command.')
@@ -811,9 +907,25 @@ class RdParser():
                 # Is it a known command for this state?
                 if self._h_is_known_command(datum):
                     self.command = datum
+                    if datum not in rdap.CHK_DISABLES:
+                        self._enable_checksum()
                     _t = type(self._ct[datum])
                     if _t is str:
                         self.decoded = self._ct[datum]
+                        if datum == rdap.EOF:
+                            _i = self.decoder.checksum
+                            _c = self.file_checksum
+                            _d = self.decoder.checksum - self.file_checksum
+                            _is = f'\n    decoded={self.decoder.checksum}'
+                            _cs = f'\naccumulated={self.file_checksum}'
+                            _ds = f'\ndifference ={_d}'
+                            if not self._verify_checksum():
+                                self.out.error(
+                                    f'Checksum mismatch: {_is} {_cs} {_ds}')
+                            else:
+                                self.out.verbose(
+                                    f'Checksum OK: {_i} {_c}')
+                            self._reset_checksum()
                         self._enter_state('expect_command')
                         return self.decoded
                     elif _t is dict:
@@ -872,7 +984,7 @@ class RdParser():
                         # This is a problem with the protocol table -- not the
                         # incoming data.
                         self.out.protocol(
-                            f'Unsupprted or unexpected type ({_t}) in command.')
+                            f'Unsupported or unexpected type ({_t}) in command.')
         return None
 
     def _tr_sync(self):
@@ -881,7 +993,7 @@ class RdParser():
 
     #---------------
 
-    def step(self, datum: int, is_reply=False, remaining=0):
+    def step(self, datum: int, is_reply=False, take: int=0, remaining=0):
         """Step the state machine for the latest byte.
 
         Parameter:
@@ -907,9 +1019,16 @@ class RdParser():
             self.host_bytes.append(datum)
         # Step the machine.
         _r = self._stepper(datum)
+        # Call here because the decoder decides when checksum is disabled.
+        if self.checksum_enabled:
+            self._add_to_checksum(datum)
         if _r is not None:
+            # A command has been decoded.
+            self.out.parser(
+                f'T={take:04d} R={remaining:04d} SUM={self.file_checksum:08d}:\n{_r}\n')
             self.out.verbose(f'-->:{self.host_bytes.hex()}')
             self.out.verbose(f'<--:{self.controller_bytes.hex()}')
             self.controller_bytes = bytearray([])
             self.host_bytes = bytearray([])
-        return _r
+        # Transitions only when a transition has been staged.
+        self._next_state()
