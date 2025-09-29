@@ -1025,9 +1025,14 @@ class RdParser():
         if _r is not None:
             # A command has been decoded.
             self.out.parser(
-                f'T={take:04d} R={remaining:04d} SUM={self.file_checksum:08d}:\n{_r}\n')
-            self.out.verbose(f'-->:{self.host_bytes.hex()}')
-            self.out.verbose(f'<--:{self.controller_bytes.hex()}')
+                f'T={take:04d} R={remaining:04d}' +
+                f' SUM={self.file_checksum:08d}:\n{_r}\n')
+            self.out.verbose(
+                f'-->:{self.host_bytes.hex()}' +
+                f' SUM={sum(self.host_bytes)}')
+            self.out.verbose(
+                f'<--:{self.controller_bytes.hex()}' +
+                f' SUM={sum(self.controller_bytes)}')
             self.controller_bytes = bytearray([])
             self.host_bytes = bytearray([])
         # Transitions only when a transition has been staged.
