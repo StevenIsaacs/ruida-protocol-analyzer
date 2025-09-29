@@ -513,7 +513,7 @@ CT = {
         0x08: ('ARRAY_REPEAT',
                 INT14, INT14, INT14, INT14, INT14, INT14, INT14),
         0x09: ('FEED_LENGTH', INT35),
-        0x0A: ('FEED_INFO', TBD), # TODO: A 35 bit value? What for?
+        0x0A: ('FEED_INFO', TBD35), # TODO: A 35 bit value? What for?
         0x0B: ('ARRAY_EN_MIRROR_CUT', UINT7),
         0x13: ('ARRAY_MIN_POINT', XABSCOORD, YABSCOORD),
         0x17: ('ARRAY_MAX_POINT', XABSCOORD, YABSCOORD),
