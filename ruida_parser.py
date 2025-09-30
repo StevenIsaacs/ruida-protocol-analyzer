@@ -968,23 +968,7 @@ class RdParser():
         if not self.is_reply:
             if self._h_is_command(datum):
                 if self._h_is_known_command(datum):
-                    self.command = datum
-                    _t = type(self._ct[datum])
-                    if _t is str:
-                        self._format_decoded(self._ct[datum])
-                        self._enter_state('expect_command')
-                        return self.decoded
-                    elif _t is dict:
-                        self._enter_state('expect_sub_command')
-                    elif _t is tuple:
-                        self.param_list = self._ct[datum]
-                        self.decoded = self.param_list[0]
-                        self._enter_state('decode_parameters')
-                    else:
-                        # This is a problem with the protocol table -- not the
-                        # incoming data.
-                        self.out.protocol(
-                            f'Unsupported or unexpected type ({_t}) in command.')
+                    self._forward_to_state('expect_command')
         return None
 
     def _tr_sync(self):
