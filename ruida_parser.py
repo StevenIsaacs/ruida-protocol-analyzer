@@ -557,10 +557,11 @@ class RdParser():
         self.file_checksum = 0
         self.decoder.checksum = 0
 
-    def _add_to_checksum(self, datum):
+    def _add_to_checksum(self, chk):
         '''Add the datum to the checksum when enabled.'''
         if self.checksum_enabled:
-            self.file_checksum += datum
+            self.out.verbose(f'Adding {chk} to checksum.')
+            self.file_checksum += chk
 
     def _backout_checksum(self, data):
         if type(data) is list:
@@ -847,15 +848,11 @@ class RdParser():
                     self.sub_command = datum
                     if (self.command == rdap.SETTING and
                         datum == rdap.SETTING_WRITE):
-                        if self.checksum_enabled:
-                            self.out.critical('Checksum should be disabled.')
                         self._enable_checksum()
-                        self._add_to_checksum(self.command)
                     # Setting the file checksum signals the end of the checksum region.
                     if (self.command == 0xE5 and self.sub_command is not None
                             and self.sub_command == 0x05):
                         self._disable_checksum()
-                        self._backout_checksum([self.command, self.sub_command])
                     _t = type(self._ct[datum])
                     if _t is str:
                         self.decoded = self._ct[datum]
@@ -913,6 +910,7 @@ class RdParser():
                     if _t is str:
                         self.decoded = self._ct[datum]
                         if datum == rdap.EOF:
+                            self._add_to_checksum(datum)
                             _i = self.decoder.checksum
                             _c = self.file_checksum
                             _d = self.decoder.checksum - self.file_checksum
@@ -923,7 +921,7 @@ class RdParser():
                                 self.out.error(
                                     f'Checksum mismatch: {_is} {_cs} {_ds}')
                             else:
-                                self.out.verbose(
+                                self.out.info(
                                     f'Checksum OK: {_i} {_c}')
                             self._reset_checksum()
                         self._enter_state('expect_command')
@@ -1003,10 +1001,9 @@ class RdParser():
             self.host_bytes.append(datum)
         # Step the machine.
         _r = self._stepper(datum)
-        # Call here because the decoder decides when checksum is disabled.
-        if self.checksum_enabled:
-            self._add_to_checksum(datum)
         if _r is not None:
+            # Call here because the decoder decides when checksum is disabled.
+            self._add_to_checksum(sum(self.host_bytes))
             # A command has been decoded.
             self.out.parser(
                 f'T={take:04d} R={remaining:04d}' +
