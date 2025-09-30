@@ -201,7 +201,7 @@ def main():
     analyzer = rpa.RuidaProtocolAnalyzer(args, input, output)
     try:
         analyzer.decode() # Does not return until decode is complete.
-        output.info('Decode complete.')
+        output.info('Decode complete.\n')
         output.close()
     except LookupError as e:
         output.critical(f'{e}')
