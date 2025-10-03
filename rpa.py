@@ -175,7 +175,7 @@ def open_input(args):
             'tshark',
             '-Y', f'(ip.addr == {args.ip} && udp.payload)',
             '-T', 'fields',
-            '-e', 'frame.time',
+            '-e', 'frame.time_delta',
             '-e', 'udp.port',
             '-e', 'udp.length',
             '-e', 'data.data',
