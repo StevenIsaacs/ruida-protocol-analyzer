@@ -44,6 +44,7 @@ RD_TYPES = {
     'on_off':   [   1,          1], # An ON or OFF switch (flag).
     'mt':       [   14,         2], # Special handling for a controller memory
                                     # access (read).
+    'index':    [   14,         2], # An index into an unknown table.
     'chksum':   [   32,         5], # For file checksum calculation.
     'card_id':  [   32,         5], # Card ID reply.
     'tbd':      [   -1,        -1], # Type is unknown signal read to end of packet.
@@ -125,6 +126,8 @@ CARD_ID = (     'CardID: {}',       'card_id',  'uint_35')
 
 # A memory access triggers special processing using MT.
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
+# An index into something -- unknown at this time.
+INDEX = (      'Index:{:04X}',      'index',    'index')
 
 FILE_SUM = (    'Sum:0x{0:010X} ({0})',
                                     'checksum', 'uint_35')
@@ -357,11 +360,24 @@ MT = {
         0x12: ('Unknown', TBD35), # LightBurn uses this.
     },
 }
+
+# Index table. This is for replies which appear to index into something but
+# exactly what is unknown.
+IDXT = {
+    0x00: {
+        0x00: ('TBD',
+               HEX14, HEX14, HEX14,
+               HEX14, HEX14, HEX14,
+               HEX14, HEX14, HEX14),
+    }
+}
+
 # Reply table
 RT = {
     # TBD Learn during debug.
     SETTING: {
         0x01: ('GET_SETTING', MEMORY),
+        0x05: ('TBD', INDEX),
     },
 }
 
@@ -502,6 +518,7 @@ CT = {
     0xDA: { # SETTING
         0x00: ('GET_SETTING', MEMORY),  # SETTING_READ
         0x01: ('SET_SETTING', MEMORY, TBDU35, TBDU35), # SETTING_WRITE
+        0x05: ('GET_UNKNOWN', INDEX, TBD),
     },
     0xE5: { # FILE
         0x00: ('DOCUMENT_FILE_UPLOAD', FNUM, UINT35, UINT35),

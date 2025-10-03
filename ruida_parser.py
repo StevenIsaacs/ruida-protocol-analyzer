@@ -193,13 +193,29 @@ class RdDecoder():
 
     def rd_mt(self, data: bytearray):
         # This is a special case where the data is a reference to an entry
-        # in the memory table (rdap.MT). This is used to setup the reply or
+        # in the memory table (self._it). This is used to setup the reply or
         # setting spec.
         _msb = data[0]
         _lsb = data[1]
         if _msb in rdap.MT:
             if _lsb in rdap.MT[_msb]:
                 _lbl = rdap.MT[_msb][_lsb][0]
+            else:
+                _lbl = rdap.UNKNOWN_LSB
+        else:
+            _lbl = rdap.UNKNOWN_MSB
+        self.value = (_msb << 8) + _lsb
+        return self.formatted + ':' + _lbl
+
+    def rd_index(self, data: bytearray):
+        # This is a special case where the data is a reference to an entry
+        # in a table (rdap.IDXT). This is used to setup the reply or
+        # setting spec.
+        _msb = data[0]
+        _lsb = data[1]
+        if _msb in rdap.IDXT:
+            if _lsb in rdap.IDXT[_msb]:
+                _lbl = rdap.IDXT[_msb][_lsb][0]
             else:
                 _lbl = rdap.UNKNOWN_LSB
         else:
@@ -383,8 +399,9 @@ class RdParser():
         self.file_checksum = 0
         self.checksum_enabled = False
 
-        self._ct = rdap.CT   # The command table to use for parsing. This changes
+        self._ct = rdap.CT  # The command table to use for parsing. This changes
                             # for sub-commands and for expected replies.
+        self._it = None     # For indexing into memory or index table.
         self._stepper = None        # For commands.
         self._sub_stepper = None    # For parameters.
         self._transition = None
@@ -610,18 +627,18 @@ class RdParser():
         return None
 
     def _tr_mt_decode_reply(self):
-        if self.mt_address_msb not in rdap.MT:
+        if self.mt_address_msb not in self._it:
             # Setup a generic decode for an unknown address.
             _reply = rdap.UNKNOWN_ADDRESS
         else:
             _msb = self.mt_address_msb
             _lsb = self.mt_address_lsb
             self.out.verbose(f'Memory reference: {_msb:02X}{_lsb:02X}')
-            if not _lsb in rdap.MT[_msb]:
+            if not _lsb in self._it[_msb]:
                 # Setup a generic decode for an unknown address.
                 _reply = rdap.UNKNOWN_ADDRESS
             else:
-                _reply = rdap.MT[_msb][_lsb]
+                _reply = self._it[_msb][_lsb]
         self.param_list = _reply
         self.decoded += ':' + _reply[0]
         self.which_param = 1
@@ -634,11 +651,11 @@ class RdParser():
     #++++
     def _st_mt_address_lsb(self, datum):
         if self.is_reply:
-            if self.mt_address_msb not in rdap.MT:
+            if self.mt_address_msb not in self._it:
                 # Setup a generic decode for an unknown address.
                 self.decoded += ':' + rdap.UNKNOWN_ADDRESS[0]
             else:
-                if datum not in rdap.MT[self.mt_address_msb]:
+                if datum not in self._it[self.mt_address_msb]:
                     self.out.protocol(
                         f'Unknown MT address LSB (0x{datum:02X}).')
             self.mt_address_lsb = datum
@@ -656,7 +673,7 @@ class RdParser():
     #++++
     def _st_mt_address_msb(self, datum):
         if self.is_reply:
-            if datum not in rdap.MT:
+            if datum not in self._it:
                 self.out.protocol(
                     f'Unknown MT address MSB (0x{datum:02X}.)')
             self.mt_address_msb = datum
@@ -729,9 +746,27 @@ class RdParser():
         if self.command == 0xDA: # Reading from controller.
             self.reply_command = None
             self._ct = rdap.RT
+            self._it = rdap.MT
         else:
             self.out.protocol(
                 f'Memory reference with wrong command: 0x{self.command:02X}')
+
+    # An index is handled identically to an mt.
+    def _st_index_command(self, datum):
+        return self._st_mt_command(datum)
+
+    def _tr_index_command(self):
+        '''Setup to parse a reply to a indexed read command.
+
+        This state is triggered when the command parameter list contains
+        a INDEX spec and the index command has been decoded.'''
+        if self.command == 0xDA: # Reading from controller.
+            self.reply_command = None
+            self._ct = rdap.RT
+            self._it = rdap.IDXT
+        else:
+            self.out.protocol(
+                f'Indexed reference with wrong command: 0x{self.command:02X}')
     #----
 
     #---- MEMORY reply states
@@ -797,6 +832,10 @@ class RdParser():
                     if ('mt' in self.param_list[self.which_param] and
                         self.sub_command == 0x00):
                         self._enter_state('mt_command')
+                        return self.decoded
+                    elif ('index' in self.param_list[self.which_param] and
+                        self.sub_command == 0x05):
+                        self._enter_state('index_command')
                         return self.decoded
                     else:
                         # Advance to the next parameter.
