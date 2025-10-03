@@ -38,6 +38,14 @@ Examples:
         help='Tshark log file to analyze (not needed with --on-the-fly).'
     )
 
+    # Input file encodng.
+    parser.add_argument(
+        '--input-encoding',
+        metavar='<input_encoding>',
+        default='utf-8',
+        help='Input text encoding. Windows files can be encoded as utf-16.'
+    )
+
     # Real-time processing
     parser.add_argument(
         '--on-the-fly',
@@ -160,7 +168,7 @@ def open_input(args):
     readline method so either can be passed to the parser.'''
     _file = args.input_file
     if args.input_file:
-        input = open(_file, 'r')
+        input = open(_file, 'r', encoding=args.input_encoding)
     else:
         # Build tshark command with the specified IP
         _tshark_cmd = [
@@ -214,14 +222,14 @@ def main():
     except RuntimeError as e:
         output.critical(f'Shutting down: {e}')
         exit(1)
-    except Exception as e:
-        output.critical(f'Unhandled error:{e}')
-        exit(1)
     except KeyboardInterrupt:
         output.info('Exiting at user request.\n')
         sys.stdout.flush()
         sys.stderr.flush()
         sys.exit(0)
+    except Exception as e:
+        output.critical(f'Unhandled error:{e}')
+        exit(1)
 
 if __name__ == "__main__":
     main()

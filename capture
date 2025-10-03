@@ -7,4 +7,4 @@
 #  2 The capture file name -- not including extension. This saves to $2.log.
 # WARNING: No parameter checking.
 tshark -Y "(ip.addr == $1)" -l -T fields \
-    -e frame.time -e udp.port -e udp.length -e data.data | tee $2.log
+    -e frame.time_delta -e udp.port -e udp.length -e data.data | tee $2.log

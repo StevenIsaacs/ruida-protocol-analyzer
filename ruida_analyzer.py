@@ -7,11 +7,8 @@ This version is intended to be used from the command line to process UDP
 session data previously captured using tshark (Wireshark CLI). See decode
 for more information.
 '''
-import sys
-import argparse
 from datetime import datetime
-import typing
-import os
+import re
 
 import ruida_parser as rp
 import rpa_protocol as rdap
@@ -74,19 +71,7 @@ class UdpDumpReader():
             self.out.set_pkt_n(self.line_number)
             _fields:list[str] = self.line.strip().split('\t')
 
-            _ts = _fields[0].split(' ')
-            _y = _ts[2]
-            _m = _ts[0]
-            _d = _ts[1].split(',')[0]
-            _t = _ts[3]
-            _ds = f'{_y}-{_m}-{_d} {_t:.15}'
-            _df = '%Y-%b-%d %H:%M:%S.%f'
-            _dto = datetime.strptime(_ds, _df)
-            self.ts = _dto.timestamp()
-            if self.last_ts == None:
-                self.last_ts = self.ts
-            self.delta_time = (self.ts - self.last_ts)
-            self.last_ts = self.ts
+            self.delta_time = float(_fields[0])
             self.out.reader(f'Interval:{self.delta_time:.6f}S')
 
             _ports = _fields[1].split(',')
@@ -101,6 +86,13 @@ class UdpDumpReader():
         except EOFError:
             self.line = None
             return None
+        except UnicodeDecodeError:
+            if self.args.input_encoding == 'utf-8':
+                _try = 'utf-16'
+            else:
+                _try = 'utf-8'
+            self.out.fatal(
+                f'Input file encoding error -- try:  --input-encoding={_try}')
         return self.length
 
     def reset(self):

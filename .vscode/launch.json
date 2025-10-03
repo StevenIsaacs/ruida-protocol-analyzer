@@ -16,9 +16,10 @@
                     "--verbose",
                      // "--step-decode",
                      "--raw",
+                     //"--input-encoding=utf-16",
                      // "--stop-on-error",
-                     "-o", "~/tmp/test.txt",
-                     "~/tmp/test.log"]
+                     "-o", "test/test.txt",
+                     "test/test.log"]
         }
     ]
 }
