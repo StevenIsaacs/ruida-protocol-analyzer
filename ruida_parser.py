@@ -183,6 +183,14 @@ class RdDecoder():
             self.value = 'OFF'
         return self.formatted
 
+    def rd_card_id(self, data: bytearray):
+        _id = self.to_uint(data)
+        if _id in rdap.CARD_IDS:
+            self.value = rdap.CARD_IDS[_id]
+        else:
+            self.value = f'Unknown: 0x{_id:08X}'
+        return self.formatted
+
     def rd_mt(self, data: bytearray):
         # This is a special case where the data is a reference to an entry
         # in the memory table (rdap.MT). This is used to setup the reply or

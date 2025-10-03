@@ -45,9 +45,16 @@ RD_TYPES = {
     'mt':       [   14,         2], # Special handling for a controller memory
                                     # access (read).
     'chksum':   [   32,         5], # For file checksum calculation.
+    'card_id':  [   32,         5], # Card ID reply.
     'tbd':      [   -1,        -1], # Type is unknown signal read to end of packet.
                                     # Use this for reverse engineering data.
 }
+
+# Card ID reply to model name lookup table.
+CARD_IDS = {
+    0x65106510: 'RDC6442S',
+}
+
 # Rapid option table.
 ROT = {
     0x00: 'RAPID_ORIGIN',
@@ -77,11 +84,11 @@ DTYP = 2 # Basic type (used to determine how many bytes to process.)
 #               DFMT                DDEC        DTYP
 INT7 = (        '{}',               'int7',     'int_7')
 UINT7 = (       '{}',               'uint7',    'uint_7')
-HEX7 = (        '0x{:02X}',           'uint7',    'uint_7')
+HEX7 = (        '0x{:02X}',         'uint7',    'uint_7')
 BOOL7 = (       '{}',               'bool',     'bool_7')
 INT14 = (       '{}',               'int14',    'int_14')
 UINT14 = (      '{}',               'uint14',   'uint_14')
-HEX14 = (       '0x{:04X}',           'uint14',   'uint_14')
+HEX14 = (       '0x{:04X}',         'uint14',   'uint_14')
 INT35 = (       '{}',               'int35',    'int_35')
 UINT35 = (      '{}',               'uint35',   'uint_35')
 HEX35 = (       '0x{:010X}',        'uint35',   'uint_35')
@@ -114,6 +121,8 @@ SPEED = (       'Speed:{:.3f}mm/S', 'speed',    'int_35')
 FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
 TIME = (        '{:.3f}mS',         'time',     'int_35')
 SWITCH = (      'State: {}',        'on_off',   'uint_7')
+CARD_ID = (     'CardID: {}',       'card_id',  'uint_35')
+
 # A memory access triggers special processing using MT.
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
 
@@ -214,7 +223,7 @@ MT = {
         0x1B: ('Laser Standby Pulse 1', TBD), # 0x01B
         0x1C: ('Laser Standby Frequency 2', TBD), # 0x01C
         0x1d: ('Laser Standby Pulse 2', TBD), # 0x01D
-        0x1e: ('Auto Type Space', TBD), # 0x01E
+        0x1e: ('Auto Type Space', TBD35), # 0x01E
         0x20: ('Axis Control Para 1', TBD), # 0x020
         0x21: ('Axis Precision 1', TBDU35), # 0x021
         0x23: ('Axis Max Velocity 1', TBD), # 0x023
@@ -334,7 +343,7 @@ MT = {
         0x53: ('Total Work Length 4', TBD), # 0x253
     },
     0x05: {
-        0x7E: ('Card ID', HEX35), # 0x2FE
+        0x7E: ('Card ID', CARD_ID), # 0x2FE
         0x7F: ('Mainboard Version', TBD), # 0x2FF
     },
     0x06: {
