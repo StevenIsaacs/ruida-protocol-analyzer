@@ -60,7 +60,7 @@ First, capture Ruida protocol traffic using tshark. Replace `<ruida_ip>` with yo
 
 ```bash
 tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
-       -e frame.time -e udp.port -e udp.length -e data.data > capture.log
+       -e frame.time_delta -e udp.port -e udp.length -e data.data > capture.log
 ```
 
 ### Analyze Captured Data
