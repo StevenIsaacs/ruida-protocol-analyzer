@@ -369,7 +369,7 @@ IDXT = {
                HEX14, HEX14, HEX14,
                HEX14, HEX14, HEX14,
                HEX14, HEX14, HEX14),
-    }
+    },
 }
 
 # Reply table
