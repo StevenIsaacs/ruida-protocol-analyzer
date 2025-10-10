@@ -84,6 +84,12 @@ class RdDecoder():
             _n = n_bytes
         _v = 0
         _m = 0 # For 2's complement later.
+
+        # TODO: This is a workaround and masks a problem with LightBurn.
+        if _n == 5 and not data[0] & 0x40 and data[0] & 0x08:
+            self.out.warn('LightBurn 35 bit signed integer WORKAROUND.')
+            data[0] |= 0x70
+
         for _i in range(_n):
             _b = data[_i]
             if _i == 0:
@@ -93,6 +99,7 @@ class RdDecoder():
         if data[0] & 0x40:
             # Two's complement -- sorta.
             _v = ((~_v & (_m >> 1)) + 1) * -1
+
         return _v
 
     def to_uint(self, data: bytearray, n_bytes=0) -> int:
