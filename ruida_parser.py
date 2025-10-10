@@ -417,6 +417,7 @@ class RdParser():
         self._transition = None
         self._enter_state('sync')   # Setup the sync state.
         self._transition()
+        self._skip = 0
         self.plot = rpa_plotter.RpaPlotter(self.out)
 
     def _format_decoded(self, message: str, param=None):
@@ -936,7 +937,10 @@ class RdParser():
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
                         self.decoded = self.label = self.param_list[0]
-                        self._enter_state('decode_parameters')
+                        if self.param_list[1] == rdap.SKIP:
+                            self._skip = self.param_list[2]
+                        else:
+                            self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
@@ -1003,7 +1007,10 @@ class RdParser():
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
                         self.decoded = self.label = self.param_list[0]
-                        self._enter_state('decode_parameters')
+                        if self.param_list[1] == rdap.SKIP:
+                            self._skip = self.param_list[2]
+                        else:
+                            self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
@@ -1047,6 +1054,22 @@ class RdParser():
 
     #---------------
 
+    def _report_parse(self, result: str, take: int=0, remaining: int=0):
+        # Call here because the decoder decides when checksum is disabled.
+        self._add_to_checksum(sum(self.host_bytes))
+        # A command has been decoded.
+        self.out.parser(
+            f'T={take:04d} R={remaining:04d}' +
+            f' SUM={self.file_checksum:08d}:\n{result}\n')
+        self.out.verbose(
+            f'-->:{self.host_bytes.hex()}' +
+            f' SUM={sum(self.host_bytes)}')
+        self.out.verbose(
+            f'<--:{self.controller_bytes.hex()}' +
+            f' SUM={sum(self.controller_bytes)}')
+        self.controller_bytes = bytearray([])
+        self.host_bytes = bytearray([])
+
     def step(self, datum: int, is_reply=False, take: int=0, remaining=0):
         """Step the state machine for the latest byte.
 
@@ -1067,22 +1090,19 @@ class RdParser():
             self.controller_bytes.append(datum)
         else:
             self.host_bytes.append(datum)
-        # Step the machine.
-        _r = self._stepper(datum)
-        if _r is not None:
-            # Call here because the decoder decides when checksum is disabled.
-            self._add_to_checksum(sum(self.host_bytes))
-            # A command has been decoded.
-            self.out.parser(
-                f'T={take:04d} R={remaining:04d}' +
-                f' SUM={self.file_checksum:08d}:\n{_r}\n')
-            self.out.verbose(
-                f'-->:{self.host_bytes.hex()}' +
-                f' SUM={sum(self.host_bytes)}')
-            self.out.verbose(
-                f'<--:{self.controller_bytes.hex()}' +
-                f' SUM={sum(self.controller_bytes)}')
-            self.controller_bytes = bytearray([])
-            self.host_bytes = bytearray([])
+        # This is to skip anomalous data.
+        if self._skip > 0:
+            self._add_to_checksum(datum)
+            self._skip -= 1
+            self.out.warn(
+                f'Skipping: 0x{datum:02X}')
+            if self._skip <= 0:
+                self._report_parse('End skip.', take, remaining)
+                self._enter_state('expect_command')
+        else:
+            # Step the machine.
+            _r = self._stepper(datum)
+            if _r is not None:
+                self._report_parse(_r, take, remaining)
         # Transitions only when a transition has been staged.
         self._next_state()
