@@ -149,11 +149,19 @@ TBD14 = (       '\nTBD14:{0:014b}b: 0x{0:04x}: {0}',
                                     'int14',    'int_14')
 TBD35 = (       '\nTBD35:{0:035b}b: 0x{0:08x}: {0}',
                                     'int35',    'int_35')
+
 # Reply types.
 # Action markers are integers.
 REPLY = -1  # An integer to indicate when a reply to a command is expected.
 PAUSE = -2  # Can add this to a parameter table to act as a break during decode.
             # This is ignored when verbose is not enabled.
+# Sometimes bytes appear that don't make sense and look like other
+# commands. This is to skip those bytes so they don't confuse the
+# parser. This works by disabling the check for commands for N bytes.
+# The next entry in the tuple containing SKIP is the number of bytes
+# to skip.
+SKIP = -3
+
 
 
 
@@ -476,6 +484,9 @@ CT = {
         0x30: ('U_FILE_ID', ID),
         0x40: ('ZU_MAP', VALUE),
         0x41: ('LAYER_SELECT', PART, UINT7), # Source: ruida-laser
+    },
+    0xD0: {  # This was discovered with LightBurn
+        0x29: ('Skipping 2 bytes:', SKIP, 2) # Follows with 0x89 0x89 --- wha???
     },
     0xD7: '\n ---- EOF ----',
     0xD8: {
