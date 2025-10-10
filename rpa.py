@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 import ruida_analyzer as rpa
-from rpa_emitter import RdaEmitter
+from rpa_emitter import RpaEmitter
 
 def parse_arguments():
     """Parse command line arguments for Ruida protocol analyzer"""
@@ -124,11 +124,33 @@ Examples:
         help='Pause output after each decode message (disables --on-the-fly).'
     )
 
+    # Single step mode -- moves
+    parser.add_argument(
+        '--step-moves',
+        action='store_true',
+        help='Pause plot output after each move command has been parsed (ignored when --on-the-fly).'
+    )
+
+    # Single step mode -- moves -- Start stepping command number.
+    parser.add_argument(
+        '--step-on-command',
+        default=0,
+        metavar='<step_on_command>',
+        help='Pause plot output after command N has been parsed  and start stepping (ignored when --on-the-fly).'
+    )
+
+    # Plot moves.
+    parser.add_argument(
+        '--plot-moves',
+        action='store_true',
+        help='Plot all moves and cuts (ignored when --on-the-fly).'
+    )
+
     # Enter interactive mode (CLI)
     parser.add_argument(
         '--interactive',
         action='store_true',
-        help='Enter an interactive mode on the console (disables --on-the-fly).'
+        help='Enter an interactive mode on the console (ignored when --on-the-fly).'
     )
 
     args = parser.parse_args()
@@ -146,9 +168,14 @@ Examples:
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
 
-    if (args.step_decode or args.step_packets) and args.on_the_fly:
-        args.on_the_fly = False
-        parser.print('Cannot step when --on-the-fly is enabled -- disabled --on-the-fly')
+    if args.on_the_fly:
+        args.step_decode = False
+        args.step_packets = False
+        args.step_moves = False
+        args.step_on_command = 0
+        args.plot_moves = False
+        args.interactive = False
+        parser.print('Stepping is disabled when --on-the-fly is enabled')
 
     # Parse magic number if provided
     if args.magic:
@@ -202,13 +229,20 @@ def main():
     input = open_input(args)
 
     # Set up output handling
-    output = RdaEmitter(args)
+    output = RpaEmitter(args)
     output.open()
 
     # Initialize analyzer with magic number if provided
     analyzer = rpa.RuidaProtocolAnalyzer(args, input, output)
+    if args.plot_moves:
+        analyzer.parser.plot.step_on_cmd_id(args.step_on_command)
+        analyzer.parser.plot.enable_stepping(args.step_moves)
+        analyzer.parser.plot.enable()
+
     try:
         analyzer.decode() # Does not return until decode is complete.
+        if args.plot_moves:
+            analyzer.parser.plot.show(wait=True)
         output.info('Decode complete.\n')
         output.close()
     except LookupError as e:

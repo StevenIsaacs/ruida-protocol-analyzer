@@ -389,6 +389,7 @@ REPLY = -1
 CT = {
     0x80: {
         0x00: ('AXIS_X_MOVE', XABSCOORD),
+        # TODO: Identify the Y move.
         0x08: ('AXIS_Z_MOVE', YABSCOORD),
     },
     0x88: ('MOVE_ABS_XY', XABSCOORD, YABSCOORD),

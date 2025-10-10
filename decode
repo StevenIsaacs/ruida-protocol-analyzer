@@ -7,4 +7,5 @@
 #    The output is written to $1.txt.
 #  2 Optional command line arguments.
 # WARNING: No parameter checking.
-python rpa.py --verbose --raw $2 -o $1.txt $1.log
+python rpa.py $2 -o $1.txt $1.log
+python rpa.py --verbose --raw $2 -o $1-vrb.txt $1.log

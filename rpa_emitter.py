@@ -2,7 +2,7 @@
 import sys
 import readline
 
-class RdaEmitter():
+class RpaEmitter():
     '''
     A class to write messages to the output file and console.
 

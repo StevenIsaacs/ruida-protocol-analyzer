@@ -5,6 +5,7 @@
 # Parameters:
 #  1 The Ruida controller IP address.
 #  2 The capture file name -- not including extension. This saves to $2.log.
+#  3 Optional parameters. (e.g. "-i <if>")
 # WARNING: No parameter checking.
-tshark -Y "(ip.addr == $1)" -l -T fields \
+tshark -Y "(ip.addr == $1)" $3 -l -T fields \
     -e frame.time_delta -e udp.port -e udp.length -e data.data | tee $2.log

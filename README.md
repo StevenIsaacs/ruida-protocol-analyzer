@@ -11,6 +11,17 @@ A comprehensive Python-based protocol analyzer for reverse engineering and analy
 - **Type-aware Parameters**: Decodes coordinates, power levels, speeds, and other data types
 - **Flexible Output**: Console output, file output, verbose modes, and raw packet display
 - **Error Handling**: Configurable error handling with resync capabilities
+- **Move and Cut Plotting**: When enabled moves and cut lines are plotted using build123d
+
+This tool is designed to be used to discover and diagnose problems related to
+UDP communications with a Ruida controller. Much of the Ruida protocol is
+unknown and new commands or parameters may be discovered during analysis. The
+nature of such discovery is many times new experiments or parsing algorithms
+are needed. Because of this the best experience using this tool is within
+VSCode. This enables stepping code through along with side by side display of
+moves and cuts. And, when needed, this tool can be hacked to refine analysis.
+If you create a hack which can be useful to others please consider contributing
+it to this project.
 
 ## Background
 
@@ -44,7 +55,10 @@ pip install -r requirements.txt  # Currently no external dependencies
 3. Make sure tshark is installed:
 ```bash
 # Ubuntu/Debian
-sudo apt-get install tshark
+sudo apt-get install wireshark
+
+# Fedora
+sudo dnf install wireshark
 
 # macOS
 brew install wireshark

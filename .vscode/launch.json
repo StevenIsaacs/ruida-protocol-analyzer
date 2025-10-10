@@ -16,10 +16,11 @@
                     "--verbose",
                      // "--step-decode",
                      "--raw",
+                     "--plot-moves",
                      //"--input-encoding=utf-16",
                      // "--stop-on-error",
-                     "-o", "test/test.txt",
-                     "test/test.log"]
+                     "-o", "discovery/selected.txt",
+                     "discovery/selected.log"]
         }
     ]
 }

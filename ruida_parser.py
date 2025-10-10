@@ -5,8 +5,9 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
-from rpa_emitter import RdaEmitter
+from rpa_emitter import RpaEmitter
 import rpa_protocol as rdap
+import rpa_plotter
 
 class RdDecoder():
     '''A parameter or reply decoder.
@@ -36,7 +37,7 @@ class RdDecoder():
                 The result of the rd_checksum decoder. This is reset by the
                 parser.
             '''
-    def __init__(self, output: RdaEmitter):
+    def __init__(self, output: RpaEmitter):
         self.out = output
         self.accumulating = False
         self.format: str = ''
@@ -364,7 +365,7 @@ class RdParser():
                         checksum.
         verbose         The method to call when emitting verbose messages.
     '''
-    def __init__(self, output: RdaEmitter):
+    def __init__(self, output: RpaEmitter):
         '''Initialize the parsing state machine.
 
         Parameters:
@@ -385,16 +386,18 @@ class RdParser():
         self.last_sub_command = None
         self.reply_command = None
         self.reply_sub_command = None
+        self.mt_values = []
         self.mt_address_msb = None
         self.mt_address_lsb = None
         self.param_list = None
         self.which_param = None
-        self.parameters = []
+        self.cmd_values = []
         self.command_bytes = []
         self.param_bytes = []
         self.host_bytes: bytearray = bytearray([])
         self.controller_bytes: bytearray = bytearray([])
         self.decoder = RdDecoder(output)
+        self.label = ''
         self.decoded = ''
         self.file_checksum = 0
         self.checksum_enabled = False
@@ -407,6 +410,7 @@ class RdParser():
         self._transition = None
         self._enter_state('sync')   # Setup the sync state.
         self._transition()
+        self.plot = rpa_plotter.RpaPlotter(self.out)
 
     def _format_decoded(self, message: str, param=None):
         '''Accumulate decoded messages one by one.
@@ -488,7 +492,7 @@ class RdParser():
         self.out.info('Next command...')
         self.last_sub_command = self.sub_command
         self.sub_command = None
-        self.parameters = []
+        self.cmd_values = []
         self.command_bytes = []
         self.param_bytes = []
         self._ct = rdap.CT
@@ -608,6 +612,7 @@ class RdParser():
         if self.is_reply:
             _r = self.decoder.step(datum)
             if _r is not None:
+                self.mt_values.append(self.decoder.value)
                 # Parameter has been decoded.
                 self.out.verbose(
                     f'Decoded reply parameter {self.which_param}={_r}.')
@@ -615,6 +620,10 @@ class RdParser():
                 # Advance to the next parameter.
                 _next = self.which_param + 1
                 if _next >= len(self.param_list):
+                    self.plot.mt_update(
+                        self.mt_address_msb,
+                        self.mt_address_lsb,
+                        self.mt_values)
                     self.out.verbose('Reply decoded.')
                     self._enter_state('expect_command')
                     return self.decoded
@@ -646,6 +655,7 @@ class RdParser():
             self.decoder.prime(_reply[1], length=self.remaining)
         else:
             self.decoder.prime(_reply[1])
+        self.mt_values = []
     #----
 
     #++++
@@ -695,7 +705,7 @@ class RdParser():
             if self._h_is_known_command(datum):
                 if type(self._ct[datum]) is tuple:
                     self.reply_sub_command = datum
-                    self.decoded = self._ct[datum][0]
+                    self.decoded = self.label = self._ct[datum][0]
                     self._enter_state('mt_address_msb')
                 else:
                     self.out.protocol(
@@ -840,7 +850,13 @@ class RdParser():
                     else:
                         # Advance to the next parameter.
                         _next = self.which_param + 1
+                        self.cmd_values.append(self.decoder.value)
                         if _next >= len(self.param_list):
+                            self.plot.cmd_update(
+                                f'{self.command_number}:{self.label}',
+                                self.command,
+                                self.sub_command,
+                                self.cmd_values)
                             self.out.verbose('Parameters decoded.')
                             self._enter_state('expect_command')
                             return self.decoded
@@ -856,6 +872,7 @@ class RdParser():
         if 'mt' in self.param_list:
             self._enter_state('mt_command')
             return
+        self.cmd_values = []
         self._h_check_for_reply()
     #----
 
@@ -902,7 +919,7 @@ class RdParser():
                         self._disable_checksum()
                     _t = type(self._ct[datum])
                     if _t is str:
-                        self.decoded = self._ct[datum]
+                        self.decoded = self.label = self._ct[datum]
                         self._enter_state('expect_command')
                         return self.decoded
                     elif _t is dict:
@@ -910,7 +927,7 @@ class RdParser():
                         self._enter_state('decode_option')
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
-                        self.decoded = self.param_list[0]
+                        self.decoded = self.label = self.param_list[0]
                         self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
@@ -955,7 +972,7 @@ class RdParser():
                         self._enable_checksum()
                     _t = type(self._ct[datum])
                     if _t is str:
-                        self.decoded = self._ct[datum]
+                        self.decoded = self.label = self._ct[datum]
                         if datum == rdap.EOF:
                             self._add_to_checksum(datum)
                             _i = self.decoder.checksum
@@ -977,7 +994,7 @@ class RdParser():
                         self._enter_state('expect_sub_command')
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
-                        self.decoded = self.param_list[0]
+                        self.decoded = self.label = self.param_list[0]
                         self._enter_state('decode_parameters')
                     else:
                         # This is a problem with the protocol table -- not the
@@ -1031,10 +1048,6 @@ class RdParser():
             is_reply    True when the byte is from a reply whether that be an
                         ACK/NAK or reply data.
             remaining   The number of bytes remaining in the current packet.
-
-        Returns:
-            The decoded command or reply.
-            None if more data is requires for current command or reply.
         """
         self.last = self.datum
         self.datum = datum
