@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Select a specific test case or problem for analysis.
+#
+# This changes the symbolic links in discovery to point to a specific
+# directory.
+# NOTE: It is assumed all file and directory names conform to the standard
+# described in discovery/README.md
+#
+# Parameters:
+#  1 The type (sub-directory name):
+#      tc  For test case.
+#      prb For problem.
+#      dev For current development.
+#  2 The case ID. The type is prepended to the ID to build a full name.
+#  3 The application used to generate the log file.
+#      mk  MeerK40t
+#      lb  LightBurn
+#      rdw REWorks
+log=$1/$1-$2/$1-$2-$3.log
+txt=$1/$1-$2/$1-$2-$3.txt
+echo $log
+if [ -e discovery/$log ]; then
+    echo Selecting: $log
+    ln -sf $log discovery/selected.log
+    ln -sf $txt discovery/selected.txt
+else
+    echo Log file $log does not exist.
+fi
