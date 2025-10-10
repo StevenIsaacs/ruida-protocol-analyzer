@@ -853,6 +853,7 @@ class RdParser():
                         self.cmd_values.append(self.decoder.value)
                         if _next >= len(self.param_list):
                             self.plot.cmd_update(
+                                self.command_number,
                                 f'{self.command_number}:{self.label}',
                                 self.command,
                                 self.sub_command,

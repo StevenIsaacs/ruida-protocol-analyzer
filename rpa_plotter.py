@@ -88,8 +88,8 @@ class RpaPlotter():
 
         self.plot = Sketch()
         self.lines = []
-        self.line_n = 0
-        self.last_line_n = 0
+        self.line_z = 0
+        self.last_line_z = 0
         self.bed = None
 
         self.bed_xy = {'X': 0, 'Y': 0} # Set by bed_xy_x and bed_xy_y.
@@ -135,13 +135,15 @@ class RpaPlotter():
         When stepping is enabled the plot is re-displayed when a line is
         added. Show is called with wait enabled.
         '''
-        self._enable_stepping = enable
+        self._stepping_enabled = enable
 
     def _stepping(self):
         return  (
             self._stepping_enabled and (
-                self._stepping_cmd_id > 0 and
-                self.cmd_label >= self._stepping_cmd_id
+                self._stepping_cmd_id == 0 or (
+                    self._stepping_cmd_id > 0 and
+                    self.cmd_id >= self._stepping_cmd_id
+                )
             )
         )
 
@@ -209,8 +211,8 @@ class RpaPlotter():
         self.x = x
         self._last_y = self.y
         self.y = y
-        self.last_line_n = self.line_n
-        self.line_n += 0.1
+        self.last_line_z = self.line_z
+        self.line_z += 0.00001 # OCP Viewer complains if equal to 0.0.
         # Get the color.
         if cut:
             _c = self.color
@@ -218,15 +220,16 @@ class RpaPlotter():
             _c = Color(0.8, 0.8, 0.8)
         # Draw the line from the previous head position.
         # TODO: How to change line color.
-        _start = Vector(self._last_x, self._last_y, self.last_line_n)
-        _end = Vector(x, y, self.line_n)
+        _start = Vector(self._last_x, self._last_y, self.last_line_z)
+        _end = Vector(x, y, self.line_z)
         _line = Line(_start, _end)
         self.lines.append(_line)
         _line.color = _c
         _line.label = self.cmd_label
         self.plot += _line
         if self._stepping():
-            show(self.lines)
+            show(_line)
+            self.out.pause(f'Line: {_line.label}')
         # show(self.plot)
         self._moved = True
 
@@ -437,7 +440,7 @@ class RpaPlotter():
         },
     }
 
-    def cmd_update(self, label, cmd, sub_cmd, values: list):
+    def cmd_update(self, id, label, cmd, sub_cmd, values: list):
         '''Update the plot depending upon the command.
 
         Parameters:
@@ -449,6 +452,7 @@ class RpaPlotter():
         if self._enabled and cmd in self._ct:
             if sub_cmd is not None:
                 if sub_cmd in self._ct[cmd]:
+                    self.cmd_id = id
                     self.cmd_label = label
                     getattr(self, self._ct[cmd][sub_cmd])(values)
             else:
