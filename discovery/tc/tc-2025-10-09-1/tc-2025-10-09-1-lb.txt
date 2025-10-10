@@ -1,0 +1,2185 @@
+
+0000:000000:000:vrb:Entering state: sync
+0000:000001:001:INT:---:Next command...
+0000:000001:002:vrb:Checksum: disabled
+0000:000001:003:vrb:Resetting input stream.
+0001:000001:004:PRT:RDR:---:Interval:0.006378S
+0002:000001:005:PRT:RDR:---:Interval:0.000069S
+0002:000001:006:vrb:Detected magic: 0x88
+0002:000001:007:vrb:Resetting input stream.
+0001:000001:008:PRT:RDR:---:Interval:0.006378S
+0001:000001:009:PRT:raw:-->:
+0.006378380	40200,50200	14	0261d4890df7
+
+0001:000001:010:PRT:raw:-->:
+da00057e
+0001:000001:011:PRT:RDR:-->:SHK:001:Expecting ACK
+0001:000001:012:vrb:Forwarding 0xDA to state expect_command
+0001:000001:013:vrb:Exiting state: sync
+0001:000001:014:vrb:Entering state: expect_command
+0001:000001:015:vrb:Exiting state: expect_command
+0001:000001:016:vrb:Entering state: expect_sub_command
+0001:000001:017:vrb:Exiting state: expect_sub_command
+0001:000001:018:vrb:Entering state: decode_parameters
+0001:000001:019:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0001:000001:020:vrb:Decoding parameter 1.
+0001:000001:021:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0001:000001:022:vrb:Exiting state: decode_parameters
+0001:000001:023:vrb:Entering state: mt_command
+0001:000001:024:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0001:000001:025:vrb:-->:da00057e SUM=349
+0001:000001:026:vrb:<--: SUM=0
+0002:000001:027:PRT:RDR:-->:Interval:0.000069S
+0002:000001:028:PRT:raw:<--:
+0.000068902	50200,40200	9	c6
+
+0002:000001:029:PRT:raw:<--:
+cc
+0002:000001:030:PRT:RDR:<--:SHK:000:ACK
+0003:000001:031:PRT:RDR:<--:Interval:0.000047S
+0003:000001:032:PRT:raw:<--:
+0.000047454	50200,40200	17	d4090df78fa149c399
+
+0003:000001:033:PRT:raw:<--:
+da01057e0628414a10
+0003:000001:034:PRT:RDR:<--:SHK:000:Reply data
+0003:000001:035:vrb:Exiting state: mt_command
+0003:000001:036:vrb:Entering state: mt_sub_command
+0003:000001:037:vrb:Exiting state: mt_sub_command
+0003:000001:038:vrb:Entering state: mt_address_msb
+0003:000001:039:vrb:Exiting state: mt_address_msb
+0003:000001:040:vrb:Entering state: mt_address_lsb
+0003:000001:041:vrb:Exiting state: mt_address_lsb
+0003:000001:042:vrb:Entering state: mt_decode_reply
+0003:000001:043:vrb:Memory reference: 057E
+0003:000001:044:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0003:000001:045:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0003:000001:046:vrb:Reply decoded.
+0003:000001:047:vrb:Exiting state: mt_decode_reply
+0003:000001:048:vrb:Entering state: expect_command
+0003:000001:049:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0003:000001:050:vrb:-->: SUM=0
+0003:000001:051:vrb:<--:da01057e0628414a10 SUM=551
+0003:000002:001:INT:---:Next command...
+0003:000002:002:vrb:Checksum: disabled
+0004:000002:003:PRT:RDR:<--:Interval:0.000944S
+0004:000002:004:PRT:raw:-->:
+0.000944028	40200,50200	14	0261d4890df7
+
+0004:000002:005:PRT:raw:-->:
+da00057e
+0004:000002:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0004:000002:007:vrb:Exiting state: expect_command
+0004:000002:008:vrb:Entering state: expect_sub_command
+0004:000002:009:vrb:Exiting state: expect_sub_command
+0004:000002:010:vrb:Entering state: decode_parameters
+0004:000002:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0004:000002:012:vrb:Decoding parameter 1.
+0004:000002:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0004:000002:014:vrb:Exiting state: decode_parameters
+0004:000002:015:vrb:Entering state: mt_command
+0004:000002:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0004:000002:017:vrb:-->:da00057e SUM=349
+0004:000002:018:vrb:<--: SUM=0
+0005:000002:019:PRT:RDR:-->:Interval:0.000124S
+0005:000002:020:PRT:raw:<--:
+0.000123857	50200,40200	9	c6
+
+0005:000002:021:PRT:raw:<--:
+cc
+0005:000002:022:PRT:RDR:<--:SHK:000:ACK
+0006:000002:023:PRT:RDR:<--:Interval:0.000078S
+0006:000002:024:PRT:raw:<--:
+0.000077680	50200,40200	17	d4090df78fa149c399
+
+0006:000002:025:PRT:raw:<--:
+da01057e0628414a10
+0006:000002:026:PRT:RDR:<--:SHK:000:Reply data
+0006:000002:027:vrb:Exiting state: mt_command
+0006:000002:028:vrb:Entering state: mt_sub_command
+0006:000002:029:vrb:Exiting state: mt_sub_command
+0006:000002:030:vrb:Entering state: mt_address_msb
+0006:000002:031:vrb:Exiting state: mt_address_msb
+0006:000002:032:vrb:Entering state: mt_address_lsb
+0006:000002:033:vrb:Exiting state: mt_address_lsb
+0006:000002:034:vrb:Entering state: mt_decode_reply
+0006:000002:035:vrb:Memory reference: 057E
+0006:000002:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0006:000002:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0006:000002:038:vrb:Reply decoded.
+0006:000002:039:vrb:Exiting state: mt_decode_reply
+0006:000002:040:vrb:Entering state: expect_command
+0006:000002:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0006:000002:042:vrb:-->: SUM=0
+0006:000002:043:vrb:<--:da01057e0628414a10 SUM=551
+0006:000003:001:INT:---:Next command...
+0006:000003:002:vrb:Checksum: disabled
+0007:000003:003:PRT:RDR:<--:Interval:0.000942S
+0007:000003:004:PRT:raw:-->:
+0.000941966	40200,50200	14	0273d489898d
+
+0007:000003:005:PRT:raw:-->:
+da000004
+0007:000003:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0007:000003:007:vrb:Exiting state: expect_command
+0007:000003:008:vrb:Entering state: expect_sub_command
+0007:000003:009:vrb:Exiting state: expect_sub_command
+0007:000003:010:vrb:Entering state: decode_parameters
+0007:000003:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0007:000003:012:vrb:Decoding parameter 1.
+0007:000003:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0007:000003:014:vrb:Exiting state: decode_parameters
+0007:000003:015:vrb:Entering state: mt_command
+0007:000003:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0007:000003:017:vrb:-->:da000004 SUM=222
+0007:000003:018:vrb:<--: SUM=0
+0008:000003:019:PRT:RDR:-->:Interval:0.000130S
+0008:000003:020:PRT:raw:<--:
+0.000130014	50200,40200	9	c6
+
+0008:000003:021:PRT:raw:<--:
+cc
+0008:000003:022:PRT:RDR:<--:SHK:000:ACK
+0009:000003:023:PRT:RDR:<--:Interval:0.000251S
+0009:000003:024:PRT:raw:<--:
+0.000251119	50200,40200	17	d409898d8989898929
+
+0009:000003:025:PRT:raw:<--:
+da0100040000000021
+0009:000003:026:PRT:RDR:<--:SHK:000:Reply data
+0009:000003:027:vrb:Exiting state: mt_command
+0009:000003:028:vrb:Entering state: mt_sub_command
+0009:000003:029:vrb:Exiting state: mt_sub_command
+0009:000003:030:vrb:Entering state: mt_address_msb
+0009:000003:031:vrb:Exiting state: mt_address_msb
+0009:000003:032:vrb:Entering state: mt_address_lsb
+0009:000003:033:vrb:Exiting state: mt_address_lsb
+0009:000003:034:vrb:Entering state: mt_decode_reply
+0009:000003:035:vrb:Memory reference: 0004
+0009:000003:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0009:000003:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0009:000003:038:vrb:Reply decoded.
+0009:000003:039:vrb:Exiting state: mt_decode_reply
+0009:000003:040:vrb:Entering state: expect_command
+0009:000003:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0009:000003:042:vrb:-->: SUM=0
+0009:000003:043:vrb:<--:da0100040000000021 SUM=256
+0009:000004:001:INT:---:Next command...
+0009:000004:002:vrb:Checksum: disabled
+0010:000004:003:PRT:RDR:<--:Interval:0.000759S
+0010:000004:004:PRT:raw:-->:
+0.000758572	40200,50200	14	0273d489898d
+
+0010:000004:005:PRT:raw:-->:
+da000004
+0010:000004:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0010:000004:007:vrb:Exiting state: expect_command
+0010:000004:008:vrb:Entering state: expect_sub_command
+0010:000004:009:vrb:Exiting state: expect_sub_command
+0010:000004:010:vrb:Entering state: decode_parameters
+0010:000004:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0010:000004:012:vrb:Decoding parameter 1.
+0010:000004:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0010:000004:014:vrb:Exiting state: decode_parameters
+0010:000004:015:vrb:Entering state: mt_command
+0010:000004:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0010:000004:017:vrb:-->:da000004 SUM=222
+0010:000004:018:vrb:<--: SUM=0
+0011:000004:019:PRT:RDR:-->:Interval:0.000111S
+0011:000004:020:PRT:raw:<--:
+0.000111102	50200,40200	9	c6
+
+0011:000004:021:PRT:raw:<--:
+cc
+0011:000004:022:PRT:RDR:<--:SHK:000:ACK
+0012:000004:023:PRT:RDR:<--:Interval:0.000248S
+0012:000004:024:PRT:raw:<--:
+0.000248126	50200,40200	17	d409898d8989898929
+
+0012:000004:025:PRT:raw:<--:
+da0100040000000021
+0012:000004:026:PRT:RDR:<--:SHK:000:Reply data
+0012:000004:027:vrb:Exiting state: mt_command
+0012:000004:028:vrb:Entering state: mt_sub_command
+0012:000004:029:vrb:Exiting state: mt_sub_command
+0012:000004:030:vrb:Entering state: mt_address_msb
+0012:000004:031:vrb:Exiting state: mt_address_msb
+0012:000004:032:vrb:Entering state: mt_address_lsb
+0012:000004:033:vrb:Exiting state: mt_address_lsb
+0012:000004:034:vrb:Entering state: mt_decode_reply
+0012:000004:035:vrb:Memory reference: 0004
+0012:000004:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0012:000004:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0012:000004:038:vrb:Reply decoded.
+0012:000004:039:vrb:Exiting state: mt_decode_reply
+0012:000004:040:vrb:Entering state: expect_command
+0012:000004:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0012:000004:042:vrb:-->: SUM=0
+0012:000004:043:vrb:<--:da0100040000000021 SUM=256
+0012:000005:001:INT:---:Next command...
+0012:000005:002:vrb:Checksum: disabled
+0013:000005:003:PRT:RDR:<--:Interval:0.000773S
+0013:000005:004:PRT:raw:-->:
+0.000773481	40200,50200	14	0213d4898d29
+
+0013:000005:005:PRT:raw:-->:
+da000421
+0013:000005:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0013:000005:007:vrb:Exiting state: expect_command
+0013:000005:008:vrb:Entering state: expect_sub_command
+0013:000005:009:vrb:Exiting state: expect_sub_command
+0013:000005:010:vrb:Entering state: decode_parameters
+0013:000005:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0013:000005:012:vrb:Decoding parameter 1.
+0013:000005:013:vrb:Decoded parameter 1=Addr:0421:Axis Preferred Position 1.
+0013:000005:014:vrb:Exiting state: decode_parameters
+0013:000005:015:vrb:Entering state: mt_command
+0013:000005:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0421:Axis Preferred Position 1
+
+0013:000005:017:vrb:-->:da000421 SUM=255
+0013:000005:018:vrb:<--: SUM=0
+0014:000005:019:PRT:RDR:-->:Interval:0.000157S
+0014:000005:020:PRT:raw:<--:
+0.000157189	50200,40200	9	c6
+
+0014:000005:021:PRT:raw:<--:
+cc
+0014:000005:022:PRT:RDR:<--:SHK:000:ACK
+0015:000005:023:PRT:RDR:<--:Interval:0.000035S
+0015:000005:024:PRT:raw:<--:
+0.000035110	50200,40200	17	d4098d298989898989
+
+0015:000005:025:PRT:raw:<--:
+da0104210000000000
+0015:000005:026:PRT:RDR:<--:SHK:000:Reply data
+0015:000005:027:vrb:Exiting state: mt_command
+0015:000005:028:vrb:Entering state: mt_sub_command
+0015:000005:029:vrb:Exiting state: mt_sub_command
+0015:000005:030:vrb:Entering state: mt_address_msb
+0015:000005:031:vrb:Exiting state: mt_address_msb
+0015:000005:032:vrb:Entering state: mt_address_lsb
+0015:000005:033:vrb:Exiting state: mt_address_lsb
+0015:000005:034:vrb:Entering state: mt_decode_reply
+0015:000005:035:vrb:Memory reference: 0421
+0015:000005:036:vrb:Priming: ('\nTBD:{0:035b}b: 0x{0:08x}: {0}', 'tbd', 'tbd')
+0016:000005:037:PRT:RDR:<--:Interval:0.000985S
+0016:000005:038:PRT:raw:-->:
+0.000984786	40200,50200	14	0223d4898d39
+
+0016:000005:039:PRT:raw:-->:
+da000431
+0016:000005:040:PRT:RDR:-->:SHK:001:Expecting ACK
+0016:000005:041:PRT:ERR:-->:Packet from host when decoding reply data.
+0016:000005:042:vrb:Forwarding 0xDA to state sync
+0016:000005:043:vrb:Exiting state: mt_decode_reply
+0016:000005:044:vrb:Entering state: sync
+0016:000005:045:PRT:PRS:-->:T=0001 R=0003 SUM=00000000:
+GET_SETTING Addr:0421:Axis Preferred Position 1:
+TBD:00000000000000000000000000000000000b: 0x00000000: 0
+
+0016:000005:046:vrb:-->:da SUM=218
+0016:000005:047:vrb:<--:da0104210000000000 SUM=256
+0016:000006:001:INT:---:Next command...
+0016:000006:002:vrb:Checksum: disabled
+0017:000006:003:PRT:RDR:-->:Interval:0.000207S
+0017:000006:004:PRT:raw:<--:
+0.000206557	50200,40200	9	c6
+
+0017:000006:005:PRT:raw:<--:
+cc
+0017:000006:006:PRT:RDR:<--:SHK:000:ACK
+0018:000006:007:PRT:RDR:<--:Interval:0.000000S
+0018:000006:008:PRT:raw:<--:
+0.000000187	50200,40200	17	d4098d398989898989
+
+0018:000006:009:PRT:raw:<--:
+da0104310000000000
+0018:000006:010:PRT:RDR:<--:SHK:000:Reply data
+0019:000006:011:PRT:RDR:<--:Interval:0.000901S
+0019:000006:012:PRT:raw:-->:
+0.000900676	40200,50200	14	0233d4898d49
+
+0019:000006:013:PRT:raw:-->:
+da000441
+0019:000006:014:PRT:RDR:-->:SHK:001:Expecting ACK
+0019:000006:015:vrb:Forwarding 0xDA to state expect_command
+0019:000006:016:vrb:Exiting state: sync
+0019:000006:017:vrb:Entering state: expect_command
+0019:000006:018:vrb:Exiting state: expect_command
+0019:000006:019:vrb:Entering state: expect_sub_command
+0019:000006:020:vrb:Exiting state: expect_sub_command
+0019:000006:021:vrb:Entering state: decode_parameters
+0019:000006:022:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0019:000006:023:vrb:Decoding parameter 1.
+0019:000006:024:vrb:Decoded parameter 1=Addr:0441:Axis Preferred Position 3.
+0019:000006:025:vrb:Exiting state: decode_parameters
+0019:000006:026:vrb:Entering state: mt_command
+0019:000006:027:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0441:Axis Preferred Position 3
+
+0019:000006:028:vrb:-->:000431da000441 SUM=340
+0019:000006:029:vrb:<--:da0104310000000000 SUM=272
+0020:000006:030:PRT:RDR:-->:Interval:0.000136S
+0020:000006:031:PRT:raw:<--:
+0.000136255	50200,40200	9	c6
+
+0020:000006:032:PRT:raw:<--:
+cc
+0020:000006:033:PRT:RDR:<--:SHK:000:ACK
+0021:000006:034:PRT:RDR:<--:Interval:0.000046S
+0021:000006:035:PRT:raw:<--:
+0.000046007	50200,40200	17	d4098d4989093f05c9
+
+0021:000006:036:PRT:raw:<--:
+da0104410001370d40
+0021:000006:037:PRT:RDR:<--:SHK:000:Reply data
+0021:000006:038:vrb:Exiting state: mt_command
+0021:000006:039:vrb:Entering state: mt_sub_command
+0021:000006:040:vrb:Exiting state: mt_sub_command
+0021:000006:041:vrb:Entering state: mt_address_msb
+0021:000006:042:vrb:Exiting state: mt_address_msb
+0021:000006:043:vrb:Entering state: mt_address_lsb
+0021:000006:044:vrb:Exiting state: mt_address_lsb
+0021:000006:045:vrb:Entering state: mt_decode_reply
+0021:000006:046:vrb:Memory reference: 0441
+0021:000006:047:vrb:Priming: ('\nTBD:{0:035b}b: 0x{0:08x}: {0}', 'tbd', 'tbd')
+0022:000006:048:PRT:RDR:<--:Interval:0.000994S
+0022:000006:049:PRT:raw:-->:
+0.000994023	40200,50200	14	0243d4898d59
+
+0022:000006:050:PRT:raw:-->:
+da000451
+0022:000006:051:PRT:RDR:-->:SHK:001:Expecting ACK
+0022:000006:052:PRT:ERR:-->:Packet from host when decoding reply data.
+0022:000006:053:vrb:Forwarding 0xDA to state sync
+0022:000006:054:vrb:Exiting state: mt_decode_reply
+0022:000006:055:vrb:Entering state: sync
+0022:000006:056:PRT:PRS:-->:T=0001 R=0003 SUM=00000000:
+GET_SETTING Addr:0441:Axis Preferred Position 3:
+TBD:00000000000001011011100011011000000b: 0x002dc6c0: 3000000
+
+0022:000006:057:vrb:-->:da SUM=218
+0022:000006:058:vrb:<--:da0104410001370d40 SUM=421
+0022:000007:001:INT:---:Next command...
+0022:000007:002:vrb:Checksum: disabled
+0023:000007:003:PRT:RDR:-->:Interval:0.000199S
+0023:000007:004:PRT:raw:<--:
+0.000198834	50200,40200	9	c6
+
+0023:000007:005:PRT:raw:<--:
+cc
+0023:000007:006:PRT:RDR:<--:SHK:000:ACK
+0024:000007:007:PRT:RDR:<--:Interval:0.000000S
+0024:000007:008:PRT:raw:<--:
+0.000000182	50200,40200	17	d4098d59898deb2589
+
+0024:000007:009:PRT:raw:<--:
+da0104510004622d00
+0024:000007:010:PRT:RDR:<--:SHK:000:Reply data
+0025:000007:011:PRT:RDR:<--:Interval:0.020110S
+0025:000007:012:PRT:raw:-->:
+0.020109577	40200,50200	14	0261d4890df7
+
+0025:000007:013:PRT:raw:-->:
+da00057e
+0025:000007:014:PRT:RDR:-->:SHK:001:Expecting ACK
+0025:000007:015:vrb:Forwarding 0xDA to state expect_command
+0025:000007:016:vrb:Exiting state: sync
+0025:000007:017:vrb:Entering state: expect_command
+0025:000007:018:vrb:Exiting state: expect_command
+0025:000007:019:vrb:Entering state: expect_sub_command
+0025:000007:020:vrb:Exiting state: expect_sub_command
+0025:000007:021:vrb:Entering state: decode_parameters
+0025:000007:022:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0025:000007:023:vrb:Decoding parameter 1.
+0025:000007:024:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0025:000007:025:vrb:Exiting state: decode_parameters
+0025:000007:026:vrb:Entering state: mt_command
+0025:000007:027:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0025:000007:028:vrb:-->:000451da00057e SUM=434
+0025:000007:029:vrb:<--:da0104510004622d00 SUM=451
+0026:000007:030:PRT:RDR:-->:Interval:0.000169S
+0026:000007:031:PRT:raw:<--:
+0.000169034	50200,40200	9	c6
+
+0026:000007:032:PRT:raw:<--:
+cc
+0026:000007:033:PRT:RDR:<--:SHK:000:ACK
+0027:000007:034:PRT:RDR:<--:Interval:0.000070S
+0027:000007:035:PRT:raw:<--:
+0.000069875	50200,40200	17	d4090df78fa149c399
+
+0027:000007:036:PRT:raw:<--:
+da01057e0628414a10
+0027:000007:037:PRT:RDR:<--:SHK:000:Reply data
+0027:000007:038:vrb:Exiting state: mt_command
+0027:000007:039:vrb:Entering state: mt_sub_command
+0027:000007:040:vrb:Exiting state: mt_sub_command
+0027:000007:041:vrb:Entering state: mt_address_msb
+0027:000007:042:vrb:Exiting state: mt_address_msb
+0027:000007:043:vrb:Entering state: mt_address_lsb
+0027:000007:044:vrb:Exiting state: mt_address_lsb
+0027:000007:045:vrb:Entering state: mt_decode_reply
+0027:000007:046:vrb:Memory reference: 057E
+0027:000007:047:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0027:000007:048:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0027:000007:049:vrb:Reply decoded.
+0027:000007:050:vrb:Exiting state: mt_decode_reply
+0027:000007:051:vrb:Entering state: expect_command
+0027:000007:052:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0027:000007:053:vrb:-->: SUM=0
+0027:000007:054:vrb:<--:da01057e0628414a10 SUM=551
+0027:000008:001:INT:---:Next command...
+0027:000008:002:vrb:Checksum: disabled
+0028:000008:003:PRT:RDR:<--:Interval:0.000949S
+0028:000008:004:PRT:raw:-->:
+0.000949047	40200,50200	14	0261d4890df7
+
+0028:000008:005:PRT:raw:-->:
+da00057e
+0028:000008:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0028:000008:007:vrb:Exiting state: expect_command
+0028:000008:008:vrb:Entering state: expect_sub_command
+0028:000008:009:vrb:Exiting state: expect_sub_command
+0028:000008:010:vrb:Entering state: decode_parameters
+0028:000008:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0028:000008:012:vrb:Decoding parameter 1.
+0028:000008:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0028:000008:014:vrb:Exiting state: decode_parameters
+0028:000008:015:vrb:Entering state: mt_command
+0028:000008:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0028:000008:017:vrb:-->:da00057e SUM=349
+0028:000008:018:vrb:<--: SUM=0
+0029:000008:019:PRT:RDR:-->:Interval:0.000148S
+0029:000008:020:PRT:raw:<--:
+0.000148397	50200,40200	9	c6
+
+0029:000008:021:PRT:raw:<--:
+cc
+0029:000008:022:PRT:RDR:<--:SHK:000:ACK
+0030:000008:023:PRT:RDR:<--:Interval:0.000054S
+0030:000008:024:PRT:raw:<--:
+0.000053778	50200,40200	17	d4090df78fa149c399
+
+0030:000008:025:PRT:raw:<--:
+da01057e0628414a10
+0030:000008:026:PRT:RDR:<--:SHK:000:Reply data
+0030:000008:027:vrb:Exiting state: mt_command
+0030:000008:028:vrb:Entering state: mt_sub_command
+0030:000008:029:vrb:Exiting state: mt_sub_command
+0030:000008:030:vrb:Entering state: mt_address_msb
+0030:000008:031:vrb:Exiting state: mt_address_msb
+0030:000008:032:vrb:Entering state: mt_address_lsb
+0030:000008:033:vrb:Exiting state: mt_address_lsb
+0030:000008:034:vrb:Entering state: mt_decode_reply
+0030:000008:035:vrb:Memory reference: 057E
+0030:000008:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0030:000008:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0030:000008:038:vrb:Reply decoded.
+0030:000008:039:vrb:Exiting state: mt_decode_reply
+0030:000008:040:vrb:Entering state: expect_command
+0030:000008:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0030:000008:042:vrb:-->: SUM=0
+0030:000008:043:vrb:<--:da01057e0628414a10 SUM=551
+0030:000009:001:INT:---:Next command...
+0030:000009:002:vrb:Checksum: disabled
+0031:000009:003:PRT:RDR:<--:Interval:0.001036S
+0031:000009:004:PRT:raw:-->:
+0.001035914	40200,50200	14	0273d489898d
+
+0031:000009:005:PRT:raw:-->:
+da000004
+0031:000009:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0031:000009:007:vrb:Exiting state: expect_command
+0031:000009:008:vrb:Entering state: expect_sub_command
+0031:000009:009:vrb:Exiting state: expect_sub_command
+0031:000009:010:vrb:Entering state: decode_parameters
+0031:000009:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0031:000009:012:vrb:Decoding parameter 1.
+0031:000009:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0031:000009:014:vrb:Exiting state: decode_parameters
+0031:000009:015:vrb:Entering state: mt_command
+0031:000009:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0031:000009:017:vrb:-->:da000004 SUM=222
+0031:000009:018:vrb:<--: SUM=0
+0032:000009:019:PRT:RDR:-->:Interval:0.000110S
+0032:000009:020:PRT:raw:<--:
+0.000110124	50200,40200	9	c6
+
+0032:000009:021:PRT:raw:<--:
+cc
+0032:000009:022:PRT:RDR:<--:SHK:000:ACK
+0033:000009:023:PRT:RDR:<--:Interval:0.000249S
+0033:000009:024:PRT:raw:<--:
+0.000248780	50200,40200	17	d409898d8989898929
+
+0033:000009:025:PRT:raw:<--:
+da0100040000000021
+0033:000009:026:PRT:RDR:<--:SHK:000:Reply data
+0033:000009:027:vrb:Exiting state: mt_command
+0033:000009:028:vrb:Entering state: mt_sub_command
+0033:000009:029:vrb:Exiting state: mt_sub_command
+0033:000009:030:vrb:Entering state: mt_address_msb
+0033:000009:031:vrb:Exiting state: mt_address_msb
+0033:000009:032:vrb:Entering state: mt_address_lsb
+0033:000009:033:vrb:Exiting state: mt_address_lsb
+0033:000009:034:vrb:Entering state: mt_decode_reply
+0033:000009:035:vrb:Memory reference: 0004
+0033:000009:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0033:000009:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0033:000009:038:vrb:Reply decoded.
+0033:000009:039:vrb:Exiting state: mt_decode_reply
+0033:000009:040:vrb:Entering state: expect_command
+0033:000009:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0033:000009:042:vrb:-->: SUM=0
+0033:000009:043:vrb:<--:da0100040000000021 SUM=256
+0033:000010:001:INT:---:Next command...
+0033:000010:002:vrb:Checksum: disabled
+0034:000010:003:PRT:RDR:<--:Interval:0.000877S
+0034:000010:004:PRT:raw:-->:
+0.000876707	40200,50200	14	0273d489898d
+
+0034:000010:005:PRT:raw:-->:
+da000004
+0034:000010:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0034:000010:007:vrb:Exiting state: expect_command
+0034:000010:008:vrb:Entering state: expect_sub_command
+0034:000010:009:vrb:Exiting state: expect_sub_command
+0034:000010:010:vrb:Entering state: decode_parameters
+0034:000010:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0034:000010:012:vrb:Decoding parameter 1.
+0034:000010:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0034:000010:014:vrb:Exiting state: decode_parameters
+0034:000010:015:vrb:Entering state: mt_command
+0034:000010:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0034:000010:017:vrb:-->:da000004 SUM=222
+0034:000010:018:vrb:<--: SUM=0
+0035:000010:019:PRT:RDR:-->:Interval:0.000101S
+0035:000010:020:PRT:raw:<--:
+0.000100704	50200,40200	9	c6
+
+0035:000010:021:PRT:raw:<--:
+cc
+0035:000010:022:PRT:RDR:<--:SHK:000:ACK
+0036:000010:023:PRT:RDR:<--:Interval:0.000287S
+0036:000010:024:PRT:raw:<--:
+0.000287093	50200,40200	17	d409898d8989898929
+
+0036:000010:025:PRT:raw:<--:
+da0100040000000021
+0036:000010:026:PRT:RDR:<--:SHK:000:Reply data
+0036:000010:027:vrb:Exiting state: mt_command
+0036:000010:028:vrb:Entering state: mt_sub_command
+0036:000010:029:vrb:Exiting state: mt_sub_command
+0036:000010:030:vrb:Entering state: mt_address_msb
+0036:000010:031:vrb:Exiting state: mt_address_msb
+0036:000010:032:vrb:Entering state: mt_address_lsb
+0036:000010:033:vrb:Exiting state: mt_address_lsb
+0036:000010:034:vrb:Entering state: mt_decode_reply
+0036:000010:035:vrb:Memory reference: 0004
+0036:000010:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0036:000010:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0036:000010:038:vrb:Reply decoded.
+0036:000010:039:vrb:Exiting state: mt_decode_reply
+0036:000010:040:vrb:Entering state: expect_command
+0036:000010:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0036:000010:042:vrb:-->: SUM=0
+0036:000010:043:vrb:<--:da0100040000000021 SUM=256
+0036:000011:001:INT:---:Next command...
+0036:000011:002:vrb:Checksum: disabled
+0037:000011:003:PRT:RDR:<--:Interval:0.000901S
+0037:000011:004:PRT:raw:-->:
+0.000900835	40200,50200	14	0261d4890df7
+
+0037:000011:005:PRT:raw:-->:
+da00057e
+0037:000011:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0037:000011:007:vrb:Exiting state: expect_command
+0037:000011:008:vrb:Entering state: expect_sub_command
+0037:000011:009:vrb:Exiting state: expect_sub_command
+0037:000011:010:vrb:Entering state: decode_parameters
+0037:000011:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0037:000011:012:vrb:Decoding parameter 1.
+0037:000011:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0037:000011:014:vrb:Exiting state: decode_parameters
+0037:000011:015:vrb:Entering state: mt_command
+0037:000011:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0037:000011:017:vrb:-->:da00057e SUM=349
+0037:000011:018:vrb:<--: SUM=0
+0038:000011:019:PRT:RDR:-->:Interval:0.000147S
+0038:000011:020:PRT:raw:<--:
+0.000146886	50200,40200	9	c6
+
+0038:000011:021:PRT:raw:<--:
+cc
+0038:000011:022:PRT:RDR:<--:SHK:000:ACK
+0039:000011:023:PRT:RDR:<--:Interval:0.000054S
+0039:000011:024:PRT:raw:<--:
+0.000054096	50200,40200	17	d4090df78fa149c399
+
+0039:000011:025:PRT:raw:<--:
+da01057e0628414a10
+0039:000011:026:PRT:RDR:<--:SHK:000:Reply data
+0039:000011:027:vrb:Exiting state: mt_command
+0039:000011:028:vrb:Entering state: mt_sub_command
+0039:000011:029:vrb:Exiting state: mt_sub_command
+0039:000011:030:vrb:Entering state: mt_address_msb
+0039:000011:031:vrb:Exiting state: mt_address_msb
+0039:000011:032:vrb:Entering state: mt_address_lsb
+0039:000011:033:vrb:Exiting state: mt_address_lsb
+0039:000011:034:vrb:Entering state: mt_decode_reply
+0039:000011:035:vrb:Memory reference: 057E
+0039:000011:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0039:000011:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0039:000011:038:vrb:Reply decoded.
+0039:000011:039:vrb:Exiting state: mt_decode_reply
+0039:000011:040:vrb:Entering state: expect_command
+0039:000011:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0039:000011:042:vrb:-->: SUM=0
+0039:000011:043:vrb:<--:da01057e0628414a10 SUM=551
+0039:000012:001:INT:---:Next command...
+0039:000012:002:vrb:Checksum: disabled
+0040:000012:003:PRT:RDR:<--:Interval:0.000981S
+0040:000012:004:PRT:raw:-->:
+0.000980917	40200,50200	14	0273d4898d89
+
+0040:000012:005:PRT:raw:-->:
+da000400
+0040:000012:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0040:000012:007:vrb:Exiting state: expect_command
+0040:000012:008:vrb:Entering state: expect_sub_command
+0040:000012:009:vrb:Exiting state: expect_sub_command
+0040:000012:010:vrb:Entering state: decode_parameters
+0040:000012:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0040:000012:012:vrb:Decoding parameter 1.
+0040:000012:013:vrb:Decoded parameter 1=Addr:0400:Machine Status (0b00110111 relevant bits)..
+0040:000012:014:vrb:Exiting state: decode_parameters
+0040:000012:015:vrb:Entering state: mt_command
+0040:000012:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0400:Machine Status (0b00110111 relevant bits).
+
+0040:000012:017:vrb:-->:da000400 SUM=222
+0040:000012:018:vrb:<--: SUM=0
+0041:000012:019:PRT:RDR:-->:Interval:0.000176S
+0041:000012:020:PRT:raw:<--:
+0.000176474	50200,40200	9	c6
+
+0041:000012:021:PRT:raw:<--:
+cc
+0041:000012:022:PRT:RDR:<--:SHK:000:ACK
+0042:000012:023:PRT:RDR:<--:Interval:0.000000S
+0042:000012:024:PRT:raw:<--:
+0.000000421	50200,40200	17	d4098d898989898989
+
+0042:000012:025:PRT:raw:<--:
+da0104000000000000
+0042:000012:026:PRT:RDR:<--:SHK:000:Reply data
+0042:000012:027:vrb:Exiting state: mt_command
+0042:000012:028:vrb:Entering state: mt_sub_command
+0042:000012:029:vrb:Exiting state: mt_sub_command
+0042:000012:030:vrb:Entering state: mt_address_msb
+0042:000012:031:vrb:Exiting state: mt_address_msb
+0042:000012:032:vrb:Entering state: mt_address_lsb
+0042:000012:033:vrb:Exiting state: mt_address_lsb
+0042:000012:034:vrb:Entering state: mt_decode_reply
+0042:000012:035:vrb:Memory reference: 0400
+0042:000012:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0042:000012:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000000000b: 0x00000000: 0.
+0042:000012:038:vrb:Reply decoded.
+0042:000012:039:vrb:Exiting state: mt_decode_reply
+0042:000012:040:vrb:Entering state: expect_command
+0042:000012:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0400:Machine Status (0b00110111 relevant bits).:Reply:
+TBDU35:00000000000000000000000000000000000b: 0x00000000: 0
+
+0042:000012:042:vrb:-->: SUM=0
+0042:000012:043:vrb:<--:da0104000000000000 SUM=223
+0042:000013:001:INT:---:Next command...
+0042:000013:002:vrb:Checksum: disabled
+0043:000013:003:PRT:RDR:<--:Interval:0.001062S
+0043:000013:004:PRT:raw:-->:
+0.001062101	40200,50200	14	0261d4890df7
+
+0043:000013:005:PRT:raw:-->:
+da00057e
+0043:000013:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0043:000013:007:vrb:Exiting state: expect_command
+0043:000013:008:vrb:Entering state: expect_sub_command
+0043:000013:009:vrb:Exiting state: expect_sub_command
+0043:000013:010:vrb:Entering state: decode_parameters
+0043:000013:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0043:000013:012:vrb:Decoding parameter 1.
+0043:000013:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0043:000013:014:vrb:Exiting state: decode_parameters
+0043:000013:015:vrb:Entering state: mt_command
+0043:000013:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0043:000013:017:vrb:-->:da00057e SUM=349
+0043:000013:018:vrb:<--: SUM=0
+0044:000013:019:PRT:RDR:-->:Interval:0.000142S
+0044:000013:020:PRT:raw:<--:
+0.000142204	50200,40200	9	c6
+
+0044:000013:021:PRT:raw:<--:
+cc
+0044:000013:022:PRT:RDR:<--:SHK:000:ACK
+0045:000013:023:PRT:RDR:<--:Interval:0.000054S
+0045:000013:024:PRT:raw:<--:
+0.000054301	50200,40200	17	d4090df78fa149c399
+
+0045:000013:025:PRT:raw:<--:
+da01057e0628414a10
+0045:000013:026:PRT:RDR:<--:SHK:000:Reply data
+0045:000013:027:vrb:Exiting state: mt_command
+0045:000013:028:vrb:Entering state: mt_sub_command
+0045:000013:029:vrb:Exiting state: mt_sub_command
+0045:000013:030:vrb:Entering state: mt_address_msb
+0045:000013:031:vrb:Exiting state: mt_address_msb
+0045:000013:032:vrb:Entering state: mt_address_lsb
+0045:000013:033:vrb:Exiting state: mt_address_lsb
+0045:000013:034:vrb:Entering state: mt_decode_reply
+0045:000013:035:vrb:Memory reference: 057E
+0045:000013:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0045:000013:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0045:000013:038:vrb:Reply decoded.
+0045:000013:039:vrb:Exiting state: mt_decode_reply
+0045:000013:040:vrb:Entering state: expect_command
+0045:000013:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0045:000013:042:vrb:-->: SUM=0
+0045:000013:043:vrb:<--:da01057e0628414a10 SUM=551
+0045:000014:001:INT:---:Next command...
+0045:000014:002:vrb:Checksum: disabled
+0046:000014:003:PRT:RDR:<--:Interval:0.001025S
+0046:000014:004:PRT:raw:-->:
+0.001024743	40200,50200	14	0261d4890df7
+
+0046:000014:005:PRT:raw:-->:
+da00057e
+0046:000014:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0046:000014:007:vrb:Exiting state: expect_command
+0046:000014:008:vrb:Entering state: expect_sub_command
+0046:000014:009:vrb:Exiting state: expect_sub_command
+0046:000014:010:vrb:Entering state: decode_parameters
+0046:000014:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0046:000014:012:vrb:Decoding parameter 1.
+0046:000014:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0046:000014:014:vrb:Exiting state: decode_parameters
+0046:000014:015:vrb:Entering state: mt_command
+0046:000014:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID
+
+0046:000014:017:vrb:-->:da00057e SUM=349
+0046:000014:018:vrb:<--: SUM=0
+0047:000014:019:PRT:RDR:-->:Interval:0.000113S
+0047:000014:020:PRT:raw:<--:
+0.000113233	50200,40200	9	c6
+
+0047:000014:021:PRT:raw:<--:
+cc
+0047:000014:022:PRT:RDR:<--:SHK:000:ACK
+0048:000014:023:PRT:RDR:<--:Interval:0.000054S
+0048:000014:024:PRT:raw:<--:
+0.000054258	50200,40200	17	d4090df78fa149c399
+
+0048:000014:025:PRT:raw:<--:
+da01057e0628414a10
+0048:000014:026:PRT:RDR:<--:SHK:000:Reply data
+0048:000014:027:vrb:Exiting state: mt_command
+0048:000014:028:vrb:Entering state: mt_sub_command
+0048:000014:029:vrb:Exiting state: mt_sub_command
+0048:000014:030:vrb:Entering state: mt_address_msb
+0048:000014:031:vrb:Exiting state: mt_address_msb
+0048:000014:032:vrb:Entering state: mt_address_lsb
+0048:000014:033:vrb:Exiting state: mt_address_lsb
+0048:000014:034:vrb:Entering state: mt_decode_reply
+0048:000014:035:vrb:Memory reference: 057E
+0048:000014:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0048:000014:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0048:000014:038:vrb:Reply decoded.
+0048:000014:039:vrb:Exiting state: mt_decode_reply
+0048:000014:040:vrb:Entering state: expect_command
+0048:000014:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0048:000014:042:vrb:-->: SUM=0
+0048:000014:043:vrb:<--:da01057e0628414a10 SUM=551
+0048:000015:001:INT:---:Next command...
+0048:000015:002:vrb:Checksum: disabled
+0049:000015:003:PRT:RDR:<--:Interval:0.001096S
+0049:000015:004:PRT:raw:-->:
+0.001095799	40200,50200	14	0273d489898d
+
+0049:000015:005:PRT:raw:-->:
+da000004
+0049:000015:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0049:000015:007:vrb:Exiting state: expect_command
+0049:000015:008:vrb:Entering state: expect_sub_command
+0049:000015:009:vrb:Exiting state: expect_sub_command
+0049:000015:010:vrb:Entering state: decode_parameters
+0049:000015:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0049:000015:012:vrb:Decoding parameter 1.
+0049:000015:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0049:000015:014:vrb:Exiting state: decode_parameters
+0049:000015:015:vrb:Entering state: mt_command
+0049:000015:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0049:000015:017:vrb:-->:da000004 SUM=222
+0049:000015:018:vrb:<--: SUM=0
+0050:000015:019:PRT:RDR:-->:Interval:0.000284S
+0050:000015:020:PRT:raw:<--:
+0.000284295	50200,40200	9	c6
+
+0050:000015:021:PRT:raw:<--:
+cc
+0050:000015:022:PRT:RDR:<--:SHK:000:ACK
+0051:000015:023:PRT:RDR:<--:Interval:0.000297S
+0051:000015:024:PRT:raw:<--:
+0.000296734	50200,40200	17	d409898d8989898929
+
+0051:000015:025:PRT:raw:<--:
+da0100040000000021
+0051:000015:026:PRT:RDR:<--:SHK:000:Reply data
+0051:000015:027:vrb:Exiting state: mt_command
+0051:000015:028:vrb:Entering state: mt_sub_command
+0051:000015:029:vrb:Exiting state: mt_sub_command
+0051:000015:030:vrb:Entering state: mt_address_msb
+0051:000015:031:vrb:Exiting state: mt_address_msb
+0051:000015:032:vrb:Entering state: mt_address_lsb
+0051:000015:033:vrb:Exiting state: mt_address_lsb
+0051:000015:034:vrb:Entering state: mt_decode_reply
+0051:000015:035:vrb:Memory reference: 0004
+0051:000015:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0051:000015:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0051:000015:038:vrb:Reply decoded.
+0051:000015:039:vrb:Exiting state: mt_decode_reply
+0051:000015:040:vrb:Entering state: expect_command
+0051:000015:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0051:000015:042:vrb:-->: SUM=0
+0051:000015:043:vrb:<--:da0100040000000021 SUM=256
+0051:000016:001:INT:---:Next command...
+0051:000016:002:vrb:Checksum: disabled
+0052:000016:003:PRT:RDR:<--:Interval:0.000014S
+0052:000016:004:PRT:raw:-->:
+0.000013986	40200,50200	14	0273d489898d
+
+0052:000016:005:PRT:raw:-->:
+da000004
+0052:000016:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0052:000016:007:vrb:Exiting state: expect_command
+0052:000016:008:vrb:Entering state: expect_sub_command
+0052:000016:009:vrb:Exiting state: expect_sub_command
+0052:000016:010:vrb:Entering state: decode_parameters
+0052:000016:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0052:000016:012:vrb:Decoding parameter 1.
+0052:000016:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0052:000016:014:vrb:Exiting state: decode_parameters
+0052:000016:015:vrb:Entering state: mt_command
+0052:000016:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable
+
+0052:000016:017:vrb:-->:da000004 SUM=222
+0052:000016:018:vrb:<--: SUM=0
+0053:000016:019:PRT:RDR:-->:Interval:0.000165S
+0053:000016:020:PRT:raw:<--:
+0.000164888	50200,40200	9	c6
+
+0053:000016:021:PRT:raw:<--:
+cc
+0053:000016:022:PRT:RDR:<--:SHK:000:ACK
+0054:000016:023:PRT:RDR:<--:Interval:0.000250S
+0054:000016:024:PRT:raw:<--:
+0.000249759	50200,40200	17	d409898d8989898929
+
+0054:000016:025:PRT:raw:<--:
+da0100040000000021
+0054:000016:026:PRT:RDR:<--:SHK:000:Reply data
+0054:000016:027:vrb:Exiting state: mt_command
+0054:000016:028:vrb:Entering state: mt_sub_command
+0054:000016:029:vrb:Exiting state: mt_sub_command
+0054:000016:030:vrb:Entering state: mt_address_msb
+0054:000016:031:vrb:Exiting state: mt_address_msb
+0054:000016:032:vrb:Entering state: mt_address_lsb
+0054:000016:033:vrb:Exiting state: mt_address_lsb
+0054:000016:034:vrb:Entering state: mt_decode_reply
+0054:000016:035:vrb:Memory reference: 0004
+0054:000016:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0054:000016:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0054:000016:038:vrb:Reply decoded.
+0054:000016:039:vrb:Exiting state: mt_decode_reply
+0054:000016:040:vrb:Entering state: expect_command
+0054:000016:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000000:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0054:000016:042:vrb:-->: SUM=0
+0054:000016:043:vrb:<--:da0100040000000021 SUM=256
+0054:000017:001:INT:---:Next command...
+0054:000017:002:vrb:Checksum: disabled
+0055:000017:003:PRT:RDR:<--:Interval:0.000823S
+0055:000017:004:PRT:raw:-->:
+0.000822745	40200,50200	17	031c428b89898f05a9
+
+0055:000017:005:PRT:raw:-->:
+c9020000060d20
+0055:000017:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0055:000017:007:vrb:Checksum: ENABLED
+0055:000017:008:vrb:Exiting state: expect_command
+0055:000017:009:vrb:Entering state: expect_sub_command
+0055:000017:010:vrb:Exiting state: expect_sub_command
+0055:000017:011:vrb:Entering state: decode_parameters
+0055:000017:012:vrb:Priming: ('Speed:{:.3f}mm/S', 'speed', 'int_35')
+0055:000017:013:vrb:Decoding parameter 1.
+0055:000017:014:vrb:Decoded parameter 1=Speed:100.000mm/S.
+0055:000017:015:vrb:Parameters decoded.
+0055:000017:016:vrb:Exiting state: decode_parameters
+0055:000017:017:vrb:Entering state: expect_command
+0055:000017:018:vrb:Adding 254 to checksum.
+0055:000017:019:PRT:PRS:-->:T=0007 R=0000 SUM=00000254:
+SPEED_LASER_1 Speed:100.000mm/S
+
+0055:000017:020:vrb:-->:c9020000060d20 SUM=254
+0055:000017:021:vrb:<--: SUM=0
+0055:000018:001:INT:---:Next command...
+0055:000018:002:vrb:Checksum: disabled
+0056:000018:003:PRT:RDR:-->:Interval:0.000139S
+0056:000018:004:PRT:raw:<--:
+0.000138644	50200,40200	9	c6
+
+0056:000018:005:PRT:raw:<--:
+cc
+0056:000018:006:PRT:RDR:<--:SHK:000:ACK
+0057:000018:007:PRT:RDR:<--:Interval:0.001065S
+0057:000018:008:PRT:raw:-->:
+0.001065386	40200,50200	14	01ebd0098989
+
+0057:000018:009:PRT:raw:-->:
+c6010000
+0057:000018:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0057:000018:011:vrb:Checksum: ENABLED
+0057:000018:012:vrb:Exiting state: expect_command
+0057:000018:013:vrb:Entering state: expect_sub_command
+0057:000018:014:vrb:Exiting state: expect_sub_command
+0057:000018:015:vrb:Entering state: decode_parameters
+0057:000018:016:vrb:Priming: ('Power:{:.1f}%', 'power', 'uint_14')
+0057:000018:017:vrb:Decoding parameter 1.
+0057:000018:018:vrb:Decoded parameter 1=Power:0.0%.
+0057:000018:019:vrb:Parameters decoded.
+0057:000018:020:vrb:Exiting state: decode_parameters
+0057:000018:021:vrb:Entering state: expect_command
+0057:000018:022:vrb:Adding 199 to checksum.
+0057:000018:023:PRT:PRS:-->:T=0004 R=0000 SUM=00000453:
+MIN_POWER_1 Power:0.0%
+
+0057:000018:024:vrb:-->:c6010000 SUM=199
+0057:000018:025:vrb:<--: SUM=0
+0057:000019:001:INT:---:Next command...
+0057:000019:002:vrb:Checksum: disabled
+0058:000019:003:PRT:RDR:-->:Interval:0.000124S
+0058:000019:004:PRT:raw:<--:
+0.000123671	50200,40200	9	c6
+
+0058:000019:005:PRT:raw:<--:
+cc
+0058:000019:006:PRT:RDR:<--:SHK:000:ACK
+0059:000019:007:PRT:RDR:<--:Interval:0.001144S
+0059:000019:008:PRT:raw:-->:
+0.001144466	40200,50200	14	020bd0298989
+
+0059:000019:009:PRT:raw:-->:
+c6210000
+0059:000019:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0059:000019:011:vrb:Checksum: ENABLED
+0059:000019:012:vrb:Exiting state: expect_command
+0059:000019:013:vrb:Entering state: expect_sub_command
+0059:000019:014:vrb:Exiting state: expect_sub_command
+0059:000019:015:vrb:Entering state: decode_parameters
+0059:000019:016:vrb:Priming: ('Power:{:.1f}%', 'power', 'uint_14')
+0059:000019:017:vrb:Decoding parameter 1.
+0059:000019:018:vrb:Decoded parameter 1=Power:0.0%.
+0059:000019:019:vrb:Parameters decoded.
+0059:000019:020:vrb:Exiting state: decode_parameters
+0059:000019:021:vrb:Entering state: expect_command
+0059:000019:022:vrb:Adding 231 to checksum.
+0059:000019:023:PRT:PRS:-->:T=0004 R=0000 SUM=00000684:
+MIN_POWER_2 Power:0.0%
+
+0059:000019:024:vrb:-->:c6210000 SUM=231
+0059:000019:025:vrb:<--: SUM=0
+0059:000020:001:INT:---:Next command...
+0059:000020:002:vrb:Checksum: disabled
+0060:000020:003:PRT:RDR:-->:Interval:0.000145S
+0060:000020:004:PRT:raw:<--:
+0.000144886	50200,40200	9	c6
+
+0060:000020:005:PRT:raw:<--:
+cc
+0060:000020:006:PRT:RDR:<--:SHK:000:ACK
+0061:000020:007:PRT:RDR:<--:Interval:0.001032S
+0061:000020:008:PRT:raw:-->:
+0.001032380	40200,50200	18	046152898b898989c799
+
+0061:000020:009:PRT:raw:-->:
+d900020000004e10
+0061:000020:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0061:000020:011:vrb:Checksum: ENABLED
+0061:000020:012:vrb:Exiting state: expect_command
+0061:000020:013:vrb:Entering state: expect_sub_command
+0061:000020:014:vrb:Exiting state: expect_sub_command
+0061:000020:015:vrb:Entering state: decode_parameters
+0061:000020:016:vrb:Priming: ('Option:{}', 'rapid', 'int_7')
+0061:000020:017:vrb:Decoding parameter 1.
+0061:000020:018:vrb:Decoded parameter 1=RAPID_NONE.
+0061:000020:019:vrb:Priming: ('X={:.3f}mm', 'coord', 'int_35')
+0061:000020:020:vrb:Decoding parameter 2.
+0061:000020:021:vrb:Decoded parameter 2=X=10.000mm.
+0061:000020:022:vrb:Parameters decoded.
+0061:000020:023:vrb:Exiting state: decode_parameters
+0061:000020:024:vrb:Entering state: expect_command
+0061:000020:025:vrb:Adding 313 to checksum.
+0061:000020:026:PRT:PRS:-->:T=0008 R=0000 SUM=00000997:
+RAPID_MOVE_X RAPID_NONE X=10.000mm
+
+0061:000020:027:vrb:-->:d900020000004e10 SUM=313
+0061:000020:028:vrb:<--: SUM=0
+0061:000021:001:INT:---:Next command...
+0061:000021:002:vrb:Checksum: disabled
+0062:000021:003:PRT:RDR:-->:Interval:0.000170S
+0062:000021:004:PRT:raw:<--:
+0.000169639	50200,40200	9	c6
+
+0062:000021:005:PRT:raw:<--:
+cc
+0062:000021:006:PRT:RDR:<--:SHK:000:ACK
+0063:000021:007:PRT:RDR:<--:Interval:0.005553S
+0063:000021:008:PRT:raw:-->:
+0.005552873	40200,50200	14	0261d4890df7
+
+0063:000021:009:PRT:raw:-->:
+da00057e
+0063:000021:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0063:000021:011:vrb:Exiting state: expect_command
+0063:000021:012:vrb:Entering state: expect_sub_command
+0063:000021:013:vrb:Exiting state: expect_sub_command
+0063:000021:014:vrb:Entering state: decode_parameters
+0063:000021:015:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0063:000021:016:vrb:Decoding parameter 1.
+0063:000021:017:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0063:000021:018:vrb:Exiting state: decode_parameters
+0063:000021:019:vrb:Entering state: mt_command
+0063:000021:020:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0063:000021:021:vrb:-->:da00057e SUM=349
+0063:000021:022:vrb:<--: SUM=0
+0064:000021:023:PRT:RDR:-->:Interval:0.000130S
+0064:000021:024:PRT:raw:<--:
+0.000130244	50200,40200	9	c6
+
+0064:000021:025:PRT:raw:<--:
+cc
+0064:000021:026:PRT:RDR:<--:SHK:000:ACK
+0065:000021:027:PRT:RDR:<--:Interval:0.000087S
+0065:000021:028:PRT:raw:<--:
+0.000086917	50200,40200	17	d4090df78fa149c399
+
+0065:000021:029:PRT:raw:<--:
+da01057e0628414a10
+0065:000021:030:PRT:RDR:<--:SHK:000:Reply data
+0065:000021:031:vrb:Exiting state: mt_command
+0065:000021:032:vrb:Entering state: mt_sub_command
+0065:000021:033:vrb:Exiting state: mt_sub_command
+0065:000021:034:vrb:Entering state: mt_address_msb
+0065:000021:035:vrb:Exiting state: mt_address_msb
+0065:000021:036:vrb:Entering state: mt_address_lsb
+0065:000021:037:vrb:Exiting state: mt_address_lsb
+0065:000021:038:vrb:Entering state: mt_decode_reply
+0065:000021:039:vrb:Memory reference: 057E
+0065:000021:040:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0065:000021:041:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0065:000021:042:vrb:Reply decoded.
+0065:000021:043:vrb:Exiting state: mt_decode_reply
+0065:000021:044:vrb:Entering state: expect_command
+0065:000021:045:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0065:000021:046:vrb:-->: SUM=0
+0065:000021:047:vrb:<--:da01057e0628414a10 SUM=551
+0065:000022:001:INT:---:Next command...
+0065:000022:002:vrb:Checksum: disabled
+0066:000022:003:PRT:RDR:<--:Interval:0.001028S
+0066:000022:004:PRT:raw:-->:
+0.001027868	40200,50200	14	0261d4890df7
+
+0066:000022:005:PRT:raw:-->:
+da00057e
+0066:000022:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0066:000022:007:vrb:Exiting state: expect_command
+0066:000022:008:vrb:Entering state: expect_sub_command
+0066:000022:009:vrb:Exiting state: expect_sub_command
+0066:000022:010:vrb:Entering state: decode_parameters
+0066:000022:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0066:000022:012:vrb:Decoding parameter 1.
+0066:000022:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0066:000022:014:vrb:Exiting state: decode_parameters
+0066:000022:015:vrb:Entering state: mt_command
+0066:000022:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0066:000022:017:vrb:-->:da00057e SUM=349
+0066:000022:018:vrb:<--: SUM=0
+0067:000022:019:PRT:RDR:-->:Interval:0.000139S
+0067:000022:020:PRT:raw:<--:
+0.000138925	50200,40200	9	c6
+
+0067:000022:021:PRT:raw:<--:
+cc
+0067:000022:022:PRT:RDR:<--:SHK:000:ACK
+0068:000022:023:PRT:RDR:<--:Interval:0.000051S
+0068:000022:024:PRT:raw:<--:
+0.000050762	50200,40200	17	d4090df78fa149c399
+
+0068:000022:025:PRT:raw:<--:
+da01057e0628414a10
+0068:000022:026:PRT:RDR:<--:SHK:000:Reply data
+0068:000022:027:vrb:Exiting state: mt_command
+0068:000022:028:vrb:Entering state: mt_sub_command
+0068:000022:029:vrb:Exiting state: mt_sub_command
+0068:000022:030:vrb:Entering state: mt_address_msb
+0068:000022:031:vrb:Exiting state: mt_address_msb
+0068:000022:032:vrb:Entering state: mt_address_lsb
+0068:000022:033:vrb:Exiting state: mt_address_lsb
+0068:000022:034:vrb:Entering state: mt_decode_reply
+0068:000022:035:vrb:Memory reference: 057E
+0068:000022:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0068:000022:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0068:000022:038:vrb:Reply decoded.
+0068:000022:039:vrb:Exiting state: mt_decode_reply
+0068:000022:040:vrb:Entering state: expect_command
+0068:000022:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0068:000022:042:vrb:-->: SUM=0
+0068:000022:043:vrb:<--:da01057e0628414a10 SUM=551
+0068:000023:001:INT:---:Next command...
+0068:000023:002:vrb:Checksum: disabled
+0069:000023:003:PRT:RDR:<--:Interval:0.001018S
+0069:000023:004:PRT:raw:-->:
+0.001017751	40200,50200	14	0273d489898d
+
+0069:000023:005:PRT:raw:-->:
+da000004
+0069:000023:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0069:000023:007:vrb:Exiting state: expect_command
+0069:000023:008:vrb:Entering state: expect_sub_command
+0069:000023:009:vrb:Exiting state: expect_sub_command
+0069:000023:010:vrb:Entering state: decode_parameters
+0069:000023:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0069:000023:012:vrb:Decoding parameter 1.
+0069:000023:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0069:000023:014:vrb:Exiting state: decode_parameters
+0069:000023:015:vrb:Entering state: mt_command
+0069:000023:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0069:000023:017:vrb:-->:da000004 SUM=222
+0069:000023:018:vrb:<--: SUM=0
+0070:000023:019:PRT:RDR:-->:Interval:0.000117S
+0070:000023:020:PRT:raw:<--:
+0.000116555	50200,40200	9	c6
+
+0070:000023:021:PRT:raw:<--:
+cc
+0070:000023:022:PRT:RDR:<--:SHK:000:ACK
+0071:000023:023:PRT:RDR:<--:Interval:0.000259S
+0071:000023:024:PRT:raw:<--:
+0.000259388	50200,40200	17	d409898d8989898929
+
+0071:000023:025:PRT:raw:<--:
+da0100040000000021
+0071:000023:026:PRT:RDR:<--:SHK:000:Reply data
+0071:000023:027:vrb:Exiting state: mt_command
+0071:000023:028:vrb:Entering state: mt_sub_command
+0071:000023:029:vrb:Exiting state: mt_sub_command
+0071:000023:030:vrb:Entering state: mt_address_msb
+0071:000023:031:vrb:Exiting state: mt_address_msb
+0071:000023:032:vrb:Entering state: mt_address_lsb
+0071:000023:033:vrb:Exiting state: mt_address_lsb
+0071:000023:034:vrb:Entering state: mt_decode_reply
+0071:000023:035:vrb:Memory reference: 0004
+0071:000023:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0071:000023:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0071:000023:038:vrb:Reply decoded.
+0071:000023:039:vrb:Exiting state: mt_decode_reply
+0071:000023:040:vrb:Entering state: expect_command
+0071:000023:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0071:000023:042:vrb:-->: SUM=0
+0071:000023:043:vrb:<--:da0100040000000021 SUM=256
+0071:000024:001:INT:---:Next command...
+0071:000024:002:vrb:Checksum: disabled
+0072:000024:003:PRT:RDR:<--:Interval:0.000859S
+0072:000024:004:PRT:raw:-->:
+0.000859245	40200,50200	14	0273d489898d
+
+0072:000024:005:PRT:raw:-->:
+da000004
+0072:000024:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0072:000024:007:vrb:Exiting state: expect_command
+0072:000024:008:vrb:Entering state: expect_sub_command
+0072:000024:009:vrb:Exiting state: expect_sub_command
+0072:000024:010:vrb:Entering state: decode_parameters
+0072:000024:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0072:000024:012:vrb:Decoding parameter 1.
+0072:000024:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0072:000024:014:vrb:Exiting state: decode_parameters
+0072:000024:015:vrb:Entering state: mt_command
+0072:000024:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0072:000024:017:vrb:-->:da000004 SUM=222
+0072:000024:018:vrb:<--: SUM=0
+0073:000024:019:PRT:RDR:-->:Interval:0.000116S
+0073:000024:020:PRT:raw:<--:
+0.000116240	50200,40200	9	c6
+
+0073:000024:021:PRT:raw:<--:
+cc
+0073:000024:022:PRT:RDR:<--:SHK:000:ACK
+0074:000024:023:PRT:RDR:<--:Interval:0.000254S
+0074:000024:024:PRT:raw:<--:
+0.000253933	50200,40200	17	d409898d8989898929
+
+0074:000024:025:PRT:raw:<--:
+da0100040000000021
+0074:000024:026:PRT:RDR:<--:SHK:000:Reply data
+0074:000024:027:vrb:Exiting state: mt_command
+0074:000024:028:vrb:Entering state: mt_sub_command
+0074:000024:029:vrb:Exiting state: mt_sub_command
+0074:000024:030:vrb:Entering state: mt_address_msb
+0074:000024:031:vrb:Exiting state: mt_address_msb
+0074:000024:032:vrb:Entering state: mt_address_lsb
+0074:000024:033:vrb:Exiting state: mt_address_lsb
+0074:000024:034:vrb:Entering state: mt_decode_reply
+0074:000024:035:vrb:Memory reference: 0004
+0074:000024:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0074:000024:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0074:000024:038:vrb:Reply decoded.
+0074:000024:039:vrb:Exiting state: mt_decode_reply
+0074:000024:040:vrb:Entering state: expect_command
+0074:000024:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0074:000024:042:vrb:-->: SUM=0
+0074:000024:043:vrb:<--:da0100040000000021 SUM=256
+0074:000025:001:INT:---:Next command...
+0074:000025:002:vrb:Checksum: disabled
+0075:000025:003:PRT:RDR:<--:Interval:0.000885S
+0075:000025:004:PRT:raw:-->:
+0.000884664	40200,50200	14	0213d4898d29
+
+0075:000025:005:PRT:raw:-->:
+da000421
+0075:000025:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0075:000025:007:vrb:Exiting state: expect_command
+0075:000025:008:vrb:Entering state: expect_sub_command
+0075:000025:009:vrb:Exiting state: expect_sub_command
+0075:000025:010:vrb:Entering state: decode_parameters
+0075:000025:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0075:000025:012:vrb:Decoding parameter 1.
+0075:000025:013:vrb:Decoded parameter 1=Addr:0421:Axis Preferred Position 1.
+0075:000025:014:vrb:Exiting state: decode_parameters
+0075:000025:015:vrb:Entering state: mt_command
+0075:000025:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0421:Axis Preferred Position 1
+
+0075:000025:017:vrb:-->:da000421 SUM=255
+0075:000025:018:vrb:<--: SUM=0
+0076:000025:019:PRT:RDR:-->:Interval:0.000113S
+0076:000025:020:PRT:raw:<--:
+0.000113230	50200,40200	9	c6
+
+0076:000025:021:PRT:raw:<--:
+cc
+0076:000025:022:PRT:RDR:<--:SHK:000:ACK
+0077:000025:023:PRT:RDR:<--:Interval:0.000063S
+0077:000025:024:PRT:raw:<--:
+0.000062799	50200,40200	17	d4098d29898989c79b
+
+0077:000025:025:PRT:raw:<--:
+da0104210000004e12
+0077:000025:026:PRT:RDR:<--:SHK:000:Reply data
+0077:000025:027:vrb:Exiting state: mt_command
+0077:000025:028:vrb:Entering state: mt_sub_command
+0077:000025:029:vrb:Exiting state: mt_sub_command
+0077:000025:030:vrb:Entering state: mt_address_msb
+0077:000025:031:vrb:Exiting state: mt_address_msb
+0077:000025:032:vrb:Entering state: mt_address_lsb
+0077:000025:033:vrb:Exiting state: mt_address_lsb
+0077:000025:034:vrb:Entering state: mt_decode_reply
+0077:000025:035:vrb:Memory reference: 0421
+0077:000025:036:vrb:Priming: ('\nTBD:{0:035b}b: 0x{0:08x}: {0}', 'tbd', 'tbd')
+0078:000025:037:PRT:RDR:<--:Interval:0.001017S
+0078:000025:038:PRT:raw:-->:
+0.001016938	40200,50200	14	0223d4898d39
+
+0078:000025:039:PRT:raw:-->:
+da000431
+0078:000025:040:PRT:RDR:-->:SHK:001:Expecting ACK
+0078:000025:041:PRT:ERR:-->:Packet from host when decoding reply data.
+0078:000025:042:vrb:Forwarding 0xDA to state sync
+0078:000025:043:vrb:Exiting state: mt_decode_reply
+0078:000025:044:vrb:Entering state: sync
+0078:000025:045:PRT:PRS:-->:T=0001 R=0003 SUM=00000997:
+GET_SETTING Addr:0421:Axis Preferred Position 1:
+TBD:00000000000000000000010011100010010b: 0x00002712: 10002
+
+0078:000025:046:vrb:-->:da SUM=218
+0078:000025:047:vrb:<--:da0104210000004e12 SUM=352
+0078:000026:001:INT:---:Next command...
+0078:000026:002:vrb:Checksum: disabled
+0079:000026:003:PRT:RDR:-->:Interval:0.000117S
+0079:000026:004:PRT:raw:<--:
+0.000116800	50200,40200	9	c6
+
+0079:000026:005:PRT:raw:<--:
+cc
+0079:000026:006:PRT:RDR:<--:SHK:000:ACK
+0080:000026:007:PRT:RDR:<--:Interval:0.000052S
+0080:000026:008:PRT:raw:<--:
+0.000051623	50200,40200	17	d4098d398989898989
+
+0080:000026:009:PRT:raw:<--:
+da0104310000000000
+0080:000026:010:PRT:RDR:<--:SHK:000:Reply data
+0081:000026:011:PRT:RDR:<--:Interval:0.001006S
+0081:000026:012:PRT:raw:-->:
+0.001005851	40200,50200	14	0233d4898d49
+
+0081:000026:013:PRT:raw:-->:
+da000441
+0081:000026:014:PRT:RDR:-->:SHK:001:Expecting ACK
+0081:000026:015:vrb:Forwarding 0xDA to state expect_command
+0081:000026:016:vrb:Exiting state: sync
+0081:000026:017:vrb:Entering state: expect_command
+0081:000026:018:vrb:Exiting state: expect_command
+0081:000026:019:vrb:Entering state: expect_sub_command
+0081:000026:020:vrb:Exiting state: expect_sub_command
+0081:000026:021:vrb:Entering state: decode_parameters
+0081:000026:022:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0081:000026:023:vrb:Decoding parameter 1.
+0081:000026:024:vrb:Decoded parameter 1=Addr:0441:Axis Preferred Position 3.
+0081:000026:025:vrb:Exiting state: decode_parameters
+0081:000026:026:vrb:Entering state: mt_command
+0081:000026:027:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0441:Axis Preferred Position 3
+
+0081:000026:028:vrb:-->:000431da000441 SUM=340
+0081:000026:029:vrb:<--:da0104310000000000 SUM=272
+0082:000026:030:PRT:RDR:-->:Interval:0.000152S
+0082:000026:031:PRT:raw:<--:
+0.000152048	50200,40200	9	c6
+
+0082:000026:032:PRT:raw:<--:
+cc
+0082:000026:033:PRT:RDR:<--:SHK:000:ACK
+0083:000026:034:PRT:RDR:<--:Interval:0.000001S
+0083:000026:035:PRT:raw:<--:
+0.000000513	50200,40200	17	d4098d4989093f05c9
+
+0083:000026:036:PRT:raw:<--:
+da0104410001370d40
+0083:000026:037:PRT:RDR:<--:SHK:000:Reply data
+0083:000026:038:vrb:Exiting state: mt_command
+0083:000026:039:vrb:Entering state: mt_sub_command
+0083:000026:040:vrb:Exiting state: mt_sub_command
+0083:000026:041:vrb:Entering state: mt_address_msb
+0083:000026:042:vrb:Exiting state: mt_address_msb
+0083:000026:043:vrb:Entering state: mt_address_lsb
+0083:000026:044:vrb:Exiting state: mt_address_lsb
+0083:000026:045:vrb:Entering state: mt_decode_reply
+0083:000026:046:vrb:Memory reference: 0441
+0083:000026:047:vrb:Priming: ('\nTBD:{0:035b}b: 0x{0:08x}: {0}', 'tbd', 'tbd')
+0084:000026:048:PRT:RDR:<--:Interval:0.001023S
+0084:000026:049:PRT:raw:-->:
+0.001022672	40200,50200	14	0243d4898d59
+
+0084:000026:050:PRT:raw:-->:
+da000451
+0084:000026:051:PRT:RDR:-->:SHK:001:Expecting ACK
+0084:000026:052:PRT:ERR:-->:Packet from host when decoding reply data.
+0084:000026:053:vrb:Forwarding 0xDA to state sync
+0084:000026:054:vrb:Exiting state: mt_decode_reply
+0084:000026:055:vrb:Entering state: sync
+0084:000026:056:PRT:PRS:-->:T=0001 R=0003 SUM=00000997:
+GET_SETTING Addr:0441:Axis Preferred Position 3:
+TBD:00000000000001011011100011011000000b: 0x002dc6c0: 3000000
+
+0084:000026:057:vrb:-->:da SUM=218
+0084:000026:058:vrb:<--:da0104410001370d40 SUM=421
+0084:000027:001:INT:---:Next command...
+0084:000027:002:vrb:Checksum: disabled
+0085:000027:003:PRT:RDR:-->:Interval:0.000119S
+0085:000027:004:PRT:raw:<--:
+0.000118963	50200,40200	9	c6
+
+0085:000027:005:PRT:raw:<--:
+cc
+0085:000027:006:PRT:RDR:<--:SHK:000:ACK
+0086:000027:007:PRT:RDR:<--:Interval:0.000068S
+0086:000027:008:PRT:raw:<--:
+0.000067721	50200,40200	17	d4098d59898deb2589
+
+0086:000027:009:PRT:raw:<--:
+da0104510004622d00
+0086:000027:010:PRT:RDR:<--:SHK:000:Reply data
+0087:000027:011:PRT:RDR:<--:Interval:0.020090S
+0087:000027:012:PRT:raw:-->:
+0.020089696	40200,50200	14	0261d4890df7
+
+0087:000027:013:PRT:raw:-->:
+da00057e
+0087:000027:014:PRT:RDR:-->:SHK:001:Expecting ACK
+0087:000027:015:vrb:Forwarding 0xDA to state expect_command
+0087:000027:016:vrb:Exiting state: sync
+0087:000027:017:vrb:Entering state: expect_command
+0087:000027:018:vrb:Exiting state: expect_command
+0087:000027:019:vrb:Entering state: expect_sub_command
+0087:000027:020:vrb:Exiting state: expect_sub_command
+0087:000027:021:vrb:Entering state: decode_parameters
+0087:000027:022:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0087:000027:023:vrb:Decoding parameter 1.
+0087:000027:024:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0087:000027:025:vrb:Exiting state: decode_parameters
+0087:000027:026:vrb:Entering state: mt_command
+0087:000027:027:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0087:000027:028:vrb:-->:000451da00057e SUM=434
+0087:000027:029:vrb:<--:da0104510004622d00 SUM=451
+0088:000027:030:PRT:RDR:-->:Interval:0.000157S
+0088:000027:031:PRT:raw:<--:
+0.000157031	50200,40200	9	c6
+
+0088:000027:032:PRT:raw:<--:
+cc
+0088:000027:033:PRT:RDR:<--:SHK:000:ACK
+0089:000027:034:PRT:RDR:<--:Interval:0.000066S
+0089:000027:035:PRT:raw:<--:
+0.000065606	50200,40200	17	d4090df78fa149c399
+
+0089:000027:036:PRT:raw:<--:
+da01057e0628414a10
+0089:000027:037:PRT:RDR:<--:SHK:000:Reply data
+0089:000027:038:vrb:Exiting state: mt_command
+0089:000027:039:vrb:Entering state: mt_sub_command
+0089:000027:040:vrb:Exiting state: mt_sub_command
+0089:000027:041:vrb:Entering state: mt_address_msb
+0089:000027:042:vrb:Exiting state: mt_address_msb
+0089:000027:043:vrb:Entering state: mt_address_lsb
+0089:000027:044:vrb:Exiting state: mt_address_lsb
+0089:000027:045:vrb:Entering state: mt_decode_reply
+0089:000027:046:vrb:Memory reference: 057E
+0089:000027:047:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0089:000027:048:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0089:000027:049:vrb:Reply decoded.
+0089:000027:050:vrb:Exiting state: mt_decode_reply
+0089:000027:051:vrb:Entering state: expect_command
+0089:000027:052:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0089:000027:053:vrb:-->: SUM=0
+0089:000027:054:vrb:<--:da01057e0628414a10 SUM=551
+0089:000028:001:INT:---:Next command...
+0089:000028:002:vrb:Checksum: disabled
+0090:000028:003:PRT:RDR:<--:Interval:0.000971S
+0090:000028:004:PRT:raw:-->:
+0.000970691	40200,50200	14	0261d4890df7
+
+0090:000028:005:PRT:raw:-->:
+da00057e
+0090:000028:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0090:000028:007:vrb:Exiting state: expect_command
+0090:000028:008:vrb:Entering state: expect_sub_command
+0090:000028:009:vrb:Exiting state: expect_sub_command
+0090:000028:010:vrb:Entering state: decode_parameters
+0090:000028:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0090:000028:012:vrb:Decoding parameter 1.
+0090:000028:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0090:000028:014:vrb:Exiting state: decode_parameters
+0090:000028:015:vrb:Entering state: mt_command
+0090:000028:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0090:000028:017:vrb:-->:da00057e SUM=349
+0090:000028:018:vrb:<--: SUM=0
+0091:000028:019:PRT:RDR:-->:Interval:0.000178S
+0091:000028:020:PRT:raw:<--:
+0.000178107	50200,40200	9	c6
+
+0091:000028:021:PRT:raw:<--:
+cc
+0091:000028:022:PRT:RDR:<--:SHK:000:ACK
+0092:000028:023:PRT:RDR:<--:Interval:0.000000S
+0092:000028:024:PRT:raw:<--:
+0.000000419	50200,40200	17	d4090df78fa149c399
+
+0092:000028:025:PRT:raw:<--:
+da01057e0628414a10
+0092:000028:026:PRT:RDR:<--:SHK:000:Reply data
+0092:000028:027:vrb:Exiting state: mt_command
+0092:000028:028:vrb:Entering state: mt_sub_command
+0092:000028:029:vrb:Exiting state: mt_sub_command
+0092:000028:030:vrb:Entering state: mt_address_msb
+0092:000028:031:vrb:Exiting state: mt_address_msb
+0092:000028:032:vrb:Entering state: mt_address_lsb
+0092:000028:033:vrb:Exiting state: mt_address_lsb
+0092:000028:034:vrb:Entering state: mt_decode_reply
+0092:000028:035:vrb:Memory reference: 057E
+0092:000028:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0092:000028:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0092:000028:038:vrb:Reply decoded.
+0092:000028:039:vrb:Exiting state: mt_decode_reply
+0092:000028:040:vrb:Entering state: expect_command
+0092:000028:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0092:000028:042:vrb:-->: SUM=0
+0092:000028:043:vrb:<--:da01057e0628414a10 SUM=551
+0092:000029:001:INT:---:Next command...
+0092:000029:002:vrb:Checksum: disabled
+0093:000029:003:PRT:RDR:<--:Interval:0.001037S
+0093:000029:004:PRT:raw:-->:
+0.001037099	40200,50200	14	0273d489898d
+
+0093:000029:005:PRT:raw:-->:
+da000004
+0093:000029:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0093:000029:007:vrb:Exiting state: expect_command
+0093:000029:008:vrb:Entering state: expect_sub_command
+0093:000029:009:vrb:Exiting state: expect_sub_command
+0093:000029:010:vrb:Entering state: decode_parameters
+0093:000029:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0093:000029:012:vrb:Decoding parameter 1.
+0093:000029:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0093:000029:014:vrb:Exiting state: decode_parameters
+0093:000029:015:vrb:Entering state: mt_command
+0093:000029:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0093:000029:017:vrb:-->:da000004 SUM=222
+0093:000029:018:vrb:<--: SUM=0
+0094:000029:019:PRT:RDR:-->:Interval:0.000152S
+0094:000029:020:PRT:raw:<--:
+0.000152140	50200,40200	9	c6
+
+0094:000029:021:PRT:raw:<--:
+cc
+0094:000029:022:PRT:RDR:<--:SHK:000:ACK
+0095:000029:023:PRT:RDR:<--:Interval:0.000249S
+0095:000029:024:PRT:raw:<--:
+0.000249482	50200,40200	17	d409898d8989898929
+
+0095:000029:025:PRT:raw:<--:
+da0100040000000021
+0095:000029:026:PRT:RDR:<--:SHK:000:Reply data
+0095:000029:027:vrb:Exiting state: mt_command
+0095:000029:028:vrb:Entering state: mt_sub_command
+0095:000029:029:vrb:Exiting state: mt_sub_command
+0095:000029:030:vrb:Entering state: mt_address_msb
+0095:000029:031:vrb:Exiting state: mt_address_msb
+0095:000029:032:vrb:Entering state: mt_address_lsb
+0095:000029:033:vrb:Exiting state: mt_address_lsb
+0095:000029:034:vrb:Entering state: mt_decode_reply
+0095:000029:035:vrb:Memory reference: 0004
+0095:000029:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0095:000029:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0095:000029:038:vrb:Reply decoded.
+0095:000029:039:vrb:Exiting state: mt_decode_reply
+0095:000029:040:vrb:Entering state: expect_command
+0095:000029:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0095:000029:042:vrb:-->: SUM=0
+0095:000029:043:vrb:<--:da0100040000000021 SUM=256
+0095:000030:001:INT:---:Next command...
+0095:000030:002:vrb:Checksum: disabled
+0096:000030:003:PRT:RDR:<--:Interval:0.000822S
+0096:000030:004:PRT:raw:-->:
+0.000821903	40200,50200	14	0273d489898d
+
+0096:000030:005:PRT:raw:-->:
+da000004
+0096:000030:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0096:000030:007:vrb:Exiting state: expect_command
+0096:000030:008:vrb:Entering state: expect_sub_command
+0096:000030:009:vrb:Exiting state: expect_sub_command
+0096:000030:010:vrb:Entering state: decode_parameters
+0096:000030:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0096:000030:012:vrb:Decoding parameter 1.
+0096:000030:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0096:000030:014:vrb:Exiting state: decode_parameters
+0096:000030:015:vrb:Entering state: mt_command
+0096:000030:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0096:000030:017:vrb:-->:da000004 SUM=222
+0096:000030:018:vrb:<--: SUM=0
+0097:000030:019:PRT:RDR:-->:Interval:0.000106S
+0097:000030:020:PRT:raw:<--:
+0.000106433	50200,40200	9	c6
+
+0097:000030:021:PRT:raw:<--:
+cc
+0097:000030:022:PRT:RDR:<--:SHK:000:ACK
+0098:000030:023:PRT:RDR:<--:Interval:0.000253S
+0098:000030:024:PRT:raw:<--:
+0.000252802	50200,40200	17	d409898d8989898929
+
+0098:000030:025:PRT:raw:<--:
+da0100040000000021
+0098:000030:026:PRT:RDR:<--:SHK:000:Reply data
+0098:000030:027:vrb:Exiting state: mt_command
+0098:000030:028:vrb:Entering state: mt_sub_command
+0098:000030:029:vrb:Exiting state: mt_sub_command
+0098:000030:030:vrb:Entering state: mt_address_msb
+0098:000030:031:vrb:Exiting state: mt_address_msb
+0098:000030:032:vrb:Entering state: mt_address_lsb
+0098:000030:033:vrb:Exiting state: mt_address_lsb
+0098:000030:034:vrb:Entering state: mt_decode_reply
+0098:000030:035:vrb:Memory reference: 0004
+0098:000030:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0098:000030:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0098:000030:038:vrb:Reply decoded.
+0098:000030:039:vrb:Exiting state: mt_decode_reply
+0098:000030:040:vrb:Entering state: expect_command
+0098:000030:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0098:000030:042:vrb:-->: SUM=0
+0098:000030:043:vrb:<--:da0100040000000021 SUM=256
+0098:000031:001:INT:---:Next command...
+0098:000031:002:vrb:Checksum: disabled
+0099:000031:003:PRT:RDR:<--:Interval:0.000874S
+0099:000031:004:PRT:raw:-->:
+0.000873997	40200,50200	14	0261d4890df7
+
+0099:000031:005:PRT:raw:-->:
+da00057e
+0099:000031:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0099:000031:007:vrb:Exiting state: expect_command
+0099:000031:008:vrb:Entering state: expect_sub_command
+0099:000031:009:vrb:Exiting state: expect_sub_command
+0099:000031:010:vrb:Entering state: decode_parameters
+0099:000031:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0099:000031:012:vrb:Decoding parameter 1.
+0099:000031:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0099:000031:014:vrb:Exiting state: decode_parameters
+0099:000031:015:vrb:Entering state: mt_command
+0099:000031:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0099:000031:017:vrb:-->:da00057e SUM=349
+0099:000031:018:vrb:<--: SUM=0
+0100:000031:019:PRT:RDR:-->:Interval:0.000129S
+0100:000031:020:PRT:raw:<--:
+0.000128757	50200,40200	9	c6
+
+0100:000031:021:PRT:raw:<--:
+cc
+0100:000031:022:PRT:RDR:<--:SHK:000:ACK
+0101:000031:023:PRT:RDR:<--:Interval:0.000061S
+0101:000031:024:PRT:raw:<--:
+0.000060793	50200,40200	17	d4090df78fa149c399
+
+0101:000031:025:PRT:raw:<--:
+da01057e0628414a10
+0101:000031:026:PRT:RDR:<--:SHK:000:Reply data
+0101:000031:027:vrb:Exiting state: mt_command
+0101:000031:028:vrb:Entering state: mt_sub_command
+0101:000031:029:vrb:Exiting state: mt_sub_command
+0101:000031:030:vrb:Entering state: mt_address_msb
+0101:000031:031:vrb:Exiting state: mt_address_msb
+0101:000031:032:vrb:Entering state: mt_address_lsb
+0101:000031:033:vrb:Exiting state: mt_address_lsb
+0101:000031:034:vrb:Entering state: mt_decode_reply
+0101:000031:035:vrb:Memory reference: 057E
+0101:000031:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0101:000031:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0101:000031:038:vrb:Reply decoded.
+0101:000031:039:vrb:Exiting state: mt_decode_reply
+0101:000031:040:vrb:Entering state: expect_command
+0101:000031:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0101:000031:042:vrb:-->: SUM=0
+0101:000031:043:vrb:<--:da01057e0628414a10 SUM=551
+0101:000032:001:INT:---:Next command...
+0101:000032:002:vrb:Checksum: disabled
+0102:000032:003:PRT:RDR:<--:Interval:0.001051S
+0102:000032:004:PRT:raw:-->:
+0.001050721	40200,50200	14	0273d4898d89
+
+0102:000032:005:PRT:raw:-->:
+da000400
+0102:000032:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0102:000032:007:vrb:Exiting state: expect_command
+0102:000032:008:vrb:Entering state: expect_sub_command
+0102:000032:009:vrb:Exiting state: expect_sub_command
+0102:000032:010:vrb:Entering state: decode_parameters
+0102:000032:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0102:000032:012:vrb:Decoding parameter 1.
+0102:000032:013:vrb:Decoded parameter 1=Addr:0400:Machine Status (0b00110111 relevant bits)..
+0102:000032:014:vrb:Exiting state: decode_parameters
+0102:000032:015:vrb:Entering state: mt_command
+0102:000032:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0400:Machine Status (0b00110111 relevant bits).
+
+0102:000032:017:vrb:-->:da000400 SUM=222
+0102:000032:018:vrb:<--: SUM=0
+0103:000032:019:PRT:RDR:-->:Interval:0.000116S
+0103:000032:020:PRT:raw:<--:
+0.000116023	50200,40200	9	c6
+
+0103:000032:021:PRT:raw:<--:
+cc
+0103:000032:022:PRT:RDR:<--:SHK:000:ACK
+0104:000032:023:PRT:RDR:<--:Interval:0.000053S
+0104:000032:024:PRT:raw:<--:
+0.000052827	50200,40200	17	d4098d898989898989
+
+0104:000032:025:PRT:raw:<--:
+da0104000000000000
+0104:000032:026:PRT:RDR:<--:SHK:000:Reply data
+0104:000032:027:vrb:Exiting state: mt_command
+0104:000032:028:vrb:Entering state: mt_sub_command
+0104:000032:029:vrb:Exiting state: mt_sub_command
+0104:000032:030:vrb:Entering state: mt_address_msb
+0104:000032:031:vrb:Exiting state: mt_address_msb
+0104:000032:032:vrb:Entering state: mt_address_lsb
+0104:000032:033:vrb:Exiting state: mt_address_lsb
+0104:000032:034:vrb:Entering state: mt_decode_reply
+0104:000032:035:vrb:Memory reference: 0400
+0104:000032:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0104:000032:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000000000b: 0x00000000: 0.
+0104:000032:038:vrb:Reply decoded.
+0104:000032:039:vrb:Exiting state: mt_decode_reply
+0104:000032:040:vrb:Entering state: expect_command
+0104:000032:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0400:Machine Status (0b00110111 relevant bits).:Reply:
+TBDU35:00000000000000000000000000000000000b: 0x00000000: 0
+
+0104:000032:042:vrb:-->: SUM=0
+0104:000032:043:vrb:<--:da0104000000000000 SUM=223
+0104:000033:001:INT:---:Next command...
+0104:000033:002:vrb:Checksum: disabled
+0105:000033:003:PRT:RDR:<--:Interval:0.001011S
+0105:000033:004:PRT:raw:-->:
+0.001011034	40200,50200	14	0261d4890df7
+
+0105:000033:005:PRT:raw:-->:
+da00057e
+0105:000033:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0105:000033:007:vrb:Exiting state: expect_command
+0105:000033:008:vrb:Entering state: expect_sub_command
+0105:000033:009:vrb:Exiting state: expect_sub_command
+0105:000033:010:vrb:Entering state: decode_parameters
+0105:000033:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0105:000033:012:vrb:Decoding parameter 1.
+0105:000033:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0105:000033:014:vrb:Exiting state: decode_parameters
+0105:000033:015:vrb:Entering state: mt_command
+0105:000033:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0105:000033:017:vrb:-->:da00057e SUM=349
+0105:000033:018:vrb:<--: SUM=0
+0106:000033:019:PRT:RDR:-->:Interval:0.000129S
+0106:000033:020:PRT:raw:<--:
+0.000128605	50200,40200	9	c6
+
+0106:000033:021:PRT:raw:<--:
+cc
+0106:000033:022:PRT:RDR:<--:SHK:000:ACK
+0107:000033:023:PRT:RDR:<--:Interval:0.000042S
+0107:000033:024:PRT:raw:<--:
+0.000041535	50200,40200	17	d4090df78fa149c399
+
+0107:000033:025:PRT:raw:<--:
+da01057e0628414a10
+0107:000033:026:PRT:RDR:<--:SHK:000:Reply data
+0107:000033:027:vrb:Exiting state: mt_command
+0107:000033:028:vrb:Entering state: mt_sub_command
+0107:000033:029:vrb:Exiting state: mt_sub_command
+0107:000033:030:vrb:Entering state: mt_address_msb
+0107:000033:031:vrb:Exiting state: mt_address_msb
+0107:000033:032:vrb:Entering state: mt_address_lsb
+0107:000033:033:vrb:Exiting state: mt_address_lsb
+0107:000033:034:vrb:Entering state: mt_decode_reply
+0107:000033:035:vrb:Memory reference: 057E
+0107:000033:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0107:000033:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0107:000033:038:vrb:Reply decoded.
+0107:000033:039:vrb:Exiting state: mt_decode_reply
+0107:000033:040:vrb:Entering state: expect_command
+0107:000033:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0107:000033:042:vrb:-->: SUM=0
+0107:000033:043:vrb:<--:da01057e0628414a10 SUM=551
+0107:000034:001:INT:---:Next command...
+0107:000034:002:vrb:Checksum: disabled
+0108:000034:003:PRT:RDR:<--:Interval:0.001045S
+0108:000034:004:PRT:raw:-->:
+0.001044642	40200,50200	14	0261d4890df7
+
+0108:000034:005:PRT:raw:-->:
+da00057e
+0108:000034:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0108:000034:007:vrb:Exiting state: expect_command
+0108:000034:008:vrb:Entering state: expect_sub_command
+0108:000034:009:vrb:Exiting state: expect_sub_command
+0108:000034:010:vrb:Entering state: decode_parameters
+0108:000034:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0108:000034:012:vrb:Decoding parameter 1.
+0108:000034:013:vrb:Decoded parameter 1=Addr:057E:Card ID.
+0108:000034:014:vrb:Exiting state: decode_parameters
+0108:000034:015:vrb:Entering state: mt_command
+0108:000034:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID
+
+0108:000034:017:vrb:-->:da00057e SUM=349
+0108:000034:018:vrb:<--: SUM=0
+0109:000034:019:PRT:RDR:-->:Interval:0.000152S
+0109:000034:020:PRT:raw:<--:
+0.000151801	50200,40200	9	c6
+
+0109:000034:021:PRT:raw:<--:
+cc
+0109:000034:022:PRT:RDR:<--:SHK:000:ACK
+0110:000034:023:PRT:RDR:<--:Interval:0.000000S
+0110:000034:024:PRT:raw:<--:
+0.000000434	50200,40200	17	d4090df78fa149c399
+
+0110:000034:025:PRT:raw:<--:
+da01057e0628414a10
+0110:000034:026:PRT:RDR:<--:SHK:000:Reply data
+0110:000034:027:vrb:Exiting state: mt_command
+0110:000034:028:vrb:Entering state: mt_sub_command
+0110:000034:029:vrb:Exiting state: mt_sub_command
+0110:000034:030:vrb:Entering state: mt_address_msb
+0110:000034:031:vrb:Exiting state: mt_address_msb
+0110:000034:032:vrb:Entering state: mt_address_lsb
+0110:000034:033:vrb:Exiting state: mt_address_lsb
+0110:000034:034:vrb:Entering state: mt_decode_reply
+0110:000034:035:vrb:Memory reference: 057E
+0110:000034:036:vrb:Priming: ('CardID: {}', 'card_id', 'uint_35')
+0110:000034:037:vrb:Decoded reply parameter 1=CardID: RDC6442S.
+0110:000034:038:vrb:Reply decoded.
+0110:000034:039:vrb:Exiting state: mt_decode_reply
+0110:000034:040:vrb:Entering state: expect_command
+0110:000034:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:057E:Card ID:Reply:CardID: RDC6442S
+
+0110:000034:042:vrb:-->: SUM=0
+0110:000034:043:vrb:<--:da01057e0628414a10 SUM=551
+0110:000035:001:INT:---:Next command...
+0110:000035:002:vrb:Checksum: disabled
+0111:000035:003:PRT:RDR:<--:Interval:0.001083S
+0111:000035:004:PRT:raw:-->:
+0.001082975	40200,50200	14	0273d489898d
+
+0111:000035:005:PRT:raw:-->:
+da000004
+0111:000035:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0111:000035:007:vrb:Exiting state: expect_command
+0111:000035:008:vrb:Entering state: expect_sub_command
+0111:000035:009:vrb:Exiting state: expect_sub_command
+0111:000035:010:vrb:Entering state: decode_parameters
+0111:000035:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0111:000035:012:vrb:Decoding parameter 1.
+0111:000035:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0111:000035:014:vrb:Exiting state: decode_parameters
+0111:000035:015:vrb:Entering state: mt_command
+0111:000035:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0111:000035:017:vrb:-->:da000004 SUM=222
+0111:000035:018:vrb:<--: SUM=0
+0112:000035:019:PRT:RDR:-->:Interval:0.000165S
+0112:000035:020:PRT:raw:<--:
+0.000165157	50200,40200	9	c6
+
+0112:000035:021:PRT:raw:<--:
+cc
+0112:000035:022:PRT:RDR:<--:SHK:000:ACK
+0113:000035:023:PRT:RDR:<--:Interval:0.000245S
+0113:000035:024:PRT:raw:<--:
+0.000245361	50200,40200	17	d409898d8989898929
+
+0113:000035:025:PRT:raw:<--:
+da0100040000000021
+0113:000035:026:PRT:RDR:<--:SHK:000:Reply data
+0113:000035:027:vrb:Exiting state: mt_command
+0113:000035:028:vrb:Entering state: mt_sub_command
+0113:000035:029:vrb:Exiting state: mt_sub_command
+0113:000035:030:vrb:Entering state: mt_address_msb
+0113:000035:031:vrb:Exiting state: mt_address_msb
+0113:000035:032:vrb:Entering state: mt_address_lsb
+0113:000035:033:vrb:Exiting state: mt_address_lsb
+0113:000035:034:vrb:Entering state: mt_decode_reply
+0113:000035:035:vrb:Memory reference: 0004
+0113:000035:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0113:000035:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0113:000035:038:vrb:Reply decoded.
+0113:000035:039:vrb:Exiting state: mt_decode_reply
+0113:000035:040:vrb:Entering state: expect_command
+0113:000035:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0113:000035:042:vrb:-->: SUM=0
+0113:000035:043:vrb:<--:da0100040000000021 SUM=256
+0113:000036:001:INT:---:Next command...
+0113:000036:002:vrb:Checksum: disabled
+0114:000036:003:PRT:RDR:<--:Interval:0.000344S
+0114:000036:004:PRT:raw:-->:
+0.000343545	40200,50200	14	0273d489898d
+
+0114:000036:005:PRT:raw:-->:
+da000004
+0114:000036:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0114:000036:007:vrb:Exiting state: expect_command
+0114:000036:008:vrb:Entering state: expect_sub_command
+0114:000036:009:vrb:Exiting state: expect_sub_command
+0114:000036:010:vrb:Entering state: decode_parameters
+0114:000036:011:vrb:Priming: ('Addr:{:04X}', 'mt', 'mt')
+0114:000036:012:vrb:Decoding parameter 1.
+0114:000036:013:vrb:Decoded parameter 1=Addr:0004:IO Enable.
+0114:000036:014:vrb:Exiting state: decode_parameters
+0114:000036:015:vrb:Entering state: mt_command
+0114:000036:016:PRT:PRS:-->:T=0004 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable
+
+0114:000036:017:vrb:-->:da000004 SUM=222
+0114:000036:018:vrb:<--: SUM=0
+0115:000036:019:PRT:RDR:-->:Interval:0.000138S
+0115:000036:020:PRT:raw:<--:
+0.000137857	50200,40200	9	c6
+
+0115:000036:021:PRT:raw:<--:
+cc
+0115:000036:022:PRT:RDR:<--:SHK:000:ACK
+0116:000036:023:PRT:RDR:<--:Interval:0.000090S
+0116:000036:024:PRT:raw:<--:
+0.000089618	50200,40200	17	d409898d8989898929
+
+0116:000036:025:PRT:raw:<--:
+da0100040000000021
+0116:000036:026:PRT:RDR:<--:SHK:000:Reply data
+0116:000036:027:vrb:Exiting state: mt_command
+0116:000036:028:vrb:Entering state: mt_sub_command
+0116:000036:029:vrb:Exiting state: mt_sub_command
+0116:000036:030:vrb:Entering state: mt_address_msb
+0116:000036:031:vrb:Exiting state: mt_address_msb
+0116:000036:032:vrb:Entering state: mt_address_lsb
+0116:000036:033:vrb:Exiting state: mt_address_lsb
+0116:000036:034:vrb:Entering state: mt_decode_reply
+0116:000036:035:vrb:Memory reference: 0004
+0116:000036:036:vrb:Priming: ('\nTBDU35:{0:035b}b: 0x{0:08x}: {0}', 'uint35', 'uint_35')
+0116:000036:037:vrb:Decoded reply parameter 1=
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33.
+0116:000036:038:vrb:Reply decoded.
+0116:000036:039:vrb:Exiting state: mt_decode_reply
+0116:000036:040:vrb:Entering state: expect_command
+0116:000036:041:PRT:PRS:<--:T=0009 R=0000 SUM=00000997:
+GET_SETTING Addr:0004:IO Enable:Reply:
+TBDU35:00000000000000000000000000000100001b: 0x00000021: 33
+
+0116:000036:042:vrb:-->: SUM=0
+0116:000036:043:vrb:<--:da0100040000000021 SUM=256
+0116:000037:001:INT:---:Next command...
+0116:000037:002:vrb:Checksum: disabled
+0117:000037:003:PRT:RDR:<--:Interval:0.000843S
+0117:000037:004:PRT:raw:-->:
+0.000842996	40200,50200	17	031c428b89898f05a9
+
+0117:000037:005:PRT:raw:-->:
+c9020000060d20
+0117:000037:006:PRT:RDR:-->:SHK:001:Expecting ACK
+0117:000037:007:vrb:Checksum: ENABLED
+0117:000037:008:vrb:Exiting state: expect_command
+0117:000037:009:vrb:Entering state: expect_sub_command
+0117:000037:010:vrb:Exiting state: expect_sub_command
+0117:000037:011:vrb:Entering state: decode_parameters
+0117:000037:012:vrb:Priming: ('Speed:{:.3f}mm/S', 'speed', 'int_35')
+0117:000037:013:vrb:Decoding parameter 1.
+0117:000037:014:vrb:Decoded parameter 1=Speed:100.000mm/S.
+0117:000037:015:vrb:Parameters decoded.
+0117:000037:016:vrb:Exiting state: decode_parameters
+0117:000037:017:vrb:Entering state: expect_command
+0117:000037:018:vrb:Adding 254 to checksum.
+0117:000037:019:PRT:PRS:-->:T=0007 R=0000 SUM=00001251:
+SPEED_LASER_1 Speed:100.000mm/S
+
+0117:000037:020:vrb:-->:c9020000060d20 SUM=254
+0117:000037:021:vrb:<--: SUM=0
+0117:000038:001:INT:---:Next command...
+0117:000038:002:vrb:Checksum: disabled
+0118:000038:003:PRT:RDR:-->:Interval:0.000134S
+0118:000038:004:PRT:raw:<--:
+0.000133692	50200,40200	9	c6
+
+0118:000038:005:PRT:raw:<--:
+cc
+0118:000038:006:PRT:RDR:<--:SHK:000:ACK
+0119:000038:007:PRT:RDR:<--:Interval:0.001070S
+0119:000038:008:PRT:raw:-->:
+0.001069943	40200,50200	14	01ebd0098989
+
+0119:000038:009:PRT:raw:-->:
+c6010000
+0119:000038:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0119:000038:011:vrb:Checksum: ENABLED
+0119:000038:012:vrb:Exiting state: expect_command
+0119:000038:013:vrb:Entering state: expect_sub_command
+0119:000038:014:vrb:Exiting state: expect_sub_command
+0119:000038:015:vrb:Entering state: decode_parameters
+0119:000038:016:vrb:Priming: ('Power:{:.1f}%', 'power', 'uint_14')
+0119:000038:017:vrb:Decoding parameter 1.
+0119:000038:018:vrb:Decoded parameter 1=Power:0.0%.
+0119:000038:019:vrb:Parameters decoded.
+0119:000038:020:vrb:Exiting state: decode_parameters
+0119:000038:021:vrb:Entering state: expect_command
+0119:000038:022:vrb:Adding 199 to checksum.
+0119:000038:023:PRT:PRS:-->:T=0004 R=0000 SUM=00001450:
+MIN_POWER_1 Power:0.0%
+
+0119:000038:024:vrb:-->:c6010000 SUM=199
+0119:000038:025:vrb:<--: SUM=0
+0119:000039:001:INT:---:Next command...
+0119:000039:002:vrb:Checksum: disabled
+0120:000039:003:PRT:RDR:-->:Interval:0.000158S
+0120:000039:004:PRT:raw:<--:
+0.000158177	50200,40200	9	c6
+
+0120:000039:005:PRT:raw:<--:
+cc
+0120:000039:006:PRT:RDR:<--:SHK:000:ACK
+0121:000039:007:PRT:RDR:<--:Interval:0.001038S
+0121:000039:008:PRT:raw:-->:
+0.001037582	40200,50200	14	020bd0298989
+
+0121:000039:009:PRT:raw:-->:
+c6210000
+0121:000039:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0121:000039:011:vrb:Checksum: ENABLED
+0121:000039:012:vrb:Exiting state: expect_command
+0121:000039:013:vrb:Entering state: expect_sub_command
+0121:000039:014:vrb:Exiting state: expect_sub_command
+0121:000039:015:vrb:Entering state: decode_parameters
+0121:000039:016:vrb:Priming: ('Power:{:.1f}%', 'power', 'uint_14')
+0121:000039:017:vrb:Decoding parameter 1.
+0121:000039:018:vrb:Decoded parameter 1=Power:0.0%.
+0121:000039:019:vrb:Parameters decoded.
+0121:000039:020:vrb:Exiting state: decode_parameters
+0121:000039:021:vrb:Entering state: expect_command
+0121:000039:022:vrb:Adding 231 to checksum.
+0121:000039:023:PRT:PRS:-->:T=0004 R=0000 SUM=00001681:
+MIN_POWER_2 Power:0.0%
+
+0121:000039:024:vrb:-->:c6210000 SUM=231
+0121:000039:025:vrb:<--: SUM=0
+0121:000040:001:INT:---:Next command...
+0121:000040:002:vrb:Checksum: disabled
+0122:000040:003:PRT:RDR:-->:Interval:0.000114S
+0122:000040:004:PRT:raw:<--:
+0.000113518	50200,40200	9	c6
+
+0122:000040:005:PRT:raw:<--:
+cc
+0122:000040:006:PRT:RDR:<--:SHK:000:ACK
+0123:000040:007:PRT:RDR:<--:Interval:0.001076S
+0123:000040:008:PRT:raw:-->:
+0.001076316	40200,50200	18	038d52898b07777739f9
+
+0123:000040:009:PRT:raw:-->:
+d900020f7f7f3170
+0123:000040:010:PRT:RDR:-->:SHK:001:Expecting ACK
+0123:000040:011:vrb:Checksum: ENABLED
+0123:000040:012:vrb:Exiting state: expect_command
+0123:000040:013:vrb:Entering state: expect_sub_command
+0123:000040:014:vrb:Exiting state: expect_sub_command
+0123:000040:015:vrb:Entering state: decode_parameters
+0123:000040:016:vrb:Priming: ('Option:{}', 'rapid', 'int_7')
+0123:000040:017:vrb:Decoding parameter 1.
+0123:000040:018:vrb:Decoded parameter 1=RAPID_NONE.
+0123:000040:019:vrb:Priming: ('X={:.3f}mm', 'coord', 'int_35')
+0123:000040:020:vrb:Decoding parameter 2.
+0123:000040:021:vrb:Decoded parameter 2=X=4294957.296mm.
+0123:000040:022:INT:---:Exiting at user request.
