@@ -143,23 +143,40 @@ class RpaPlotter():
             _line = sel.artist
             _end_x = _line.get_xdata()[-1]
             _end_y = _line.get_ydata()[-1]
+            _, _max_x = self.ax.get_xlim()
+            if _end_x > _max_x:
+                _pos_x = _max_x
+            else:
+                _pos_x = _end_x
+
+            _, _max_y = self.ax.get_ylim()
+            if _end_y > _max_y:
+                _pos_y = _max_y
+            else:
+                _pos_y = _end_y
+
             _label = _line.get_label()
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             self._last_annotation = self.ax.annotate(
                 f'{_label}\nx={_end_x}\ny={_end_y}',
-                xy=(_end_x, _end_y),
+                xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',
                 bbox=dict(
                     boxstyle='round,pad=0.5',
                     fc='yellow',
                     ec='black',
-                    lw=1
+                    lw=1,
+                    alpha=0.6,
                     ),
+                arrowprops=dict(
+                    arrowstyle='->', connectionstyle='arc3,rad=.2',
+                ),
                 ha='center', va='bottom',
                 fontsize=6,
             )
+            self._last_annotation.draggable()
 
         self.plot.show()
         self.plot.canvas.draw_idle()
