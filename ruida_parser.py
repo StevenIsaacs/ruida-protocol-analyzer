@@ -1062,10 +1062,10 @@ class RdParser():
         self.out.parser(
             f'T={take:04d} R={remaining:04d}' +
             f' SUM={self.file_checksum:08d}:\n{result}\n')
-        self.out.verbose(
+        self.out.parser(
             f'-->:{self.host_bytes.hex()}' +
             f' SUM={sum(self.host_bytes)}')
-        self.out.verbose(
+        self.out.parser(
             f'<--:{self.controller_bytes.hex()}' +
             f' SUM={sum(self.controller_bytes)}')
         self.controller_bytes = bytearray([])
