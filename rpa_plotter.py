@@ -180,7 +180,7 @@ class RpaPlotter():
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             self._last_annotation = self.ax.annotate(
-                f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm',
+                f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm\nPower={self.p:.1f}%',
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',
@@ -503,7 +503,7 @@ class RpaPlotter():
             _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
         return _lut
 
-    def cmd_power(self, values: list[float]):
+    def _cmd_power(self, values: list[float]):
         '''Set laser power.
 
         A color is calculated based upon percentage.
@@ -524,6 +524,20 @@ class RpaPlotter():
             _i = 0
         self.color = self._color_lut[round(_p)]
 
+    def cmd_min_power_1(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        self._cmd_power(values)
+
+    def cmd_max_power_1(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        self._cmd_power(values)
+
     _ct = {
         0x80: {
             0x00: 'cmd_axis_x_move',
@@ -537,6 +551,10 @@ class RpaPlotter():
         0xA9: 'cmd_cut_rel_xy',
         0xAA: 'cmd_cut_rel_x',
         0xAB: 'cmd_cut_rel_y',
+        0xC6: {
+            0x01: 'cmd_min_power_1',
+            0x02: 'cmd_max_power_1'
+        },
         0xD9: {
             0x00: 'cmd_rapid_move_x',
             0x01: 'cmd_rapid_move_y',
