@@ -15,7 +15,7 @@
 #  3 The application used to generate the log file.
 #      mk  MeerK40t
 #      lb  LightBurn
-#      rdw REWorks
+#      rdw RDWorks
 log=$1/$1-$2/$1-$2-$3.log
 txt=$1/$1-$2/$1-$2-$3.txt
 echo $log
