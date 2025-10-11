@@ -182,6 +182,7 @@ class RdDecoder():
         return self.formatted
 
     def rd_rapid(self, data: bytearray):
+        self.value = self.to_int(data)
         return rdap.ROT[data[0]]
 
     def rd_on_off(self, data: bytearray):

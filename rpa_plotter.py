@@ -8,6 +8,7 @@ from build123d import *
 from ocp_vscode import *
 
 from rpa_emitter import RpaEmitter
+import rpa_protocol as rdap
 
 class RpaPlotter():
     '''Generate a colorized plot of laser head movement.
@@ -85,6 +86,10 @@ class RpaPlotter():
         self.u = 0
         self.p = 0.0 # Laser effectively off.
         self.color: Color = Color(0, 0, 0)
+
+        # For moves relative to a set origin
+        self.origin_x = 0
+        self.origin_y = 0
 
         self.plot = Sketch()
         self.lines = []
@@ -267,7 +272,10 @@ class RpaPlotter():
 
         Move lines are always black.
         '''
-        self._add_line(self.x + values[1], self.y + values[2])
+        if values[0] & rdap.ORIGIN_HOME:
+            self._add_line(self.x + values[1], self.y + values[2])
+        else:
+            self._add_line(self.origin_x + values[1], self.origin_y + values[2])
 
     def cmd_rapid_move_xyu(self, values: list[float]):
         '''Move a  to the current position.
@@ -279,21 +287,31 @@ class RpaPlotter():
 
         TODO: Add U axis.
         '''
-        self._add_line(self.x + values[1], self.y + values[2])
+        if values[0] & rdap.ORIGIN_HOME:
+            self._add_line(self.x + values[1], self.y + values[2])
+        else:
+            self._add_line(self.origin_x + values[1], self.origin_y + values[2])
+
 
     def cmd_rapid_move_x(self, values: list[float]):
         '''This effectively a move with the laser off.
 
         Move lines are always black.
         '''
-        self._add_line(self.x + values[1], self.y)
+        if values[0] & rdap.ORIGIN_HOME:
+            self._add_line(self.x + values[1], self.y)
+        else:
+            self._add_line(self.origin_x + values[1], self.origin_y)
 
     def cmd_rapid_move_y(self, values: list[float]):
         '''This effectively a move with the laser off.
 
         Move lines are always black.
         '''
-        self._add_line(self.x, self.y + values[1])
+        if values[0] & rdap.ORIGIN_HOME:
+            self._add_line(self.x, self.y + values[1])
+        else:
+            self._add_line(self.origin_x, self.origin_y + values[1])
 
     def cmd_move_rel_xy(self, values: list[float]):
         '''Move a distance relative to the current position.

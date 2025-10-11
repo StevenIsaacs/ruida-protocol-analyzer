@@ -56,6 +56,9 @@ CARD_IDS = {
     0x65106510: 'RDC6442S',
 }
 
+# For checking which origin mode.
+ORIGIN_HOME = 0x02
+LIGHT_ON = 0x01
 # Rapid option table.
 ROT = {
     0x00: 'RAPID_ORIGIN',
