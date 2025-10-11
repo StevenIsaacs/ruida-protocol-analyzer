@@ -59,7 +59,7 @@ class RpaPlotter():
     Attributes:
         out         The message emitter.
         cmd_id      The command ID to be associated with a line.
-        plot_label  The label (title) for the plot.
+        plot_title  The label (title) for the plot.
         plot        The movement plot.
         axes        The axis array for the plot.
         lines       The number of lines in the plot. This is used for the Z
@@ -73,7 +73,7 @@ class RpaPlotter():
                     0xRRGGBB.
         step        When true single stepping lines is enabled.
     '''
-    def __init__(self, out: RpaEmitter, label: str):
+    def __init__(self, out: RpaEmitter, title: str):
         '''Init the plotter.
 
         Parameters:
@@ -82,7 +82,7 @@ class RpaPlotter():
         '''
         self.out = out
 
-        self.cmd_label = 0
+        self.cmd_label = ''
         # At power on the controller move to 0,0.
         self.x = 0
         self.y = 0
@@ -94,11 +94,12 @@ class RpaPlotter():
         self.origin_x = 0
         self.origin_y = 0
 
-        self.plot_label = label
+        self.plot_title = title
         self.plot, self.ax = plt.subplots(figsize=(8, 6))
-        self.ax.set_title(self.plot_label)
-        self.ax.set_xlabel('Bed X')
-        self.ax.set_ylabel('Bed Y')
+        self.plot.suptitle(self.plot_title)
+        self.ax.set_title(self.plot_title)
+        self.ax.set_xlabel('Bed X mm')
+        self.ax.set_ylabel('Bed Y mm')
         self.ax.set_xlim(-5, 50)
         self.ax.set_ylim(-5, 50)
         self.ax.grid(True)
@@ -159,7 +160,7 @@ class RpaPlotter():
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             self._last_annotation = self.ax.annotate(
-                f'{_label}\nx={_end_x}\ny={_end_y}',
+                f'{_label}\nx={_end_x}mm\ny={_end_y}mm',
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',

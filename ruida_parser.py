@@ -373,7 +373,7 @@ class RdParser():
                         checksum.
         verbose         The method to call when emitting verbose messages.
     '''
-    def __init__(self, output: RpaEmitter, label: str):
+    def __init__(self, output: RpaEmitter, title: str):
         '''Initialize the parsing state machine.
 
         Parameters:
@@ -381,7 +381,7 @@ class RdParser():
             label       The label to associate with the parsing and plot.
         '''
         self.out = output
-        self.label = label
+        self.title = title
         self.state = None
         self.datum = None
         self.remaining = None
@@ -421,7 +421,7 @@ class RdParser():
         self._enter_state('sync')   # Setup the sync state.
         self._transition()
         self._skip = 0
-        self.plot = rpa_plotter.RpaPlotter(self.out, self.label)
+        self.plot = rpa_plotter.RpaPlotter(self.out, self.title)
 
     def _format_decoded(self, message: str, param=None):
         '''Accumulate decoded messages one by one.
