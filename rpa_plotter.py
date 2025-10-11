@@ -102,6 +102,7 @@ class RpaPlotter():
         self.ax.set_xlim(-5, 50)
         self.ax.set_ylim(-5, 50)
         self.ax.grid(True)
+        self._last_annotation = None
         mplcursors.cursor(self.ax, hover=True)
 
         self.lines = []
@@ -135,6 +136,31 @@ class RpaPlotter():
         self._enabled = True
 
     def show(self, line=None, label='Displaying plot.', wait=False):
+        def _annotate(sel):
+            sel.annotation.draggable(False)
+            sel.annotation.set_visible(False)
+            sel.annotation.set_fontsize(6)
+            _line = sel.artist
+            _end_x = _line.get_xdata()[-1]
+            _end_y = _line.get_ydata()[-1]
+            _label = _line.get_label()
+            if self._last_annotation is not None:
+                self._last_annotation.remove()
+            self._last_annotation = self.ax.annotate(
+                f'{_label}\nx={_end_x}\ny={_end_y}',
+                xy=(_end_x, _end_y),
+                xytext=(5, 5),
+                textcoords='offset points',
+                bbox=dict(
+                    boxstyle='round,pad=0.5',
+                    fc='yellow',
+                    ec='black',
+                    lw=1
+                    ),
+                ha='center', va='bottom',
+                fontsize=6,
+            )
+
         self.plot.show()
         self.plot.canvas.draw_idle()
         if line is None:
@@ -142,7 +168,8 @@ class RpaPlotter():
         else:
             _lines = [line]
         if wait:
-            mplcursors.cursor(_lines, hover=True)
+            cursor = mplcursors.cursor(_lines, hover=True, multiple=False)
+            cursor.connect('add', _annotate)
             self.out.pause(f'{label} Press Enter to continue.')
 
     def step_on_cmd_id(self, cmd_id):
@@ -249,7 +276,7 @@ class RpaPlotter():
         self.lines.append(_line)
         self.lines_data.append(
             {'start': (self._last_x, self._last_y), 'end': (x, y)})
-        self.ax.legend()
+        self.ax.legend(fontsize=6)
         if self._stepping():
             self.show(line=_line, label=self.cmd_label, wait=True)
         self._moved = True
