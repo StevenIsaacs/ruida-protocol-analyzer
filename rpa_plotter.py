@@ -103,6 +103,8 @@ class RpaPlotter():
         self.ax.set_xlim(-5, 50)
         self.ax.set_ylim(-5, 50)
         self.ax.grid(True)
+        #self.ax.invert_xaxis()
+        #self.ax.invert_yaxis()
         self._last_annotation = None
         mplcursors.cursor(self.ax, hover=True)
 
@@ -142,17 +144,35 @@ class RpaPlotter():
             sel.annotation.set_visible(False)
             sel.annotation.set_fontsize(6)
             _line = sel.artist
+            # Ruida controllers have home far right. This effectively
+            # reverses coordinates so that positive becomes negative.
             _end_x = _line.get_xdata()[-1]
-            _end_y = _line.get_ydata()[-1]
-            _, _max_x = self.ax.get_xlim()
-            if _end_x > _max_x:
-                _pos_x = _max_x
+            _min_x, _max_x = (self.ax.get_xlim())
+            # Move the plot window if the new coord is not in the visible area.
+            _len_x = _max_x - _min_x
+            if _end_x < _min_x:
+                _min = _end_x - _len_x / 2
+                _max = _end_x + _len_x / 2
+                self.ax.set_xlim(_min, _max)
+                _min_x, _max_x = (self.ax.get_xlim())
+
+            if _end_x < _min_x:
+                _pos_x = _min_x
             else:
                 _pos_x = _end_x
 
-            _, _max_y = self.ax.get_ylim()
-            if _end_y > _max_y:
-                _pos_y = _max_y
+            _end_y = _line.get_ydata()[-1]
+            _min_y, _max_y = self.ax.get_ylim()
+            # Move the plot window if the new coord is not in the visible area.
+            _len_y = _max_y - _min_y
+            if _end_y < _min_y:
+                _min = _end_y - _len_y / 2
+                _max = _end_y + _len_y / 2
+                self.ax.set_ylim(_min, _max)
+                _min_y, _max_y = self.ax.get_ylim()
+
+            if _end_y < _min_y:
+                _pos_y = _min_y
             else:
                 _pos_y = _end_y
 
@@ -160,7 +180,7 @@ class RpaPlotter():
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             self._last_annotation = self.ax.annotate(
-                f'{_label}\nx={_end_x}mm\ny={_end_y}mm',
+                f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm',
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',
@@ -288,8 +308,9 @@ class RpaPlotter():
         else:
             _c = self._move_color
         # Draw the line from the previous head position.
+        # Invert locations because controller home is far right.
         _line, = self.ax.plot(
-            [self._last_x, x], [self._last_y, y],
+            [-self._last_x, -x], [-self._last_y, -y],
             label=self.cmd_label, color=_c, lw=2)
         self.lines.append(_line)
         self.lines_data.append(
@@ -536,11 +557,19 @@ class RpaPlotter():
         if self._enabled and cmd in self._ct:
             if sub_cmd is not None:
                 if sub_cmd in self._ct[cmd]:
+                    try:
+                        self.cmd_id = id
+                        self.cmd_label = label
+                        getattr(self, self._ct[cmd][sub_cmd])(values)
+                    except Exception as e:
+                        pass
+            else:
+                try:
                     self.cmd_id = id
                     self.cmd_label = label
-                    getattr(self, self._ct[cmd][sub_cmd])(values)
-            else:
-                self._ct[cmd](values)
+                    getattr(self, self._ct[cmd])(values)
+                except Exception as e:
+                    pass
 
     _mt = {
         0x00: {
