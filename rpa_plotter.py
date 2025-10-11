@@ -294,7 +294,12 @@ class RpaPlotter():
         self.lines.append(_line)
         self.lines_data.append(
             {'start': (self._last_x, self._last_y), 'end': (x, y)})
-        self.ax.legend(fontsize=6, fancybox=True, shadow=True, draggable=True)
+        self.ax.legend(
+            fontsize=6,
+            fancybox=True,
+            shadow=True,
+            draggable=True,
+            )
         if self._stepping():
             self.show(line=_line, label=self.cmd_label, wait=True)
         self._moved = True
