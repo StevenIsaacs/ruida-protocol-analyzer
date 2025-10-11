@@ -363,7 +363,7 @@ class RuidaProtocolAnalyzer():
         self.out = output
         self.new_packet = False
         self.acks_expected = 0
-        self.parser = rp.RdParser(output)
+        self.parser = rp.RdParser(output, args.input_file)
         self._reader = UdpDumpReader(args, input, output)
         self._pkt = RdPacket(args, self._reader, output)
         self._pkt.set_magic(args.magic)

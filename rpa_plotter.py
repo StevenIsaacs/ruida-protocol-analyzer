@@ -4,8 +4,8 @@ This uses build123d and OCP Cad Viewer to illustrate laser head movement
 and power settings. This can reveal whether a driver is handling move and
 cut commands correctly.'''
 
-from build123d import *
-from ocp_vscode import *
+import matplotlib.pyplot as plt
+import mplcursors
 
 from rpa_emitter import RpaEmitter
 import rpa_protocol as rdap
@@ -59,7 +59,9 @@ class RpaPlotter():
     Attributes:
         out         The message emitter.
         cmd_id      The command ID to be associated with a line.
-        plot        The movement sketch.
+        plot_label  The label (title) for the plot.
+        plot        The movement plot.
+        axes        The axis array for the plot.
         lines       The number of lines in the plot. This is used for the Z
                     axis.
         bed         A rectangle showing the bed as reported by the controller.
@@ -71,11 +73,12 @@ class RpaPlotter():
                     0xRRGGBB.
         step        When true single stepping lines is enabled.
     '''
-    def __init__(self, out: RpaEmitter):
+    def __init__(self, out: RpaEmitter, label: str):
         '''Init the plotter.
 
         Parameters:
             out     The message emitter to use.
+            label   The label to display as the plot title.
         '''
         self.out = out
 
@@ -85,16 +88,24 @@ class RpaPlotter():
         self.y = 0
         self.u = 0
         self.p = 0.0 # Laser effectively off.
-        self.color: Color = Color(0, 0, 0)
+        self.color: tuple = (0, 0, 0)
 
         # For moves relative to a set origin
         self.origin_x = 0
         self.origin_y = 0
 
-        self.plot = Sketch()
+        self.plot_label = label
+        self.plot, self.ax = plt.subplots(figsize=(8, 6))
+        self.ax.set_title(self.plot_label)
+        self.ax.set_xlabel('Bed X')
+        self.ax.set_ylabel('Bed Y')
+        self.ax.set_xlim(-5, 50)
+        self.ax.set_ylim(-5, 50)
+        self.ax.grid(True)
+        mplcursors.cursor(self.ax, hover=True)
+
         self.lines = []
-        self.line_z = 0
-        self.last_line_z = 0
+        self.lines_data = []
         self.bed = None
 
         self.bed_xy = {'X': 0, 'Y': 0} # Set by bed_xy_x and bed_xy_y.
@@ -105,11 +116,14 @@ class RpaPlotter():
         self._stepping_enabled = False
         self._stepping_cmd_id = 0
 
+        self._x_min = -5        # For some overshoot.
+        self._y_min = -5        # For some overshoot.
         self._bed_sized = False # True when both bed dimensions have been set.
         self._moved = False     # Indicates if the head has moved after init.
         self._last_x = 0        # For line start point.
         self._last_y = 0        # For line end point.
 
+        self._move_color = (0.3, 0.3, 0.3)
         self._color_lut = self._gen_color_lut()
 
     #++++ Display options.
@@ -120,10 +134,16 @@ class RpaPlotter():
         '''
         self._enabled = True
 
-    def show(self, wait=False):
-        show(self.lines)
+    def show(self, line=None, label='Displaying plot.', wait=False):
+        self.plot.show()
+        self.plot.canvas.draw_idle()
+        if line is None:
+            _lines = self.lines
+        else:
+            _lines = [line]
         if wait:
-            self.out.pause('Displaying plot. Press Enter to continue.')
+            mplcursors.cursor(_lines, hover=True)
+            self.out.pause(f'{label} Press Enter to continue.')
 
     def step_on_cmd_id(self, cmd_id):
         '''Set the command ID at which to start stepping moves.
@@ -166,7 +186,8 @@ class RpaPlotter():
                 # If the bed size was set previously then a new, overlapping
                 # rectangle is drawn.
                 self.out.verbose(f'Drawing bed rectangle.')
-                self.plot += Rectangle(self.bed_xy['X'], self.bed_xy['Y'])
+                self.ax.set_xlim(self._x_min, self.bed_xy['X'])
+                self.ax.set_ylim(self._y_min, self.bed_xy['Y'])
                 self.bed_sized = True
             else:
                 self.out.verbose(f'Bed dimension {axis} set to {length}.')
@@ -216,26 +237,21 @@ class RpaPlotter():
         self.x = x
         self._last_y = self.y
         self.y = y
-        self.last_line_z = self.line_z
-        self.line_z += 0.00001 # OCP Viewer complains if equal to 0.0.
         # Get the color.
         if cut:
             _c = self.color
         else:
-            _c = Color(0.8, 0.8, 0.8)
+            _c = self._move_color
         # Draw the line from the previous head position.
-        # TODO: How to change line color.
-        _start = Vector(self._last_x, self._last_y, self.last_line_z)
-        _end = Vector(x, y, self.line_z)
-        _line = Line(_start, _end)
+        _line, = self.ax.plot(
+            [self._last_x, x], [self._last_y, y],
+            label=self.cmd_label, color=_c, lw=2)
         self.lines.append(_line)
-        _line.color = _c
-        _line.label = self.cmd_label
-        self.plot += _line
+        self.lines_data.append(
+            {'start': (self._last_x, self._last_y), 'end': (x, y)})
+        self.ax.legend()
         if self._stepping():
-            show(_line)
-            self.out.pause(f'Line: {_line.label}')
-        # show(self.plot)
+            self.show(line=_line, label=self.cmd_label, wait=True)
         self._moved = True
 
     def cmd_move_abs_xy(self, values: list[float]):
@@ -413,7 +429,7 @@ class RpaPlotter():
                 int(_start_rgb[_c] + (_end_rgb[_c] - _start_rgb[_c]) * _local_f)
                 for _c in range(3)
             ]
-            _lut.append(Color(_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
+            _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
         return _lut
 
     def cmd_power(self, values: list[float]):
