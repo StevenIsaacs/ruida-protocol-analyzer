@@ -1,28 +1,64 @@
 #!/usr/bin/env bash
-# Select a specific test case or problem for analysis.
-#
-# This changes the symbolic links in discovery to point to a specific
-# directory.
-# NOTE: It is assumed all file and directory names conform to the standard
-# described in discovery/README.md
-#
-# Parameters:
-#  1 The type (sub-directory name):
-#      tc  For test case.
-#      prb For problem.
-#      dev For current development.
-#  2 The case ID. The type is prepended to the ID to build a full name.
-#  3 The application used to generate the log file.
-#      mk  MeerK40t
-#      lb  LightBurn
-#      rdw RDWorks
-log=$1/$1-$2/$1-$2-$3.log
-txt=$1/$1-$2/$1-$2-$3.txt
-echo $log
-if [ -e discovery/$log ]; then
-    echo Selecting: $log
-    ln -sf $log discovery/selected.log
-    ln -sf $txt discovery/selected.txt
+_self=$(basename "$0")
+usage () {
+  cat <<EOF
+Usage: $_self <type> <case> <app>
+
+Select a specific test case or problem for analysis.
+
+This changes the symbolic links in discovery to point to a specific
+directory. The directory containing the files MUST exist. However, the
+files themselves need not exist.
+
+Three links are created:
+ - The capture log file.
+ - The decoded file.
+ - The verbose decoded file (indicated with vrb at the end of the name)
+
+NOTE: It is assumed all file and directory names conform to the standard
+described in discovery/README.md
+
+Parameters:
+ 1 The type (sub-directory name):
+     tc  For test case.
+     prb For problem.
+     dev For current development.
+ 2 The case ID. The type is prepended to the ID to build a full name.
+ 3 The application used to generate the log file.
+     mk  MeerK40t
+     lb  LightBurn
+     rdw RDWorks
+EOF
+exit 1
+}
+
+if [ "$#" -ne 3 ]; then
+    usage
+fi
+
+type=$1
+if [[ "$type" != "tc" && "$type" != "prb" && "$type" != "dev" ]]; then
+  echo "Error: Invalid type: '$type'."
+  usage
+fi
+
+case=$2
+
+app=$3
+if [[ "$app" != "mk" && "$app" != "lb" && "$app" != "rdw" ]]; then
+  echo "Error: Invalid app '$app'."
+  usage
+fi
+
+_dir=$type/$type-$case
+_path=$_dir/$type-$case-$app
+if [ -e discovery/$_dir ]; then
+    echo Selecting: $_path
+    ln -sf $_path.log discovery/selected.log
+    ln -sf $_path.txt discovery/selected.txt
+    ln -sf $_path-vrb.txt discovery/selected-vrb.txt
 else
-    echo Log file $log does not exist.
+    echo The directory $_dir does not exist.
+    ls discovery/$type
+    usage
 fi
