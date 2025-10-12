@@ -1,6 +1,5 @@
 '''Message emitter for the Ruida Protocol Analyzer'''
 import sys
-import readline
 
 class RpaEmitter():
     '''

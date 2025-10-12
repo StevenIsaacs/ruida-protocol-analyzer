@@ -7,9 +7,6 @@ This version is intended to be used from the command line to process UDP
 session data previously captured using tshark (Wireshark CLI). See decode
 for more information.
 '''
-from datetime import datetime
-import re
-
 import ruida_parser as rp
 import rpa_protocol as rdap
 from rpa_emitter import RpaEmitter

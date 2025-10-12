@@ -1,0 +1,3 @@
+# Required to support plotting.
+matplotlib
+mplcursors

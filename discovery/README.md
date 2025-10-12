@@ -34,9 +34,10 @@ Where:
 # Test Case Index
 This section is a directory of test cases. The test case directories are contained in the `tc` directory.
 
-| Purpose<br>           | Spec                |
-| --------------------- | ------------------- |
-| Jogging verification. | [[tc-2025-10-09-1]] |
+| Purpose<br>           | Spec                                  |
+| --------------------- | ------------------------------------- |
+| Jogging verification. | [tc-2025-10-09-1](tc-2025-10-09-1.md) |
+| Simple rectangle      | [tc-2025-10-11-1](tc-2025-10-11-1.md) |
 
 ## Problem Index
 This section is a directory of known problems. The problem directories are contained in the `prb` directory.
