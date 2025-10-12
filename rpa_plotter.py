@@ -120,6 +120,7 @@ class RpaPlotter():
         self.ax.set_ylabel('Bed Y mm')
         self.ax.set_xlim(-5, 50)
         self.ax.set_ylim(-5, 50)
+        self.ax.set_aspect('equal')
         self.ax.grid(True)
         #self.ax.invert_xaxis()
         #self.ax.invert_yaxis()
