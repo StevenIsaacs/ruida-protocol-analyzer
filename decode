@@ -2,6 +2,8 @@
 _self=$(basename "$0")
 usage () {
   cat <<EOF
+Usage: $_self <file> [<options>]
+
 Use this script to run rpa.py to process a log file previously captured
 by the capture script. The log file is processed twice. First to produce a
 summarized decode and second to produce a verbose decode.
@@ -13,8 +15,8 @@ sure a virtual environment is active before running this script. A
 requirements.txt is provided if it is necessary to create a virtual environment.
 
 Parameters:
- 1 The capture file name -- not including extension. Processes $1.log.
-   The output is written to $1.txt and $1-vrb.txt.
+ 1 The capture file name -- not including extension. Processes <file>.log.
+   The output is written to <file>.txt and <file>-vrb.txt.
  2 Optional command line arguments for verbose mode. Often this will be used
    to generate a plot of all head movements. e.g.: "--plot-moves --step-moves".
 EOF

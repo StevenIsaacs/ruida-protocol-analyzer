@@ -2,12 +2,14 @@
 _self=$(basename "$0")
 usage () {
   cat <<EOF
+Usage: $_self <ip> <file> [<options>]
+
 Use this script to run tshark to capture a log file which can then be processed
 using decode.
 
 Parameters:
  1 The Ruida controller IP address.
- 2 The capture file name -- not including extension. This saves to $2.log.
+ 2 The capture file name -- not including extension. This saves to <file>.log.
  3 Optional parameters. (e.g. "-i <if>")
 
 NOTE: Parameter 3 is often needed on Windows because it typically assumes the
