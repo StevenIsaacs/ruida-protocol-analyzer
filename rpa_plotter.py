@@ -88,6 +88,24 @@ class RpaPlotter():
         self.y = 0
         self.u = 0
         self.p = 0.0 # Laser effectively off.
+        self.s = { # Speed settings.
+            'speed_laser_1': 0.0,
+            'speed_axis': 0.0,
+            'speed_laser_1_part': 0.0,
+            'force_eng_speed': 0.0,
+            'speed_axis_move': 0.0,
+        } # Move speed.
+        self.m_to_s_map = { # Move type to speed setting map.
+            'MOVE_ABS_XY': 'speed_axis_move',
+            'MOVE_REL_XY': 'speed_axis',
+            'MOVE_REL_X': 'speed_axis',
+            'MOVE_REL_Y': 'speed_axis',
+            'CUT_ABS_XY': 'speed_laser_1',
+            'CUT_REL_XY': 'speed_laser_1',
+            'CUT_REL_X': 'speed_laser_1',
+            'CUT_REL_Y': 'speed_laser_1',
+        }
+        self.speed = 0.0
         self.color: tuple = (0, 0, 0)
 
         # For moves relative to a set origin
@@ -176,11 +194,20 @@ class RpaPlotter():
             else:
                 _pos_y = _end_y
 
-            _label = _line.get_label()
+            _label: str = _line.get_label()
             if self._last_annotation is not None:
                 self._last_annotation.remove()
+            _a_text = f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm'
+            _a_text += f'\nPower={self.p:.1f}%'
+            # TODO: How to check for cut vrs move?
+            _cmd = _label.split(':')[1]
+            if _cmd in self.m_to_s_map:
+                _speed = self.s[self.m_to_s_map[_cmd]]
+                _a_text += f'\nSpeed={_speed:.1f}mm/S'
+            else:
+                _a_text += f'\nSpeed=UNKNOWN'
             self._last_annotation = self.ax.annotate(
-                f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm\nPower={self.p:.1f}%',
+                _a_text,
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',
@@ -286,6 +313,31 @@ class RpaPlotter():
                     f'Axis {axis} coordinate ({coord}) is outside bed area.')
 
     #++++ Moves
+    def cmd_speed_laser_1(self, values: list[float]):
+        '''Used for cuts?
+        '''
+        self.s['speed_laser_1'] = values[0]
+
+    def cmd_speed_axis(self, values: list[float]):
+        '''Unknown.
+        '''
+        self.s['speed_axis'] = values[0]
+
+    def cmd_speed_laser_1_part(self, values: list[float]):
+        '''Unknown.
+        '''
+        self.s['speed_laser_1_part'] = values[0]
+
+    def cmd_force_eng_speed(self, values: list[float]):
+        '''Unknown.
+        '''
+        self.s['speed_laser_1'] = values[0]
+
+    def cmd_speed_axis_move(self, values: list[float]):
+        '''Used for moves?
+        '''
+        self.s['speed_laser_1'] = values[0]
+
     def _add_line(self, x: float, y: float, cut=False):
         '''Position the virtual head at x,y.
 
@@ -554,6 +606,13 @@ class RpaPlotter():
         0xC6: {
             0x01: 'cmd_min_power_1',
             0x02: 'cmd_max_power_1'
+        },
+        0xC9: {
+            0x02: 'cmd_speed_laser_1',
+            0x03: 'cmd_speed_axis',
+            0x04: 'cmd_speed_laser_1_part',
+            0x05: 'cmd_force_eng_speed',
+            0x06: 'cmd_axis_move',
         },
         0xD9: {
             0x00: 'cmd_rapid_move_x',
