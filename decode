@@ -35,7 +35,7 @@ fi
 
 if [[ -n "$VIRTUAL_ENV" ]]; then
     python rpa.py -o $_file.txt $_file.log
-    python rpa.py --verbose --raw $2 -o $_file-vrb.txt $_file.log
+    python rpa.py --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
 else
     echo ERROR: A virtual environment is not active.
     usage
