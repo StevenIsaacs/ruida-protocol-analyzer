@@ -105,19 +105,26 @@ python rda.py --quiet --stop-on-error -o results.txt capture.log
 
 | Option | Description |
 |--------|-------------|
-| `--on-the-fly` | Spawn tshark and process output in real time |
-| `--ip` | The Ruida controller IP address. Required when --on-the-fly is used |
+| `--on-the-fly` | Spawn tshark and process output in real time. |
+| `--ip` | The Ruida controller IP address. Required when `--on-the-fly` is used. |
 | `--magic <magic_number>` | Specify the swizzle magic number rather than attempt to discover it in the capture. |
-| `--out <file>`, `-o <file>` | Write decoded data to specified file |
-| `--quiet`, `-q` | Suppress stdout output |
-| `--verbose` | Generate detailed output with additional information |
-| `--raw` | Include raw packet dumps with decoded output |
+| `--out <file>`, `-o <file>` | Write decoded data to specified file. |
+| `--quiet`, `-q` | Suppress stdout output. |
+| `--verbose` | Generate detailed output with additional information. |
+| `--raw` | Include raw packet dumps with decoded output. |
 | `--unswizzled` | Output the unswizzled and unprocessed data. |
-  | `--stop-on-error` | Stop processing on first decode error |
-| `--step-packets` | Pause output after each host packet has been parsed (ignored when --on-the-fly) |
-| `--step-decode` | Pause output after each decode message (disables --on-the-fly) |
-| `--interactive` | (Future) Enter an interactive mode on the console (disables --on-the-fly) |
-
+| `--stop-on-error` | Stop processing on first decode error. |
+| **Ignored when `--on-the-fly` is enabled** |
+| `--step-packets` | Pause output after each host packet has been parsed. |
+| `--step-decode` | Pause output after each decode message. |
+| `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
+| `--step-moves` | Pause output on each move when plotting moves. |
+| `--step-on-command <command>` | Begin stepping moves when command N has been decoded. |
+| | `<command>`: |
+| | `help`: Show a help message. |
+| | `no-step`: Turn off move stepping. |
+| | `until <cmd-id>`: Begin stepping moves at _cmd-id_. |
+| | `--interactive`: (Future) Enter an interactive mode on the console. |
 
 ## Output Format
 
@@ -201,7 +208,9 @@ checksum calculation. Using LightBurn captures there is currently a consistent
 discrepancy of 220 (shown as a difference). This implies there are only one or
 two bytes missing from the calculation -- at least for LightBurn captures.
 
-### Example Output
+## Example Output
+
+### Normal Verbose Output
 ```
 0001:000001:003:PRT:RDR:---:Interval:-0.000101S
 0001:000001:004:PRT:raw:-->:
@@ -288,6 +297,13 @@ accumulated=9756933
 difference =7028
 
 ```
+
+### Move Plotting
+When move plotting is enabled a separate window opens showing all individual
+head moves. Hovering over a line will open a popup showing the move command
+ID along with the end point coordinates and power and speed settings.
+
+![Example:](example-moves.png)
 
 ## Protocol Structure
 
