@@ -24,7 +24,13 @@ fi
 
 _ip=$1
 
-ping -c 1 -W 1 "$_ip"
+_os=`uname | cut -d ' ' -f 1`
+if [ "$_os" = "Linux" ]; then
+    ping -c 1 -W 1 "$_ip"
+else
+    # Assuming Windows for now.
+    ping -n 1 -w 100 "$_ip"
+fi
 if [ $? -ne 0 ]; then
     # Be forgiving since a bogus ip or having machine off may be intentional
     # when capturing lost comms behaviors.
