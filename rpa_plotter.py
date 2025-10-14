@@ -254,7 +254,7 @@ class RpaPlotter():
             _cmd = _label.split(':')[1]
             if self._last_annotation is not None:
                 self._last_annotation.remove()
-            _a_text = f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm'
+            _a_text = f'{_label}\nx={-_end_x:.3f}mm\ny={-_end_y:.3f}mm'
             _a_text += f'\nPower={self.lines[_cmd_id]['power']:.1f}%'
             # TODO: How to check for cut vrs move?
             if _cmd in self.m_to_s_map:
