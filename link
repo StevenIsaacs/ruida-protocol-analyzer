@@ -2,7 +2,7 @@
 _self=$(basename "$0")
 usage () {
   cat <<EOF
-Usage: $_self <type> <case> <app>
+Usage: $_self <type> <case> <app> [<iter>]
 
 Select a specific test case or problem for analysis.
 
@@ -28,11 +28,13 @@ Parameters:
      mk  MeerK40t
      lb  LightBurn
      rdw RDWorks
+ 4 Optional iteration number. In this case the full name becomes:
+     <type>-<case>-<iter>-<app>
 EOF
 exit 1
 }
 
-if [ "$#" -ne 3 ]; then
+if [ "$#" -lt 3 ]; then
     usage
 fi
 
@@ -50,8 +52,11 @@ if [[ "$app" != "mk" && "$app" != "lb" && "$app" != "rdw" ]]; then
   usage
 fi
 
+if [ ! -z "$4" ]; then
+  iter="-$4"
+fi
 _dir=$type/$type-$case
-_path=$_dir/$type-$case-$app
+_path=$_dir/$type-$case$iter-$app
 if [ -e discovery/$_dir ]; then
     echo Selecting: $_path
     ln -sf $_path.log discovery/selected.log
