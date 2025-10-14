@@ -35,8 +35,11 @@ class RpaEmitter():
         self.dir = dir
 
     def pause(self, message='Press Enter'):
-        if input('\n' + message + '(quit to exit): ') == 'quit':
+        _cmd = input('\n' + message + '(quit to exit): ')
+        if _cmd == 'quit':
             raise KeyboardInterrupt
+        else:
+            return _cmd
 
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.
