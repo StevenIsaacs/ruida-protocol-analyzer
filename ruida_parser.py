@@ -166,7 +166,7 @@ class RdDecoder():
         return self.formatted
 
     def rd_power(self, data: bytearray):
-        self.value = self.to_int(data) / (0x4000 / 100)
+        self.value = self.to_uint(data) / (0x4000 / 100)
         return self.formatted
 
     def rd_frequency(self, data: bytearray):

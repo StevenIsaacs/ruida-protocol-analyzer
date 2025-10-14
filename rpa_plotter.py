@@ -83,6 +83,9 @@ class RpaPlotter():
         self.out = out
 
         self.cmd_label = ''
+        self.cmd_id = None
+        self.cmd = 0
+        self.sub_cmd = 0
         # At power on the controller move to 0,0.
         self.x = 0
         self.y = 0
@@ -128,8 +131,8 @@ class RpaPlotter():
         self._last_annotation = None
         mplcursors.cursor(self.ax, hover=True)
 
-        self.lines = []
-        self.lines_data = []
+        self.plot_lines = []
+        self.lines = {}
         self.bed = None
 
         self.bed_xy = {'X': 0, 'Y': 0} # Set by bed_xy_x and bed_xy_y.
@@ -139,6 +142,7 @@ class RpaPlotter():
         self._enabled = False
         self._stepping_enabled = False
         self._stepping_cmd_id = 0
+        self._stepping_end = 0
 
         self._x_min = -5        # For some overshoot.
         self._y_min = -5        # For some overshoot.
@@ -154,9 +158,11 @@ class RpaPlotter():
         '''Display a list of available commands.
         '''
         _help = (
-            '\nhelp or ?\tDisplay this help.'
-            '\nno-step\t\tTurn single step plotting off.'
-            '\nuntil <n>\tRun and start single step at command <n>.'
+            '\nhelp or ?\t\tDisplay this help.'
+            '\nno-step\t\t\tTurn single step plotting off.'
+            '\nrange <n> [<end>]\tRun and start single step at command <n>.'
+            '\n\t\t\t<end> is optional and is the last command to plot.'
+            '\nshow-legend\t\tDisplay the legend on the plot.'
             '\n'
         )
         self.out.write(_help)
@@ -177,8 +183,7 @@ class RpaPlotter():
         else:
             _cmd_id = 0
             _pause = True
-        if (self._stepping() and (_cmd_id >= self._stepping_cmd_id) or
-            _pause):
+        if self._stepping() or _pause:
             while True:
                 _cmd = self.out.pause(f'{label} Command or Enter:')
                 if _cmd == 'help' or _cmd == '?':
@@ -186,11 +191,22 @@ class RpaPlotter():
                 elif _cmd == 'no-step':
                     self.enable_stepping(False)
                     self.out.write('\nStep mode is off.')
-                elif 'until' in _cmd:
+                elif 'range' in _cmd:
                     _fields = _cmd.split(' ')
                     _id = int(_fields[1].strip())
-                    self.step_on_cmd_id(_id)
+                    if len(_fields) == 3:
+                        _end = _id + int(_fields[2])
+                    else:
+                        _end = 0
+                    self.step_on_cmd_id(_id, _end)
                     self.out.write(f'Step will resume at command: {_id}')
+                elif _cmd == 'show-legend':
+                    self.ax.legend(
+                        fontsize=6,
+                        fancybox=True,
+                        shadow=True,
+                        draggable=True,
+                        )
                 elif _cmd == '':
                     break
 
@@ -234,14 +250,15 @@ class RpaPlotter():
                 _pos_y = _end_y
 
             _label: str = _line.get_label()
+            _cmd_id = int(_label.split(':')[0])
+            _cmd = _label.split(':')[1]
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             _a_text = f'{_label}\nx={-_end_x}mm\ny={-_end_y}mm'
-            _a_text += f'\nPower={self.p:.1f}%'
+            _a_text += f'\nPower={self.lines[_cmd_id]['power']:.1f}%'
             # TODO: How to check for cut vrs move?
-            _cmd = _label.split(':')[1]
             if _cmd in self.m_to_s_map:
-                _speed = self.s[self.m_to_s_map[_cmd]]
+                _speed = self.lines[_cmd_id]['speed']
                 _a_text += f'\nSpeed={_speed:.1f}mm/S'
             else:
                 _a_text += f'\nSpeed=UNKNOWN'
@@ -268,7 +285,7 @@ class RpaPlotter():
         self.plot.show()
         self.plot.canvas.draw_idle()
         if line is None:
-            _lines = self.lines
+            _lines = self.plot_lines
         else:
             _lines = [line]
         if wait:
@@ -276,7 +293,7 @@ class RpaPlotter():
             cursor.connect('add', _annotate)
             self._commands(label)
 
-    def step_on_cmd_id(self, cmd_id):
+    def step_on_cmd_id(self, cmd_id, end=0):
         '''Set the command ID at which to start stepping moves.
 
         This is ignored when stepping is disabled.
@@ -284,6 +301,7 @@ class RpaPlotter():
         Set to 0 to disable and step all commands.
         '''
         self._stepping_cmd_id = cmd_id
+        self._stepping_end = end
         self._stepping_enabled = True
 
     def enable_stepping(self, enable: bool):
@@ -295,14 +313,16 @@ class RpaPlotter():
         self._stepping_enabled = enable
 
     def _stepping(self):
-        return  (
-            self._stepping_enabled and (
-                self._stepping_cmd_id == 0 or (
-                    self._stepping_cmd_id > 0 and
-                    self.cmd_id >= self._stepping_cmd_id
+        return (
+                (self._stepping_enabled and self._stepping_cmd_id == 0) or (
+                    self._stepping_enabled and (
+                        (self.cmd_id >= self._stepping_cmd_id) and (
+                            (self._stepping_end == 0) or
+                            (self.cmd_id <= self._stepping_end)
+                        )
+                    )
                 )
             )
-        )
 
     #++++ Memory table
     def _set_bed_dimension(self, axis: str, length: float):
@@ -401,20 +421,24 @@ class RpaPlotter():
             _c = self._move_color
         # Draw the line from the previous head position.
         # Invert locations because controller home is far right.
-        _line, = self.ax.plot(
-            [-self._last_x, -x], [-self._last_y, -y],
-            label=self.cmd_label, color=_c, lw=2)
-        self.lines.append(_line)
-        self.lines_data.append(
-            {'start': (self._last_x, self._last_y), 'end': (x, y)})
-        self.ax.legend(
-            fontsize=6,
-            fancybox=True,
-            shadow=True,
-            draggable=True,
-            )
-        if self._stepping():
-            self.show(line=_line, label=self.cmd_label, wait=True)
+        if ((self.cmd_id >= self._stepping_cmd_id) and
+            ((self._stepping_end == 0) or
+             (self.cmd_id <= self._stepping_end))):
+            _line, = self.ax.plot(
+                [-self._last_x, -x], [-self._last_y, -y],
+                label=self.cmd_label, color=_c, lw=2)
+            _cmd = self.cmd_label.split(':')[1]
+            self.plot_lines.append(_line)
+            self.lines[self.cmd_id] = {
+                'command': self.cmd_label,
+                'line': _line,
+                'start': (self._last_x, self._last_y),
+                'end': (x, y),
+                'speed': self.s[self.m_to_s_map[_cmd]],
+                'power': self.p,
+                }
+            if self._stepping():
+                self.show(line=_line, label=self.cmd_label, wait=True)
         self._moved = True
 
     def cmd_move_abs_xy(self, values: list[float]):
@@ -556,7 +580,7 @@ class RpaPlotter():
 
         The relative distance cannot exceed what can be expressed in 14 bits.
         '''
-        _rel_y = values[1]
+        _rel_y = values[0]
         self._valid_rel('Y', _rel_y)
         self._add_line(self.x, self.y + _rel_y, cut=True)
 
@@ -672,8 +696,10 @@ class RpaPlotter():
             values  A list of decoded parameter values
         '''
         if self._enabled and cmd in self._ct:
+            self.cmd = cmd
             if sub_cmd is not None:
                 if sub_cmd in self._ct[cmd]:
+                    self.sub_cmd = sub_cmd
                     try:
                         self.cmd_id = id
                         self.cmd_label = label
