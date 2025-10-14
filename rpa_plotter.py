@@ -112,6 +112,7 @@ class RpaPlotter():
         self.origin_x = 0
         self.origin_y = 0
 
+        plt.set_loglevel('warning')
         self.plot_title = title
         self.plot, self.ax = plt.subplots(figsize=(8, 6))
         self.plot.suptitle(self.plot_title)
@@ -149,6 +150,17 @@ class RpaPlotter():
         self._move_color = (0.3, 0.3, 0.3)
         self._color_lut = self._gen_color_lut()
 
+    def _help(self):
+        '''Display a list of available commands.
+        '''
+        _help = (
+            '\nhelp or ?\tDisplay this help.'
+            '\nno-step\t\tTurn single step plotting off.'
+            '\nuntil <n>\tRun and start single step at command <n>.'
+            '\n'
+        )
+        self.out.write(_help)
+
     #++++ Display options.
     def enable(self):
         '''Enable plotting.
@@ -156,6 +168,32 @@ class RpaPlotter():
         This must be call to enable plotting.
         '''
         self._enabled = True
+
+    def _commands(self, label: str):
+        '''Handle user commands during pause.
+        '''
+        if ':' in label:
+            _cmd_id = int(label.split(':')[0])
+        else:
+            _cmd_id = 0
+            _pause = True
+        if (self._stepping() and (_cmd_id >= self._stepping_cmd_id) or
+            _pause):
+            while True:
+                _cmd = self.out.pause(f'{label} Command or Enter:')
+                if _cmd == 'help' or _cmd == '?':
+                    self._help()
+                elif _cmd == 'no-step':
+                    self.enable_stepping(False)
+                    self.out.write('\nStep mode is off.')
+                elif 'until' in _cmd:
+                    _fields = _cmd.split(' ')
+                    _id = int(_fields[1].strip())
+                    self.step_on_cmd_id(_id)
+                    self.out.write(f'Step will resume at command: {_id}')
+                elif _cmd == '':
+                    break
+
 
     def show(self, line=None, label='Displaying plot.', wait=False):
         def _annotate(sel):
@@ -236,7 +274,7 @@ class RpaPlotter():
         if wait:
             cursor = mplcursors.cursor(_lines, hover=True, multiple=False)
             cursor.connect('add', _annotate)
-            self.out.pause(f'{label} Press Enter to continue.')
+            self._commands(label)
 
     def step_on_cmd_id(self, cmd_id):
         '''Set the command ID at which to start stepping moves.
@@ -246,6 +284,7 @@ class RpaPlotter():
         Set to 0 to disable and step all commands.
         '''
         self._stepping_cmd_id = cmd_id
+        self._stepping_enabled = True
 
     def enable_stepping(self, enable: bool):
         '''Enable or disable single stepping lines.
