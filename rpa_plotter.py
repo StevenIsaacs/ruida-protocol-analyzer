@@ -86,7 +86,7 @@ class RpaPlotter():
         self.cmd_id = None
         self.cmd = 0
         self.sub_cmd = 0
-        # At power on the controller move to 0,0.
+        # At power on the controller moves to 0,0.
         self.x = 0
         self.y = 0
         self.u = 0
@@ -109,6 +109,7 @@ class RpaPlotter():
             'CUT_REL_Y': 'speed_laser_1',
         }
         self.speed = 0.0
+
         self.color: tuple = (0, 0, 0)
 
         # For moves relative to a set origin
@@ -154,6 +155,41 @@ class RpaPlotter():
         self._move_color = (0.3, 0.3, 0.3)
         self._color_lut = self._gen_color_lut()
 
+        self._max_legend_lines = 20
+
+        self._cli_commands = {
+            'new-plot': (
+                '<cmd_id> <n>',
+                    'Open a new plot to display <n> lines '
+                    'starting with <cmd_id>.'),
+            'select-plot': (
+                '<plot_id',
+                    'Select plot <plot_id>.'),
+            'no-step': (
+                '',
+                    'Disable single step plotting.'),
+            'run-to': (
+                '<cmd_id>',
+                    'Run until <cmd_id> then enter single step plotting.'),
+            'range': (
+                '<cmd_id> [<n>]',
+                    'Plot <n> lines starting with <cmd_id>.\n'
+                    '\t<n> is optional and defaults to 20.'),
+            'show-legend': (
+                '<cmd_id>',
+                    'Display a clickable legend for the visible lines '
+                    f'limited to {self._max_legend_lines} lines.'),
+            'close-legend': (
+                '',
+                    'Close the legend in the active plot.'),
+            'show-power': (
+                '',
+                    'Display a power setting legend for the visible lines.'),
+            'close-power': (
+                '',
+                    'Close the power setting legend.'),
+        }
+
     def _help(self):
         '''Display a list of available commands.
         '''
@@ -168,15 +204,12 @@ class RpaPlotter():
         self.out.write(_help)
 
     #++++ Display options.
-    def enable(self):
-        '''Enable plotting.
-
-        This must be call to enable plotting.
-        '''
-        self._enabled = True
-
-    def _commands(self, label: str):
+    def _cli(self, label: str):
         '''Handle user commands during pause.
+
+        Parameters:
+            label   A command label formatted as:
+                        <cmd_id>:<command>
         '''
         if ':' in label:
             _cmd_id = int(label.split(':')[0])
@@ -210,6 +243,12 @@ class RpaPlotter():
                 elif _cmd == '':
                     break
 
+    def enable(self):
+        '''Enable plotting.
+
+        This must be call to enable plotting.
+        '''
+        self._enabled = True
 
     def show(self, line=None, label='Displaying plot.', wait=False):
         def _annotate(sel):
@@ -291,7 +330,7 @@ class RpaPlotter():
         if wait:
             cursor = mplcursors.cursor(_lines, hover=True, multiple=False)
             cursor.connect('add', _annotate)
-            self._commands(label)
+            self._cli(label)
 
     def step_on_cmd_id(self, cmd_id, end=0):
         '''Set the command ID at which to start stepping moves.
