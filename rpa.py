@@ -2,8 +2,8 @@ import argparse
 import sys
 import subprocess
 
-import ruida_analyzer as rpa
-from rpa_emitter import RpaEmitter
+import protocols.ruida.ruida_analyzer as rpa
+from cpa.cpa_emitter import CpaEmitter
 
 def parse_arguments():
     """Parse command line arguments for Ruida protocol analyzer"""
@@ -229,7 +229,7 @@ def main():
     input = open_input(args)
 
     # Set up output handling
-    output = RpaEmitter(args)
+    output = CpaEmitter(args)
     output.open()
 
     # Initialize analyzer with magic number if provided

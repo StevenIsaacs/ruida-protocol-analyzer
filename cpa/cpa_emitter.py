@@ -1,7 +1,7 @@
 '''Message emitter for the Ruida Protocol Analyzer'''
 import sys
 
-class RpaEmitter():
+class CpaEmitter():
     '''
     A class to write messages to the output file and console.
 

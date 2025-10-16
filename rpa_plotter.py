@@ -7,7 +7,7 @@ cut commands correctly.'''
 import matplotlib.pyplot as plt
 import mplcursors
 
-from rpa_emitter import RpaEmitter
+from cpa.cpa_emitter import CpaEmitter
 import rpa_protocol as rdap
 
 class RpaPlotter():
@@ -73,7 +73,7 @@ class RpaPlotter():
                     0xRRGGBB.
         step        When true single stepping lines is enabled.
     '''
-    def __init__(self, out: RpaEmitter, title: str):
+    def __init__(self, out: CpaEmitter, title: str):
         '''Init the plotter.
 
         Parameters:

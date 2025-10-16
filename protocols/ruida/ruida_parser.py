@@ -5,9 +5,9 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
-from rpa_emitter import RpaEmitter
+from cpa.cpa_emitter import CpaEmitter
 import rpa_protocol as rdap
-import rpa_plotter
+import cpa.cpa_plotter as cpa_plotter
 
 class RdDecoder():
     '''A parameter or reply decoder.
@@ -37,7 +37,7 @@ class RdDecoder():
                 The result of the rd_checksum decoder. This is reset by the
                 parser.
             '''
-    def __init__(self, output: RpaEmitter):
+    def __init__(self, output: CpaEmitter):
         self.out = output
         self.accumulating = False
         self.format: str = ''
@@ -373,7 +373,7 @@ class RdParser():
                         checksum.
         verbose         The method to call when emitting verbose messages.
     '''
-    def __init__(self, output: RpaEmitter, title: str):
+    def __init__(self, output: CpaEmitter, title: str):
         '''Initialize the parsing state machine.
 
         Parameters:
@@ -421,7 +421,7 @@ class RdParser():
         self._enter_state('sync')   # Setup the sync state.
         self._transition()
         self._skip = 0
-        self.plot = rpa_plotter.RpaPlotter(self.out, self.title)
+        self.plot = cpa_plotter.RpaPlotter(self.out, self.title)
 
     def _format_decoded(self, message: str, param=None):
         '''Accumulate decoded messages one by one.
