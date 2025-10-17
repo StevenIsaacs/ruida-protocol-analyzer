@@ -233,7 +233,7 @@ class CpaPlotter():
         '''
         _help = (
             '\nhelp or ?\t\tDisplay this help.'
-            '\nno-step\t\t\tTurn single step plotting off.'
+            '\nstep [on | off]\t\tTurn single step plotting on or off.'
             '\nrange <n> [<end>]\tRun and start single step at command <n>.'
             '\n\t\t\t<end> is optional and is the last command to plot.'
             '\nshow-legend\t\tDisplay the legend on the plot.'
@@ -251,14 +251,24 @@ class CpaPlotter():
         '''
         if self._stepping() or (label is None):
             while True:
-                _cmd = self.out.pause(f'{label} Command or Enter:')
+                _cmd = self.out.pause(f'{self.cmd_id}:{label} Command or Enter:')
+                _fields = _cmd.split(' ')
                 if _cmd == 'help' or _cmd == '?':
                     self._help()
-                elif _cmd == 'no-step':
-                    self.enable_stepping(False)
-                    self.out.write('\nStep mode is off.')
+                elif _fields[0] == 'step':
+                    if len(_fields) == 2:
+                        if _fields[1] == 'on':
+                            self.enable_stepping(True)
+                        elif _fields[1] == 'off':
+                            self.enable_stepping(False)
+                            self.out.write('\nStep mode is OFF.')
+                        else:
+                            self.out.write('Invalid option for step command.')
+                    else:
+                        self.out.write('\nUse on or off.')
+                    _s = 'ON' if self._stepping_enabled else 'OFF'
+                    self.out.write(f'\nStep mode is {_s}.')
                 elif 'range' in _cmd:
-                    _fields = _cmd.split(' ')
                     _id = int(_fields[1].strip())
                     if len(_fields) == 3:
                         _end = _id + int(_fields[2])
