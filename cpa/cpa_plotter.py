@@ -9,6 +9,19 @@ import mplcursors
 
 from cpa.cpa_emitter import CpaEmitter
 
+class CpaLine():
+    '''A line representing a move of the virtual head.
+
+    '''
+    def __init__(self, cmd_id, cmd_label, line, start, end, speed, power):
+        self.cmd_id = cmd_id # For sanity.
+        self.command = cmd_label
+        self.line = line
+        self.start = start
+        self.end = end
+        self.speed = speed
+        self.power = power
+
 class CpaPlotter():
     '''Generate a colorized plot of laser head movement.
 
@@ -72,7 +85,7 @@ class CpaPlotter():
                     0xRRGGBB.
         step        When true single stepping lines is enabled.
     '''
-    def __init__(self, out: CpaEmitter, title: str):
+    def __init__(self, out: CpaEmitter, title: str, s: dict, m_to_s_map: dict):
         '''Init the plotter.
 
         Parameters:
@@ -90,23 +103,8 @@ class CpaPlotter():
         self.y = 0
         self.u = 0
         self.p = 0.0 # Laser effectively off.
-        self.s = { # Speed settings.
-            'speed_laser_1': 0.0,
-            'speed_axis': 0.0,
-            'speed_laser_1_part': 0.0,
-            'force_eng_speed': 0.0,
-            'speed_axis_move': 0.0,
-        } # Move speed.
-        self.m_to_s_map = { # Move type to speed setting map.
-            'MOVE_ABS_XY': 'speed_axis_move',
-            'MOVE_REL_XY': 'speed_axis',
-            'MOVE_REL_X': 'speed_axis',
-            'MOVE_REL_Y': 'speed_axis',
-            'CUT_ABS_XY': 'speed_laser_1',
-            'CUT_REL_XY': 'speed_laser_1',
-            'CUT_REL_X': 'speed_laser_1',
-            'CUT_REL_Y': 'speed_laser_1',
-        }
+        self.s = s
+        self.m_to_s_map = m_to_s_map
         self.speed = 0.0
 
         self.color: tuple = (0, 0, 0)
@@ -115,38 +113,45 @@ class CpaPlotter():
         self.origin_x = 0
         self.origin_y = 0
 
+        self._max_win_x = 0
+        self._min_win_x = 0
+        self._max_win_y = 0
+        self._min_win_y = 0
+
         plt.set_loglevel('warning')
         self.plot_title = title
-        self.plot, self.ax = plt.subplots(figsize=(8, 6))
+        self.plot, self.ax = plt.subplots(figsize=(10, 8.5), linewidth=1)
         self.plot.suptitle(self.plot_title)
         self.ax.set_title(self.plot_title)
         self.ax.set_xlabel('Bed X mm')
         self.ax.set_ylabel('Bed Y mm')
-        self.ax.set_xlim(-5, 50)
-        self.ax.set_ylim(-5, 50)
+        # TODO: Set limit sign based upon where home is.
+        self.ax.set_xlim(-1000, 5)
+        self.ax.set_ylim(-1000, 5)
         self.ax.set_aspect('equal')
         self.ax.grid(True)
+
         #self.ax.invert_xaxis()
         #self.ax.invert_yaxis()
         self._last_annotation = None
         mplcursors.cursor(self.ax, hover=True)
 
         self.plot_lines = []
-        self.lines = {}
+        self.cpa_lines: dict[int, CpaLine] = {}
         self.bed = None
 
         self.bed_xy = {'X': 0, 'Y': 0} # Set by bed_xy_x and bed_xy_y.
         self.bed_z = 0      # For later.
         self.rotator_u = 0  # For later.
 
-        self._enabled = False
+        self.enabled = False
         self._stepping_enabled = False
         self._stepping_cmd_id = 0
         self._stepping_end = 0
 
         self._x_min = -5        # For some overshoot.
         self._y_min = -5        # For some overshoot.
-        self._bed_sized = False # True when both bed dimensions have been set.
+        self.bed_sized = False  # True when both bed dimensions have been set.
         self._moved = False     # Indicates if the head has moved after init.
         self._last_x = 0        # For line start point.
         self._last_y = 0        # For line end point.
@@ -189,6 +194,40 @@ class CpaPlotter():
                     'Close the power setting legend.'),
         }
 
+    def _gen_color_lut(self):
+        '''Intended to be called from __init__ this generates a LUT containing
+        101 color entries and indexed by power percentage in the range
+        0 to 100. The resulting colors range is:
+            blue -> green -> yellow -> orange -> red.
+        '''
+        _seed_colors = [
+            (0, 0, 255),    # Blue
+            (0, 255, 0),    # Green
+            (255, 255, 0),  # Yellow
+            (255, 128, 0),  # Orange (approx)
+            (255, 0, 0)     # Red
+        ]
+        _seeds = len(_seed_colors) - 1
+        _lut = []
+        _num_entries = 101
+        for _i in range(_num_entries):
+            _global_f = _i / (_num_entries)
+            _seed = min(int(_global_f * _seeds), _seeds - 1)
+            _start_f = _seed / _seeds
+            _end_f = (_seed + 1) / _seeds
+            if (_end_f - _start_f) > 1e-9:
+                _local_f = (_global_f - _start_f) / (_end_f - _start_f)
+            else:
+                _local_f = 0.0
+            _start_rgb = _seed_colors[_seed]
+            _end_rgb = _seed_colors[_seed + 1]
+            _rgb = [
+                int(_start_rgb[_c] + (_end_rgb[_c] - _start_rgb[_c]) * _local_f)
+                for _c in range(3)
+            ]
+            _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
+        return _lut
+
     def _help(self):
         '''Display a list of available commands.
         '''
@@ -210,12 +249,7 @@ class CpaPlotter():
             label   A command label formatted as:
                         <cmd_id>:<command>
         '''
-        if ':' in label:
-            _cmd_id = int(label.split(':')[0])
-        else:
-            _cmd_id = 0
-            _pause = True
-        if self._stepping() or _pause:
+        if self._stepping() or (label is None):
             while True:
                 _cmd = self.out.pause(f'{label} Command or Enter:')
                 if _cmd == 'help' or _cmd == '?':
@@ -247,10 +281,10 @@ class CpaPlotter():
 
         This must be call to enable plotting.
         '''
-        self._enabled = True
+        self.enabled = True
 
-    def show(self, line=None, label='Displaying plot.', wait=False):
-        def _annotate(sel):
+    def show(self, line=None, label=None, wait=False):
+        def _annotate(sel: mplcursors._pick_info.Selection):
             sel.annotation.draggable(False)
             sel.annotation.set_visible(False)
             sel.annotation.set_fontsize(6)
@@ -293,10 +327,10 @@ class CpaPlotter():
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             _a_text = f'{_label}\nx={-_end_x:.3f}mm\ny={-_end_y:.3f}mm'
-            _a_text += f'\nPower={self.lines[_cmd_id]['power']:.1f}%'
+            _a_text += f'\nPower={self.cpa_lines[_cmd_id].power:.1f}%'
             # TODO: How to check for cut vrs move?
             if _cmd in self.m_to_s_map:
-                _speed = self.lines[_cmd_id]['speed']
+                _speed = self.cpa_lines[_cmd_id].speed
                 _a_text += f'\nSpeed={_speed:.1f}mm/S'
             else:
                 _a_text += f'\nSpeed=UNKNOWN'
@@ -319,6 +353,12 @@ class CpaPlotter():
                 fontsize=6,
             )
             self._last_annotation.draggable()
+
+        if label is None:
+            self.ax.set_xlim(self._min_win_x -5,
+                             self._max_win_x + 5)
+            self.ax.set_ylim(self._min_win_y -5,
+                             self._max_win_y + 5)
 
         self.plot.show()
         self.plot.canvas.draw_idle()
@@ -383,6 +423,32 @@ class CpaPlotter():
         else:
             self.out.verbose('No change in bed size.')
 
+    def valid_coord(self, axis: str, coord: float):
+        '''Validate an absolute coordinate as to whether it will fit in the
+        current bed dimensions (if defined).
+        '''
+        if coord < 0:
+            self.out.error(f'Axis {axis} coordinate ({coord}) is less than 0.')
+            return False
+        else:
+            if self.bed_sized and coord > self.bed_xy[axis]:
+                self.out.error(
+                    f'Axis {axis} coordinate ({coord}) is outside bed area.')
+
+    def set_power(self, power: float):
+        '''Set line power and color.'''
+        self.p = power
+        _i = round(power)
+        if _i > 100:
+            self.out.error(
+                f'Power ({power} is greater than 100 percent.)')
+            _i = 100
+        if _i < 0:
+            self.out.error(
+                f'Power ({power} cannot be less than 0.)')
+            _i = 0
+        self.color = self._color_lut[_i]
+
     def add_line(self, x: float, y: float, cut=False):
         '''Position the virtual head at x,y.
 
@@ -391,72 +457,46 @@ class CpaPlotter():
         Otherwise the color is black.
         '''
         # Validate the coordinates. They must be within the bed area.
-        self._valid_coord('X', x)
-        self._valid_coord('Y', y)
+        self.valid_coord('X', x)
+        self.valid_coord('Y', y)
+
+        # TODO: Set X and Y sign based upon where home is.
 
         # Set the new coordinate -- good or bad.
         self._last_x = self.x
         self.x = x
+        self._max_win_x = max(-x, self._max_win_x)
+        self._min_win_x = min(-x, self._min_win_x)
         self._last_y = self.y
         self.y = y
+        self._max_win_y = max(-y, self._max_win_y)
+        self._min_win_y = min(-y, self._min_win_y)
         # Get the color.
         if cut:
+            _lw = 1
             _c = self.color
         else:
+            _lw = 0.5
             _c = self._move_color
         # Draw the line from the previous head position.
         # Invert locations because controller home is far right.
         if ((self.cmd_id >= self._stepping_cmd_id) and
             ((self._stepping_end == 0) or
              (self.cmd_id <= self._stepping_end))):
+            _line_label = f'{self.cmd_id}:{self.cmd_label}'
             _line, = self.ax.plot(
                 [-self._last_x, -x], [-self._last_y, -y],
-                label=self.cmd_label, color=_c, lw=2)
-            _cmd = self.cmd_label.split(':')[1]
+                label=_line_label, color=_c, lw=_lw)
             self.plot_lines.append(_line)
-            self.lines[self.cmd_id] = {
-                'command': self.cmd_label,
-                'line': _line,
-                'start': (self._last_x, self._last_y),
-                'end': (x, y),
-                'speed': self.s[self.m_to_s_map[_cmd]],
-                'power': self.p,
-                }
+            self.cpa_lines[self.cmd_id] = CpaLine(
+                self.cmd_id,
+                self.cmd_label,
+                _line,
+                (self._last_x, self._last_y),
+                (x, y),
+                self.s[self.m_to_s_map[self.cmd_label]],
+                self.p,
+            )
             if self._stepping():
                 self.show(line=_line, label=self.cmd_label, wait=True)
         self._moved = True
-
-    #++++ Power
-    def _gen_color_lut(self):
-        '''Intended to be called from __init__ this generates a LUT containing
-        101 color entries and indexed by power percentage in the range
-        0 to 100. The resulting colors range is:
-            blue -> green -> yellow -> orange -> red.
-        '''
-        _seed_colors = [
-            (0, 0, 255),    # Blue
-            (0, 255, 0),    # Green
-            (255, 255, 0),  # Yellow
-            (255, 128, 0),  # Orange (approx)
-            (255, 0, 0)     # Red
-        ]
-        _seeds = len(_seed_colors) - 1
-        _lut = []
-        _num_entries = 101
-        for _i in range(_num_entries):
-            _global_f = _i / (_num_entries)
-            _seed = min(int(_global_f * _seeds), _seeds - 1)
-            _start_f = _seed / _seeds
-            _end_f = (_seed + 1) / _seeds
-            if (_end_f - _start_f) > 1e-9:
-                _local_f = (_global_f - _start_f) / (_end_f - _start_f)
-            else:
-                _local_f = 0.0
-            _start_rgb = _seed_colors[_seed]
-            _end_rgb = _seed_colors[_seed + 1]
-            _rgb = [
-                int(_start_rgb[_c] + (_end_rgb[_c] - _start_rgb[_c]) * _local_f)
-                for _c in range(3)
-            ]
-            _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
-        return _lut

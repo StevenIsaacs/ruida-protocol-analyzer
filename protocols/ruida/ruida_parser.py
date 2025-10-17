@@ -6,8 +6,8 @@ byte and whether the current byte is part of a reply or not.
 NOTE: This does not verify the host/controller packet handshake.
 '''
 from cpa.cpa_emitter import CpaEmitter
-import rpa_protocol as rdap
-import cpa.cpa_plotter as cpa_plotter
+import protocols.ruida.rpa_protocol as rdap
+import protocols.ruida.rpa_plotter as rpa_plotter
 
 class RdDecoder():
     '''A parameter or reply decoder.
@@ -421,7 +421,7 @@ class RdParser():
         self._enter_state('sync')   # Setup the sync state.
         self._transition()
         self._skip = 0
-        self.plot = cpa_plotter.RpaPlotter(self.out, self.title)
+        self.plot = rpa_plotter.RpaPlotter(self.out, self.title)
 
     def _format_decoded(self, message: str, param=None):
         '''Accumulate decoded messages one by one.
@@ -865,10 +865,11 @@ class RdParser():
                         if _next >= len(self.param_list):
                             self.plot.cmd_update(
                                 self.command_number,
-                                f'{self.command_number}:{self.label}',
+                                self.label,
                                 self.command,
                                 self.sub_command,
-                                self.cmd_values)
+                                self.cmd_values
+                                )
                             self.out.verbose('Parameters decoded.')
                             self._enter_state('expect_command')
                             return self.decoded

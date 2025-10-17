@@ -235,14 +235,14 @@ def main():
     # Initialize analyzer with magic number if provided
     analyzer = rpa.RuidaProtocolAnalyzer(args, input, output)
     if args.plot_moves:
-        analyzer.parser.plot.step_on_cmd_id(args.step_on_command)
-        analyzer.parser.plot.enable_stepping(args.step_moves)
-        analyzer.parser.plot.enable()
+        analyzer.parser.plot.plot.step_on_cmd_id(args.step_on_command)
+        analyzer.parser.plot.plot.enable_stepping(args.step_moves)
+        analyzer.parser.plot.plot.enable()
 
     try:
         analyzer.decode() # Does not return until decode is complete.
         if args.plot_moves:
-            analyzer.parser.plot.show(wait=True)
+            analyzer.parser.plot.plot.show(wait=True)
         output.info('Decode complete.\n')
         output.close()
     except LookupError as e:
