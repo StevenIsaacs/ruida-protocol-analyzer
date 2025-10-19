@@ -4,23 +4,14 @@ This uses matplotlib and mplcursors to illustrate laser head movement
 and power settings. This can reveal whether a driver is handling move and
 cut commands correctly.'''
 
-import matplotlib.pyplot as plt
+import itertools
+
+import matplotlib.pyplot as mpl
 import mplcursors
 
 from cpa.cpa_emitter import CpaEmitter
-
-class CpaLine():
-    '''A line representing a move of the virtual head.
-
-    '''
-    def __init__(self, cmd_id, cmd_label, line, start, end, speed, power):
-        self.cmd_id = cmd_id # For sanity.
-        self.command = cmd_label
-        self.line = line
-        self.start = start
-        self.end = end
-        self.speed = speed
-        self.power = power
+import cpa.cpa_popup as cpa_p
+import cpa.cpa_line as cpa_l
 
 class CpaPlotter():
     '''Generate a colorized plot of laser head movement.
@@ -118,9 +109,9 @@ class CpaPlotter():
         self._max_win_y = 0
         self._min_win_y = 0
 
-        plt.set_loglevel('warning')
+        mpl.set_loglevel('warning')
         self.plot_title = title
-        self.plot, self.ax = plt.subplots(figsize=(10, 8.5), linewidth=1)
+        self.plot, self.ax = mpl.subplots(figsize=(10, 8.5), linewidth=1)
         self.plot.suptitle(self.plot_title)
         self.ax.set_title(self.plot_title)
         self.ax.set_xlabel('Bed X mm')
@@ -137,7 +128,11 @@ class CpaPlotter():
         mplcursors.cursor(self.ax, hover=True)
 
         self.plot_lines = []
-        self.cpa_lines: dict[int, CpaLine] = {}
+        self.cpa_lines: dict[int, cpa_l.CpaLine] = {}
+
+        # For additional pop-up plots. Only three more plots.
+        self.popup_list: list(cpa_p.CpaPopUp) = [None, None, None]
+
         self.bed = None
 
         self.bed_xy = {'X': 0, 'Y': 0} # Set by bed_xy_x and bed_xy_y.
@@ -148,6 +143,7 @@ class CpaPlotter():
         self._stepping_enabled = False
         self._stepping_cmd_id = 0
         self._stepping_end = 0
+        self._run_n_lines = 0
 
         self._x_min = -5        # For some overshoot.
         self._y_min = -5        # For some overshoot.
@@ -156,92 +152,188 @@ class CpaPlotter():
         self._last_x = 0        # For line start point.
         self._last_y = 0        # For line end point.
 
-        self._move_color = (0.3, 0.3, 0.3)
+        self._move_color = (0.6, 0.6, 0.6)
         self._color_lut = self._gen_color_lut()
 
         self._max_legend_lines = 20
 
-        self.cli_commands = {
-            'new-plot': (
-                '<cmd_id> <n>',
-                    'Open a new plot to display <n> lines '
-                    'starting with <cmd_id>.'),
-            'select-plot': (
-                '<plot_id',
-                    'Select plot <plot_id>.'),
-            'no-step': (
+    # Command line interface
+        self._cli_commands = {
+            'help': (
                 '',
-                    'Disable single step plotting.'),
+                    'Display this help.',
+            ),
+            'stats': (
+                '',
+                    'Display plot statistics.',
+                    ),
+            'line-atts': (
+                '<cmd_id>',
+                    'Display line attributes for line <cmd_id>.'
+            ),
+            'new-plot': (
+                '<cmd_id> [<n>]',
+                    'Open a new plot to display <n> (default=30) lines '
+                    'starting with <cmd_id>.',
+                    ),
+            'close-plot': (
+                '<plot_id>',
+                    'Close the window for <plot_id>.',
+            ),
+            'step': (
+                '[on | off]',
+                    'Enable or disable single step plotting.',
+                    ),
             'run-to': (
                 '<cmd_id>',
-                    'Run until <cmd_id> then enter single step plotting.'),
+                    'Run until <cmd_id> then enter single step plotting.',
+                    ),
+            'run-until': (
+                '<n_lines>',
+                    'Run until <n_lines> have been plotted'
+                    ' then enter single step plotting.',
+                    ),
             'range': (
                 '<cmd_id> [<n>]',
                     'Plot <n> lines starting with <cmd_id>.\n'
-                    '\t<n> is optional and defaults to 20.'),
+                    '\t<n> is optional and defaults to 20.',
+                    ),
             'show-legend': (
                 '<cmd_id>',
                     'Display a clickable legend for the visible lines '
-                    f'limited to {self._max_legend_lines} lines.'),
+                    f'limited to {self._max_legend_lines} lines.',
+                    ),
             'close-legend': (
                 '',
-                    'Close the legend in the active plot.'),
+                    'Close the legend in the active plot.',
+                    ),
             'show-power': (
                 '',
-                    'Display a power setting legend for the visible lines.'),
+                    'Display a power setting legend for the visible lines.',
+                    ),
             'close-power': (
                 '',
-                    'Close the power setting legend.'),
+                    'Close the power setting legend.',
+                    ),
         }
 
-    def _gen_color_lut(self):
-        '''Intended to be called from __init__ this generates a LUT containing
-        101 color entries and indexed by power percentage in the range
-        0 to 100. The resulting colors range is:
-            blue -> green -> yellow -> orange -> red.
-        '''
-        _seed_colors = [
-            (0, 0, 255),    # Blue
-            (0, 255, 0),    # Green
-            (255, 255, 0),  # Yellow
-            (255, 128, 0),  # Orange (approx)
-            (255, 0, 0)     # Red
-        ]
-        _seeds = len(_seed_colors) - 1
-        _lut = []
-        _num_entries = 101
-        for _i in range(_num_entries):
-            _global_f = _i / (_num_entries)
-            _seed = min(int(_global_f * _seeds), _seeds - 1)
-            _start_f = _seed / _seeds
-            _end_f = (_seed + 1) / _seeds
-            if (_end_f - _start_f) > 1e-9:
-                _local_f = (_global_f - _start_f) / (_end_f - _start_f)
-            else:
-                _local_f = 0.0
-            _start_rgb = _seed_colors[_seed]
-            _end_rgb = _seed_colors[_seed + 1]
-            _rgb = [
-                int(_start_rgb[_c] + (_end_rgb[_c] - _start_rgb[_c]) * _local_f)
-                for _c in range(3)
-            ]
-            _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
-        return _lut
-
-    def _help(self):
-        '''Display a list of available commands.
-        '''
-        _help = (
-            '\nhelp or ?\t\tDisplay this help.'
-            '\nstep [on | off]\t\tTurn single step plotting on or off.'
-            '\nrange <n> [<end>]\tRun and start single step at command <n>.'
-            '\n\t\t\t<end> is optional and is the last command to plot.'
-            '\nshow-legend\t\tDisplay the legend on the plot.'
-            '\n'
-        )
+    def _cli_help(self, params: list[str]):
+        _help = f'\n{params[0]}'
+        for _n in self._cli_commands:
+            _c = self._cli_commands[_n]
+            _help += f'\n{_n} {_c[0]}:\n\t{_c[1]}'
         self.out.write(_help)
 
-    #++++ Display options.
+    def _cli_stats(self, params: list[str]):
+        '''Display plotting statistics.'''
+        _s = ('\n'
+            f'Total lines: {len(self.plot_lines)}'
+        )
+        self.out.write(_s)
+
+    def _cli_line_atts(self, params: list[str]):
+        '''Display line attributes for line <cmd_id>.'''
+        if len(params) == 2:
+            _cmd_id = int(params[1].strip())
+            if _cmd_id in self.cpa_lines:
+                self.out.write(str(self.cpa_lines[_cmd_id]))
+            else:
+                self.out.write(f'Command ID {_cmd_id} is not known.')
+        else:
+            self._cli_help(['A command ID is required.'])
+
+    def _cli_new_plot(self, params: list[str]):
+        '''Display a select list of lines in a new plot window.
+
+        '''
+        if len(params) < 2:
+            raise IndexError('A command ID is required.')
+        _use = None
+        for _i in range(len(self.popup_list)):
+            if (self.popup_list[_i] is None or
+                not self.popup_list[_i].is_open):
+                _use = _i
+                break
+        if _use is None:
+            raise IndexError('No more plots available.')
+        _cmd_id = int(params[1])
+        _start = None
+        for _index, _key in enumerate(self.cpa_lines):
+            if _key >= _cmd_id:
+                _start = _index
+                break
+        if _start is None:
+            raise IndexError(f'Command {_cmd_id} not found.')
+        if len(params) == 3:
+            _end = _start + int(params[2])
+        else:
+            _end = _start + 50 # Just an arbitrary number.
+        if _end > len(self.cpa_lines):
+            _end = len(self.cpa_lines) - 1
+        _cpa_lines = dict(itertools.islice(
+            self.cpa_lines.items(), _start, _end))
+
+        _popup = cpa_p.CpaPopUp(_i)
+        self.popup_list[_i] = _popup
+        _popup.show(_cpa_lines)
+
+    def _cli_close_plot(self, params: list[str]):
+        if len(params) < 2:
+            raise IndexError('A plot ID is required.')
+        _i = int(params[1])
+        if _i >= len(self.popup_list):
+            raise IndexError(f'Invalid plot number: {_i}')
+        if self.popup_list[_i] is None:
+            raise IndexError(f'Plot {_i} is not open.')
+        self.popup_list[_i].close()
+        self.popup_list[_i] = None
+        self.out.write(f'\nPlot {_i} closed.')
+
+    def _cli_step(self, params: list[str]):
+        if params[1] == 'on':
+            self.enable_stepping(True)
+        elif params[1] == 'off':
+            self.enable_stepping(False)
+            self.out.write('\nStep mode is OFF.')
+        else:
+            self.out.write('Invalid option for step command.')
+
+    def _cli_run_to(self, params: list[str]):
+        if len(params) < 2:
+            raise IndexError('A command ID is required.')
+        self._stepping_cmd_id = int(params[1])
+
+    def _cli_run_until(self, params: list[str]):
+        if len(params) < 2:
+            raise IndexError('Number of plotted lines is required.')
+        self._run_n_lines = int(params[1])
+
+    def _cli_range(self, params: list[str]):
+        _cmd_id = int(params[1].strip())
+        if len(params) == 3:
+            _end = _cmd_id + int(params[2].strip())
+        else:
+            _end = 0
+        self.step_on_cmd_id(_cmd_id, _end)
+        self.out.write(f'Step will resume at command: {_cmd_id}')
+
+    def _cli_show_legend(self, params: list[str]):
+        self.ax.legend(
+            fontsize=6,
+            fancybox=True,
+            shadow=True,
+            draggable=True,
+            )
+
+    def _cli_close_legend(self, params: list[str]):
+        self.out.write('\nTBD')
+
+    def _cli_show_power(self, params: list[str]):
+        self.out.write('\nTBD')
+
+    def _cli_close_power(self, params: list[str]):
+        self.out.write('\nTBD')
+
     def cli(self, label: str):
         '''Handle user commands during pause.
 
@@ -251,41 +343,25 @@ class CpaPlotter():
         '''
         if self._stepping() or (label is None):
             while True:
-                _cmd = self.out.pause(f'{self.cmd_id}:{label} Command or Enter:')
-                _fields = _cmd.split(' ')
-                if _cmd == 'help' or _cmd == '?':
-                    self._help()
-                elif _fields[0] == 'step':
-                    if len(_fields) == 2:
-                        if _fields[1] == 'on':
-                            self.enable_stepping(True)
-                        elif _fields[1] == 'off':
-                            self.enable_stepping(False)
-                            self.out.write('\nStep mode is OFF.')
-                        else:
-                            self.out.write('Invalid option for step command.')
-                    else:
-                        self.out.write('\nUse on or off.')
-                    _s = 'ON' if self._stepping_enabled else 'OFF'
-                    self.out.write(f'\nStep mode is {_s}.')
-                elif 'range' in _cmd:
-                    _id = int(_fields[1].strip())
-                    if len(_fields) == 3:
-                        _end = _id + int(_fields[2])
-                    else:
-                        _end = 0
-                    self.step_on_cmd_id(_id, _end)
-                    self.out.write(f'Step will resume at command: {_id}')
-                elif _cmd == 'show-legend':
-                    self.ax.legend(
-                        fontsize=6,
-                        fancybox=True,
-                        shadow=True,
-                        draggable=True,
-                        )
-                elif _cmd == '':
+                _input = self.out.pause(
+                    f'{self.cmd_id}:{label} Command or Enter:')
+                if _input == '':
                     break
+                _params = _input.strip().split(' ')
+                _cli_cmd = _params[0].strip()
+                if _params[0] == '?':
+                    self._cli_help(_params)
+                elif _cli_cmd in self._cli_commands:
+                    try:
+                        _cli_method = f'_cli_{_cli_cmd}'.replace('-', '_')
+                        getattr(self, _cli_method)(_params)
+                    except Exception as e:
+                        self.out.write(e)
+                        #self._cli_help([f'Error in: {_cli_cmd}'])
+                else:
+                    self._cli_help([f'Unknown command: {_cli_cmd}'])
 
+    #++++ Display options.
     def enable(self):
         '''Enable plotting.
 
@@ -402,11 +478,13 @@ class CpaPlotter():
 
     def _stepping(self):
         return (
-                (self._stepping_enabled and self._stepping_cmd_id == 0) or (
-                    self._stepping_enabled and (
-                        (self.cmd_id >= self._stepping_cmd_id) and (
-                            (self._stepping_end == 0) or
-                            (self.cmd_id <= self._stepping_end)
+                (self._run_n_lines <= 0 ) and (
+                    (self._stepping_enabled and self._stepping_cmd_id == 0) or (
+                        self._stepping_enabled and (
+                            (self.cmd_id >= self._stepping_cmd_id) and (
+                                (self._stepping_end == 0) or
+                                (self.cmd_id <= self._stepping_end)
+                            )
                         )
                     )
                 )
@@ -444,6 +522,40 @@ class CpaPlotter():
             if self.bed_sized and coord > self.bed_xy[axis]:
                 self.out.error(
                     f'Axis {axis} coordinate ({coord}) is outside bed area.')
+
+    def _gen_color_lut(self):
+        '''Intended to be called from __init__ this generates a LUT containing
+        101 color entries and indexed by power percentage in the range
+        0 to 100. The resulting colors range is:
+            blue -> green -> yellow -> orange -> red.
+        '''
+        _seed_colors = [
+            (0, 0, 255),    # Blue
+            (0, 255, 0),    # Green
+            (255, 255, 0),  # Yellow
+            (255, 128, 0),  # Orange (approx)
+            (255, 0, 0)     # Red
+        ]
+        _seeds = len(_seed_colors) - 1
+        _lut = []
+        _num_entries = 101
+        for _i in range(_num_entries):
+            _global_f = _i / (_num_entries)
+            _seed = min(int(_global_f * _seeds), _seeds - 1)
+            _start_f = _seed / _seeds
+            _end_f = (_seed + 1) / _seeds
+            if (_end_f - _start_f) > 1e-9:
+                _local_f = (_global_f - _start_f) / (_end_f - _start_f)
+            else:
+                _local_f = 0.0
+            _start_rgb = _seed_colors[_seed]
+            _end_rgb = _seed_colors[_seed + 1]
+            _rgb = [
+                int(_start_rgb[_c] + (_end_rgb[_c] - _start_rgb[_c]) * _local_f)
+                for _c in range(3)
+            ]
+            _lut.append((_rgb[0] / 255, _rgb[1] / 255, _rgb[2] / 255))
+        return _lut
 
     def set_power(self, power: float):
         '''Set line power and color.'''
@@ -485,9 +597,11 @@ class CpaPlotter():
         if cut:
             _lw = 1
             _c = self.color
+            _ls = 'solid'
         else:
             _lw = 0.5
             _c = self._move_color
+            _ls = 'dashed'
         # Draw the line from the previous head position.
         # Invert locations because controller home is far right.
         if ((self.cmd_id >= self._stepping_cmd_id) and
@@ -496,17 +610,22 @@ class CpaPlotter():
             _line_label = f'{self.cmd_id}:{self.cmd_label}'
             _line, = self.ax.plot(
                 [-self._last_x, -x], [-self._last_y, -y],
-                label=_line_label, color=_c, lw=_lw)
-            self.plot_lines.append(_line)
-            self.cpa_lines[self.cmd_id] = CpaLine(
+                label=_line_label, color=_c, lw=_lw, linestyle=_ls)
+            self.cpa_lines[self.cmd_id] = cpa_l.CpaLine(
                 self.cmd_id,
                 self.cmd_label,
-                _line,
+                len(self.plot_lines),
                 (self._last_x, self._last_y),
                 (x, y),
                 self.s[self.m_to_s_map[self.cmd_label]],
                 self.p,
+                _lw,
+                _ls,
+                _c,
             )
+            self.plot_lines.append(_line)
             if self._stepping():
                 self.show(line=_line, label=self.cmd_label, wait=True)
+        if self._run_n_lines > 0:
+            self._run_n_lines -= 1
         self._moved = True
