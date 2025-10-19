@@ -154,6 +154,9 @@ class CpaPlotter():
 
         self._move_color = (0.6, 0.6, 0.6)
         self._color_lut = self._gen_color_lut()
+        self._color_hist = [0] * len(self._color_lut)
+        self._hist = None
+        self._hist_ax = None
 
         self._max_legend_lines = 20
 
@@ -207,6 +210,10 @@ class CpaPlotter():
                 '',
                     'Close the legend in the active plot.',
                     ),
+            'show-speed': (
+                '',
+                    'Display the speed setting table.',
+            ),
             'show-power': (
                 '',
                     'Display a power setting legend for the visible lines.',
@@ -328,8 +335,24 @@ class CpaPlotter():
     def _cli_close_legend(self, params: list[str]):
         self.out.write('\nTBD')
 
+    def _cli_show_speed(self, params: list[str]):
+        _str = ''
+        for _m in self.m_to_s_map:
+            _s = self.m_to_s_map[_m]
+            _str += f'\n{_m}:{_s}={self.s[_s]:.2f}'
+        self.out.write(_str)
+
     def _cli_show_power(self, params: list[str]):
-        self.out.write('\nTBD')
+        self._hist, self._hist_ax = mpl.subplots(figsize=(8.5,10))
+        self._hist_ax.bar(
+            list(range(len(self._color_lut))),
+            self._color_hist,
+            color=self._color_lut
+        )
+        self._hist_ax.set_title('Power Setting Histogram')
+        self._hist_ax.set_xlabel('Power %')
+        self._hist_ax.set_ylabel('Frequency')
+        self._hist.show()
 
     def _cli_close_power(self, params: list[str]):
         self.out.write('\nTBD')
@@ -570,6 +593,7 @@ class CpaPlotter():
                 f'Power ({power} cannot be less than 0.)')
             _i = 0
         self.color = self._color_lut[_i]
+        self._color_hist[_i] += 1
 
     def add_line(self, x: float, y: float, cut=False):
         '''Position the virtual head at x,y.

@@ -1,6 +1,8 @@
-# Ruida Protocol Analyzer -- RPA
+# CNC Protocol Analyzer -- CPA
 
-A comprehensive Python-based protocol analyzer for reverse engineering and analyzing Ruida CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary Ruida protocol used in laser cutters, engravers, and CNC machines.
+A comprehensive Python-based protocol analyzer for reverse engineering and analyzing CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary protocols used in laser cutters, engravers, and CNC machines.
+
+NOTE: Currently only the Ruida UDP protocol is supported.
 
 ## Features
 
@@ -32,6 +34,8 @@ The Ruida protocol is a proprietary binary communication protocol used by Ruida 
 - Industrial cutting and marking systems
 
 This analyzer was developed to understand and document the protocol for research, debugging, and integration purposes.
+
+Over time this tool will grow to support other CNC protocols such as G-Code.
 
 ## Requirements
 
@@ -81,24 +85,24 @@ tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
 
 #### Basic Analysis
 ```bash
-python rda.py capture.log
+python cpa.py capture.log
 ```
 
 #### Real-time Analysis
 ```bash
-python rda.py --on-the-fly
+python cpa.py --on-the-fly
 ```
 
 #### Advanced Options
 ```bash
 # Verbose output with raw packet data
-python rda.py --verbose --raw capture.log
+python cpa.py --verbose --raw capture.log
 
 # Save decoded output to file
-python rda.py -o decoded.txt capture.log
+python cpa.py -o decoded.txt capture.log
 
 # Quiet mode, stop on first error
-python rda.py --quiet --stop-on-error -o results.txt capture.log
+python cpa.py --quiet --stop-on-error -o results.txt capture.log
 ```
 
 ## Command Line Options
