@@ -9,7 +9,7 @@
             "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
-            "program": "rpa.py",
+            "program": "cpa.py",
             "console": "externalTerminal",
             // "args": "${command:pickArgs}"
             "args": [
