@@ -32,23 +32,56 @@ class RpaPlotter():
             'CUT_REL_X': 'speed_laser_1',
             'CUT_REL_Y': 'speed_laser_1',
         }
+        self.cmd_counters = {
+            'cmd_axis_x_move': 0,
+            'cmd_axis_y_move': 0,
+            'cmd_move_abs_xy': 0,
+            'cmd_move_rel_xy': 0,
+            'cmd_move_rel_x': 0,
+            'cmd_move_rel_y': 0,
+            'cmd_cut_abs_xy': 0,
+            'cmd_cut_rel_xy': 0,
+            'cmd_cut_rel_x': 0,
+            'cmd_cut_rel_y': 0,
+            'cmd_min_power_1': 0,
+            'cmd_max_power_1': 0,
+            'cmd_speed_laser_1': 0,
+            'cmd_speed_axis': 0,
+            'cmd_speed_laser_1_part': 0,
+            'cmd_force_eng_speed': 0,
+            'cmd_axis_move': 0,
+            'cmd_rapid_move_x': 0,
+            'cmd_rapid_move_y': 0,
+            'cmd_rapid_move_xy': 0,
+            'cmd_rapid_move_xyu': 0,
+        }
+        self.mt_counters = {
+            'mt_bed_size_x': 0,
+            'mt_bed_size_y': 0,
+            'mt_card_id': 0,
+        }
+
         self.plot = cpa.cpa_plotter.CpaPlotter(
-            out, title, self.s, self.m_to_s_map)
+            out, title, self.s, self.m_to_s_map,
+            self.cmd_counters, self.mt_counters)
 
     #++++ Memory table
-    def mt_bed_size_x(self, length: float):
+    def mt_bed_size_x(self, values: list[float]):
         '''Set the bed size X dimension.
 
         If both X and Y are set then draw a rectangle to indicate the bed area.
         '''
-        self.plot.set_bed_dimension('X', length)
+        self.plot.set_bed_dimension('X', values[0])
 
-    def mt_bed_size_y(self, length: float):
+    def mt_bed_size_y(self, values: list[float]):
         '''Set the bed size Y dimension.
 
         If both X and Y are set then draw a rectangle to indicate the bed area.
         '''
-        self.plot.set_bed_dimension('Y', length)
+        self.plot.set_bed_dimension('Y', values[0])
+
+    def mt_card_id(self, values: list[float]):
+        self.out.write(f'Card ID: {values[0]}')
 
     #++++ Moves
     def cmd_speed_laser_1(self, values: list[float]):
@@ -251,7 +284,7 @@ class RpaPlotter():
         0xAB: 'cmd_cut_rel_y',
         0xC6: {
             0x01: 'cmd_min_power_1',
-            0x02: 'cmd_max_power_1'
+            0x02: 'cmd_max_power_1',
         },
         0xC9: {
             0x02: 'cmd_speed_laser_1',
@@ -286,14 +319,18 @@ class RpaPlotter():
                     try:
                         self.plot.cmd_id = cmd_id
                         self.plot.cmd_label = label
-                        getattr(self, self._ct[cmd][sub_cmd])(values)
+                        _method = self._ct[cmd][sub_cmd]
+                        self.cmd_counters[_method] += 1
+                        getattr(self, _method)(values)
                     except Exception as e:
                         pass
             else:
                 try:
                     self.plot.cmd_id = cmd_id
                     self.plot.cmd_label = label
-                    getattr(self, self._ct[cmd])(values)
+                    _method = self._ct[cmd]
+                    self.cmd_counters[_method] += 1
+                    getattr(self, _method)(values)
                 except Exception as e:
                     pass
 
@@ -301,6 +338,9 @@ class RpaPlotter():
         0x00: {
             0x26: 'mt_bed_size_x',
             0x36: 'mt_bed_size_y',
+        },
+        0x05: {
+            0x7E: 'mt_card_id',
         },
     }
 
@@ -313,4 +353,6 @@ class RpaPlotter():
         '''
         if self.plot.enabled and addr_msb in self._mt:
             if addr_lsb in self._mt[addr_msb]:
-                getattr(self, self._mt[addr_msb][addr_lsb])(values)
+                _mem = self._mt[addr_msb][addr_lsb]
+                self.mt_counters[_mem] += 1
+                getattr(self, _mem)(values)

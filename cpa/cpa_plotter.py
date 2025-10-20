@@ -76,7 +76,11 @@ class CpaPlotter():
                     0xRRGGBB.
         step        When true single stepping lines is enabled.
     '''
-    def __init__(self, out: CpaEmitter, title: str, s: dict, m_to_s_map: dict):
+    def __init__(self, out: CpaEmitter,
+                 title: str, s: dict,
+                 m_to_s_map: dict,
+                 cmd_counters: dict,
+                 mt_counters: dict):
         '''Init the plotter.
 
         Parameters:
@@ -89,6 +93,9 @@ class CpaPlotter():
         self.cmd_id = None
         self.cmd = 0
         self.sub_cmd = 0
+        self.cmd_counters = cmd_counters
+        self.mt_counters = mt_counters
+
         # At power on the controller moves to 0,0.
         self.x = 0
         self.y = 0
@@ -166,6 +173,10 @@ class CpaPlotter():
                 '',
                     'Display this help.',
             ),
+            'go': (
+                '',
+                    'Continue...',
+            ),
             'stats': (
                 '',
                     'Display plot statistics.',
@@ -236,7 +247,14 @@ class CpaPlotter():
         _s = ('\n'
             f'Total lines: {len(self.plot_lines)}'
         )
+        for _c in self.cmd_counters:
+            _s += ('\n'
+                   f'{_c} = {self.cmd_counters[_c]}')
+        for _c in self.mt_counters:
+            _s += ('\n'
+                   f'{_c} = {self.mt_counters[_c]}')
         self.out.write(_s)
+
 
     def _cli_line_atts(self, params: list[str]):
         '''Display line attributes for line <cmd_id>.'''
@@ -368,7 +386,7 @@ class CpaPlotter():
             while True:
                 _input = self.out.pause(
                     f'{self.cmd_id}:{label} Command or Enter:')
-                if _input == '':
+                if _input == 'go':
                     break
                 _params = _input.strip().split(' ')
                 _cli_cmd = _params[0].strip()
