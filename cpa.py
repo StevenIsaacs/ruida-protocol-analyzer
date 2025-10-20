@@ -6,10 +6,10 @@ import protocols.ruida.ruida_analyzer as rpa
 from cpa.cpa_emitter import CpaEmitter
 
 def parse_arguments():
-    """Parse command line arguments for Ruida protocol analyzer"""
+    """Parse command line arguments for CNC protocol analyzer"""
     parser = argparse.ArgumentParser(
         description='''
-Ruida Protocol Analyzer - Parse and decode Ruida CNC protocol packets.
+CNC Protocol Analyzer - Parse and decode CNC protocol packets.
 
 The tshark log file must be in a specific format. Use this command to capture:
 
@@ -53,18 +53,29 @@ Examples:
         help='Spawn tshark and process the output in real time (requires --ip).'
     )
 
-    # Ruida controller IP address
+    # Controller IP address
     parser.add_argument(
         '--ip',
         metavar='<ip_address>',
-        help='The IP address of the Ruida controller (required when using --on-the-fly.)'
+        help='The IP address of the controller (required when using --on-the-fly.)'
+    )
+
+    # Protocol
+    parser.add_argument(
+        '--protocol',
+        metavar='<protocol>',
+        default='ruida',
+        help='Specify the protocol to use for decoding the raw data. '
+             'Currently only the ruida protocol is available.'
     )
 
     # Magic number
     parser.add_argument(
         '--magic',
         metavar='<magic_number>',
-        help='Specify the swizzle magic number rather than attempt to discover it in the capture.'
+        help='Specify the swizzle magic number rather than attempt '
+            'to discover it in the capture. '
+            'Available only with the ruida protocol.'
     )
 
     # Output file
@@ -167,6 +178,9 @@ Examples:
 
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
+
+    if args.magic is not None and args.protocol != 'ruida':
+        parser.error("--magic can only be used with the ruida protocol.")
 
     if args.on_the_fly:
         args.step_decode = False
