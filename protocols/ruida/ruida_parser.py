@@ -48,6 +48,7 @@ class RdDecoder():
         self.value = None   # The actual type is not known until after decode.
         self.cstring = False # True when accumulating a cstring.
         self.checksum = 0
+        self.file_checksum = 0
         self._rd_decoder = None
         self._length = 0
         self._remaining = 0
@@ -198,6 +199,10 @@ class RdDecoder():
             self.value = rdap.CARD_IDS[_id]
         else:
             self.value = f'Unknown: 0x{_id:08X}'
+        # TODO: It appears the Card ID can be used as a point where the file
+        # checksum can be reset. There may be a correct way that hasn't been
+        # discovered yet.
+        self.file_checksum = 0
         return self.formatted
 
     def rd_mt(self, data: bytearray):
@@ -409,7 +414,6 @@ class RdParser():
         self.decoder = RdDecoder(output)
         self.label = ''
         self.decoded = ''
-        self.file_checksum = 0
         self.checksum_enabled = False
 
         self._ct = rdap.CT  # The command table to use for parsing. This changes
@@ -594,26 +598,26 @@ class RdParser():
     def _reset_checksum(self):
         '''Disable the checksum and reset the overall checksum to 0.'''
         self.checksum_enabled = True
-        self.file_checksum = 0
+        self.decoder.file_checksum = 0
         self.decoder.checksum = 0
 
     def _add_to_checksum(self, chk):
         '''Add the datum to the checksum when enabled.'''
         if self.checksum_enabled:
             self.out.verbose(f'Adding {chk} to checksum.')
-            self.file_checksum += chk
+            self.decoder.file_checksum += chk
 
     def _backout_checksum(self, data):
         if type(data) is list:
             for _d in data:
-                self.file_checksum -= _d
+                self.decoder.file_checksum -= _d
         else:
-            self.file_checksum -= data
+            self.decoder.file_checksum -= data
         self.out.verbose(f'Backed out: {data}')
 
     def _verify_checksum(self):
         '''Returns True if the checksums match.'''
-        return self.file_checksum == self.decoder.checksum
+        return self.decoder.file_checksum == self.decoder.checksum
 
     #---- Helpers
 
@@ -992,10 +996,10 @@ class RdParser():
                         if datum == rdap.EOF:
                             self._add_to_checksum(datum)
                             _i = self.decoder.checksum
-                            _c = self.file_checksum
-                            _d = self.decoder.checksum - self.file_checksum
+                            _c = self.decoder.file_checksum
+                            _d = self.decoder.checksum - self.decoder.file_checksum
                             _is = f'\n    decoded={self.decoder.checksum}'
-                            _cs = f'\naccumulated={self.file_checksum}'
+                            _cs = f'\naccumulated={self.decoder.file_checksum}'
                             _ds = f'\ndifference ={_d}'
                             if not self._verify_checksum():
                                 self.out.error(
@@ -1064,7 +1068,7 @@ class RdParser():
         # A command has been decoded.
         self.out.parser(
             f'T={take:04d} R={remaining:04d}' +
-            f' SUM={self.file_checksum:08d}:\n{result}\n')
+            f' SUM={self.decoder.file_checksum:08d}:\n{result}\n')
         self.out.parser(
             f'cmd:{self.host_bytes.hex()}' +
             f' SUM={sum(self.host_bytes)}')
