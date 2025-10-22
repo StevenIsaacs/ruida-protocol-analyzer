@@ -171,7 +171,7 @@ class RdDecoder():
         return self.formatted
 
     def rd_frequency(self, data: bytearray):
-        self.value = self.to_int(data)
+        self.value = self.to_int(data) / 1000
         return self.formatted
 
     def rd_speed(self, data: bytearray):

@@ -42,9 +42,31 @@ class RpaPlotter():
             'cmd_cut_abs_xy': 0,
             'cmd_cut_rel_xy': 0,
             'cmd_cut_rel_x': 0,
+            'cmd_imd_power_1': 0,
+            'cmd_end_power_1': 0,
+            'cmd_imd_power_2': 0,
+            'cmd_end_power_2': 0,
+            'cmd_imd_power_3': 0,
+            'cmd_end_power_3': 0,
+            'cmd_imd_power_4': 0,
+            'cmd_end_power_4': 0,
             'cmd_cut_rel_y': 0,
             'cmd_min_power_1': 0,
             'cmd_max_power_1': 0,
+            'cmd_min_power_2': 0,
+            'cmd_max_power_2': 0,
+            'cmd_min_power_3': 0,
+            'cmd_max_power_3': 0,
+            'cmd_min_power_4': 0,
+            'cmd_max_power_4': 0,
+            'cmd_min_power_1_part': 0,
+            'cmd_max_power_1_part': 0,
+            'cmd_min_power_2_part': 0,
+            'cmd_max_power_2_part': 0,
+            'cmd_min_power_3_part': 0,
+            'cmd_max_power_3_part': 0,
+            'cmd_min_power_4_part': 0,
+            'cmd_max_power_4_part': 0,
             'cmd_speed_laser_1': 0,
             'cmd_speed_axis': 0,
             'cmd_speed_laser_1_part': 0,
@@ -255,6 +277,62 @@ class RpaPlotter():
         self.plot.add_line(self.plot.x, self.plot.y + _rel_y, cut=True)
 
     #++++ Power
+    def cmd_imd_power_1(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_end_power_1(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_imd_power_2(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_end_power_2(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_imd_power_3(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_end_power_3(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_imd_power_4(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_end_power_4(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
     def cmd_min_power_1(self, values: list[float]):
         '''Set min power.
 
@@ -269,6 +347,104 @@ class RpaPlotter():
         '''
         self.plot.set_power(values[0])
 
+    def cmd_min_power_2(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_2(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_3(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_3(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_4(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_4(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_1_part(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_1_part(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_2_part(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_2_part(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_3_part(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_3_part(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_min_power_4_part(self, values: list[float]):
+        '''Set min power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
+    def cmd_max_power_4_part(self, values: list[float]):
+        '''Set max power.
+
+        TODO: Currently it is unknown what effect min and max power have.
+        '''
+        pass # TBD
+
     _ct = {
         0x80: {
             0x00: 'cmd_axis_x_move',
@@ -282,10 +458,32 @@ class RpaPlotter():
         0xA9: 'cmd_cut_rel_xy',
         0xAA: 'cmd_cut_rel_x',
         0xAB: 'cmd_cut_rel_y',
+        0xC0: 'cmd_imd_power_2',
+        0xC1: 'cmd_end_power_2',
+        0xC2: 'cmd_imd_power_3',
+        0xC3: 'cmd_end_power_3',
+        0xC4: 'cmd_imd_power_4',
+        0xC5: 'cmd_end_power_4',
         0xC6: {
             0x01: 'cmd_min_power_1',
             0x02: 'cmd_max_power_1',
+            0x21: 'cmd_min_power_2',
+            0x22: 'cmd_max_power_2',
+            0x05: 'cmd_min_power_3',
+            0x06: 'cmd_max_power_3',
+            0x07: 'cmd_min_power_4',
+            0x08: 'cmd_max_power_4',
+            0x31: 'cmd_min_power_1_part',
+            0x32: 'cmd_max_power_1_part',
+            0x41: 'cmd_min_power_2_part',
+            0x42: 'cmd_max_power_2_part',
+            0x35: 'cmd_min_power_3_part',
+            0x36: 'cmd_max_power_3_part',
+            0x37: 'cmd_min_power_4_part',
+            0x38: 'cmd_max_power_4_part',
         },
+        0xC7: 'cmd_imd_power_1',
+        0xC8: 'cmd_end_power_1',
         0xC9: {
             0x02: 'cmd_speed_laser_1',
             0x03: 'cmd_speed_axis',
