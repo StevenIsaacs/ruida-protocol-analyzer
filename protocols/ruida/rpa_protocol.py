@@ -419,8 +419,8 @@ CT = {
     0xC0: ('IMD_POWER_2', POWER),
     0xC1: ('END_POWER_2', POWER),
     0xC2: ('IMD_POWER_3', POWER),
-    0xC3: ('IMD_POWER_4', POWER),
-    0xC4: ('END_POWER_3', POWER),
+    0xC3: ('END_POWER_3', POWER), # ???
+    0xC4: ('IMD_POWER_4', POWER), # ???
     0xC5: ('END_POWER_4', POWER),
     0xC6: {
         0x01: ('MIN_POWER_1', POWER),
@@ -561,6 +561,7 @@ CT = {
         0x17: ('ARRAY_MAX_POINT', XABSCOORD, YABSCOORD),
         0x23: ('ARRAY_ADD',XABSCOORD, YABSCOORD),
         0x24: ('ARRAY_MIRROR', UINT7),
+        0x32: ('UNKNOWN E732', TBDU35, TBDU35), # RDWorks uses this.
         0x35: ('BLOCK_X_SIZE', XABSCOORD, YABSCOORD),
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ('SET_FILE_EMPTY', UINT7),
