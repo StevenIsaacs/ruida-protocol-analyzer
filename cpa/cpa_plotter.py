@@ -7,6 +7,7 @@ cut commands correctly.'''
 import itertools
 
 import matplotlib.pyplot as mpl
+from matplotlib.patches import Rectangle
 import mplcursors
 
 from cpa.cpa_emitter import CpaEmitter
@@ -172,10 +173,6 @@ class CpaPlotter():
             'help': (
                 '',
                     'Display this help.',
-            ),
-            'go': (
-                '',
-                    'Continue...',
             ),
             'stats': (
                 '',
@@ -386,7 +383,7 @@ class CpaPlotter():
             while True:
                 _input = self.out.pause(
                     f'{self.cmd_id}:{label} Command or Enter:')
-                if _input == 'go':
+                if _input == '':
                     break
                 _params = _input.strip().split(' ')
                 _cli_cmd = _params[0].strip()
@@ -671,3 +668,25 @@ class CpaPlotter():
         if self._run_n_lines > 0:
             self._run_n_lines -= 1
         self._moved = True
+
+    def add_rect(self,
+                 top_left: tuple[float, float],
+                 bottom_right: tuple[float, float],
+                 color:tuple[float, float, float],
+                 alpha: float):
+        '''Add a rectangle having a color and transparency (alpha).'''
+        # A matplotlib rectangle is defined as bottom left corner and
+        # width and height.
+        _l = min(-top_left[0], -bottom_right[0])
+        _b = min(-top_left[1], -bottom_right[1])
+        _bl = (_l, _b)
+        _w = abs(bottom_right[0] - top_left[0])
+        _h = abs(top_left[1] - bottom_right[1])
+        _l = f'{self.cmd_id}:{self.cmd_label}'
+        _rect = Rectangle(_bl, _w, _h,
+                          label=_l,
+                          edgecolor=(1, 1, 1),
+                          facecolor=color, alpha=alpha)
+        self.ax.add_patch(_rect)
+        self.plot.show()
+        pass

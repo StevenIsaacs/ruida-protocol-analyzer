@@ -76,12 +76,19 @@ class RpaPlotter():
             'cmd_rapid_move_y': 0,
             'cmd_rapid_move_xy': 0,
             'cmd_rapid_move_xyu': 0,
+            'cmd_process_top_left': 0,
+            'cmd_process_bottom_right': 0,
         }
         self.mt_counters = {
             'mt_bed_size_x': 0,
             'mt_bed_size_y': 0,
             'mt_card_id': 0,
         }
+
+        self.overscan_top_left = None
+        self.overscan_bottom_right = None
+        self.overscan_color = (0.8, 0.8, 0.8)
+        self.overscan_alpha = 0.3
 
         self.plot = cpa.cpa_plotter.CpaPlotter(
             out, title, self.s, self.m_to_s_map,
@@ -445,6 +452,41 @@ class RpaPlotter():
         '''
         pass # TBD
 
+    #++++ Overscan
+    def cmd_process_top_left(self, values: list[float]):
+        '''Set the top left corner of an overscan area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the overscan area.
+        '''
+        if self.overscan_top_left is not None:
+            self.out.warn(
+                f'Top left overscan area is being redefined.')
+        self.overscan_top_left = (values[0], values[1])
+        if self.overscan_bottom_right is not None:
+            self.plot.add_rect(
+                self.overscan_top_left, self.overscan_bottom_right,
+                self.overscan_color, self.overscan_alpha)
+            self.overscan_top_left = None
+            self.overscan_bottom_right = None
+
+    def cmd_process_bottom_right(self, values: list[float]):
+        '''Set the bottom right corner of an overscan area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the overscan area.
+        '''
+        if self.overscan_bottom_right is not None:
+            self.out.warn(
+                f'Bottom right overscan area is being redefined.')
+        self.overscan_bottom_right = (values[0], values[1])
+        if self.overscan_top_left is not None:
+            self.plot.add_rect(
+                self.overscan_top_left, self.overscan_bottom_right,
+                self.overscan_color, self.overscan_alpha)
+            self.overscan_top_left = None
+            self.overscan_bottom_right = None
+
     _ct = {
         0x80: {
             0x00: 'cmd_axis_x_move',
@@ -496,6 +538,10 @@ class RpaPlotter():
             0x01: 'cmd_rapid_move_y',
             0x10: 'cmd_rapid_move_xy',
             0x30: 'cmd_rapid_move_xyu',
+        },
+        0xE7: {
+            0x03: 'cmd_process_top_left',
+            0x07: 'cmd_process_bottom_right',
         },
     }
 
