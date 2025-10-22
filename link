@@ -60,8 +60,6 @@ _path=$_dir/$type-$case$iter-$app
 if [ -e discovery/$_dir ]; then
     echo Selecting: $_path
     ln -sf $_path.log discovery/selected.log
-    ln -sf $_path.txt discovery/selected.txt
-    ln -sf $_path-vrb.txt discovery/selected-vrb.txt
 else
     echo The directory $_dir does not exist.
     ls discovery/$type
