@@ -9,6 +9,31 @@ import cpa.cpa_plotter
 
 import protocols.ruida.rpa_protocol as rdap
 
+class RpaArea():
+    '''For commands which define top left and bottom right corners.
+
+    Attributes:
+        tl      Top left coordinate.
+        br      Bottom right coordinate.
+        color   An RGB tuple.
+        alpha   The transparency where 0 is fully opaque and 1 is fully
+                transparent.
+        hatch   The hatch pattern to use.
+    '''
+    tl = None
+    br = None
+    color = (0, 0, 0)
+    alpha = 0.0
+    hatch = ''
+
+    def __init__(self,
+                 color: tuple[float, float, float],
+                 alpha: float,
+                 hatch: str):
+        self.color = color
+        self.alpha = alpha
+        self.hatch = hatch
+
 class RpaPlotter():
     '''Create and update a plot of Ruida movement and power setting commands.
     '''
@@ -78,6 +103,14 @@ class RpaPlotter():
             'cmd_rapid_move_xyu': 0,
             'cmd_process_top_left': 0,
             'cmd_process_bottom_right': 0,
+            'cmd_array_top_left': 0,
+            'cmd_array_bottom_right': 0,
+            'cmd_document_top_left': 0,
+            'cmd_document_bottom_right': 0,
+            'cmd_part_top_left': 0,
+            'cmd_part_bottom_right': 0,
+            'cmd_part_top_left_ex': 0,
+            'cmd_part_bottom_right_ex': 0,
         }
         self.mt_counters = {
             'mt_bed_size_x': 0,
@@ -452,40 +485,113 @@ class RpaPlotter():
         '''
         pass # TBD
 
-    #++++ Overscan
+    #++++ Areas
+    process_area = RpaArea((0.3, 0.3, 0.3), 0.1, '')
+    array_area = RpaArea((1.0, 1.0, 1.0), 0.2, '.')
+    document_area = RpaArea((1.0, 1.0, 1.0), 0.2, '/')
+    part_area = RpaArea((1.0, 1.0, 1.0), 0.2, 'O')
+    part_ex_area = RpaArea((1.0, 1.0, 1.0), 0.2, '\\')
+
+    def _area_top_left(self, tl: tuple[float, float], area: RpaArea):
+        if area.tl is not None:
+            self.out.warn(
+                f'Top left of {self.plot.cmd_label} area is being redefined.')
+        area.tl = tl
+        if area.tl is not None and area.br is not None:
+            self.plot.add_rect(
+                area.tl, area.br, area.color, area.alpha, area.hatch)
+            area.tl = area.br = None
+
+    def _area_bottom_right(self, br: tuple[float, float], area: RpaArea):
+        if area.br is not None:
+            self.out.warn(
+                f'Bottom right of {self.plot.cmd_label} area is being redefined.')
+        area.br = br
+        if area.tl is not None and area.br is not None:
+            self.plot.add_rect(
+                area.tl, area.br, area.color, area.alpha, area.hatch)
+            area.tl = area.br = None
+
+
     def cmd_process_top_left(self, values: list[float]):
-        '''Set the top left corner of an overscan area.
+        '''Set the top left corner of an area.
 
         When both top left and bottom right have been set a rectangle is
-        drawn to indicate the overscan area.
+        drawn to indicate the area.
         '''
-        if self.overscan_top_left is not None:
-            self.out.warn(
-                f'Top left overscan area is being redefined.')
-        self.overscan_top_left = (values[0], values[1])
-        if self.overscan_bottom_right is not None:
-            self.plot.add_rect(
-                self.overscan_top_left, self.overscan_bottom_right,
-                self.overscan_color, self.overscan_alpha)
-            self.overscan_top_left = None
-            self.overscan_bottom_right = None
+        self._area_top_left((values[0], values[1]), self.process_area)
 
     def cmd_process_bottom_right(self, values: list[float]):
-        '''Set the bottom right corner of an overscan area.
+        '''Set the bottom right corner of an area.
 
         When both top left and bottom right have been set a rectangle is
-        drawn to indicate the overscan area.
+        drawn to indicate the area.
         '''
-        if self.overscan_bottom_right is not None:
-            self.out.warn(
-                f'Bottom right overscan area is being redefined.')
-        self.overscan_bottom_right = (values[0], values[1])
-        if self.overscan_top_left is not None:
-            self.plot.add_rect(
-                self.overscan_top_left, self.overscan_bottom_right,
-                self.overscan_color, self.overscan_alpha)
-            self.overscan_top_left = None
-            self.overscan_bottom_right = None
+        self._area_bottom_right((values[0], values[1]), self.process_area)
+
+    def cmd_array_top_left(self, values: list[float]):
+        '''Set the top left corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_top_left((values[0], values[1]), self.array_area)
+
+    def cmd_array_bottom_right(self, values: list[float]):
+        '''Set the bottom right corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_bottom_right((values[0], values[1]), self.array_area)
+
+    def cmd_document_top_left(self, values: list[float]):
+        '''Set the top left corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_top_left((values[0], values[1]), self.document_area)
+
+    def cmd_document_bottom_right(self, values: list[float]):
+        '''Set the bottom right corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_bottom_right((values[0], values[1]), self.document_area)
+
+    def cmd_part_top_left(self, values: list[float]):
+        '''Set the top left corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_top_left((values[0], values[1]), self.part_area)
+
+    def cmd_part_bottom_right(self, values: list[float]):
+        '''Set the bottom right corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_bottom_right((values[0], values[1]), self.part_area)
+
+    def cmd_part_ex_top_left(self, values: list[float]):
+        '''Set the top left corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_top_left((values[0], values[1]), self.part_ex_area)
+
+    def cmd_part_ex_bottom_right(self, values: list[float]):
+        '''Set the bottom right corner of an area.
+
+        When both top left and bottom right have been set a rectangle is
+        drawn to indicate the area.
+        '''
+        self._area_bottom_right((values[0], values[1]), self.part_ex_area)
 
     _ct = {
         0x80: {
@@ -542,6 +648,14 @@ class RpaPlotter():
         0xE7: {
             0x03: 'cmd_process_top_left',
             0x07: 'cmd_process_bottom_right',
+            0x13: 'cmd_array_top_left',
+            0x17: 'cmd_array_bottom_right',
+            0x50: 'cmd_document_top_left',
+            0x51: 'cmd_document_bottom_right',
+            0x52: 'cmd_part_top_left',
+            0x53: 'cmd_part_bottom_right',
+            0x61: 'cmd_part_ex_top_left',
+            0x62: 'cmd_part_ex_bottom_right',
         },
     }
 

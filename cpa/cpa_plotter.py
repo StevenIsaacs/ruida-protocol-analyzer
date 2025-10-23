@@ -673,7 +673,8 @@ class CpaPlotter():
                  top_left: tuple[float, float],
                  bottom_right: tuple[float, float],
                  color:tuple[float, float, float],
-                 alpha: float):
+                 alpha: float,
+                 hatch: str):
         '''Add a rectangle having a color and transparency (alpha).'''
         # A matplotlib rectangle is defined as bottom left corner and
         # width and height.
@@ -681,12 +682,22 @@ class CpaPlotter():
         _b = min(-top_left[1], -bottom_right[1])
         _bl = (_l, _b)
         _w = abs(bottom_right[0] - top_left[0])
+        if _w == 0:
+            self.out.warn(f'Command {self.cmd_label} area width = {_w}')
         _h = abs(top_left[1] - bottom_right[1])
+        if _w == 0:
+            self.out.warn(f'Command {self.cmd_label} area height = {_w}')
         _l = f'{self.cmd_id}:{self.cmd_label}'
         _rect = Rectangle(_bl, _w, _h,
                           label=_l,
-                          edgecolor=(1, 1, 1),
-                          facecolor=color, alpha=alpha)
+                          edgecolor=(0, 0, 0),
+                          facecolor=color,
+                          alpha=alpha,
+                          hatch=hatch)
         self.ax.add_patch(_rect)
-        self.plot.show()
+        self._min_win_x = _bl[0]
+        self._max_win_x = _bl[0] + _w
+        self._min_win_y = _bl[1]
+        self._max_win_y = _bl[1] + _h
+        self.show()
         pass
