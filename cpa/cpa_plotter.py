@@ -289,7 +289,8 @@ class CpaPlotter():
 
         '''
         if len(params) < 2:
-            raise IndexError('A command ID is required.')
+            self._cli_help(['A command ID is required.'])
+            return
         _use = None
         for _i in range(len(self.popup_list)):
             if (self.popup_list[_i] is None or
@@ -297,7 +298,8 @@ class CpaPlotter():
                 _use = _i
                 break
         if _use is None:
-            raise IndexError('No more plots available.')
+            self.out.console('\nNo more plots available.')
+            return
         _cmd_id = int(params[1])
         _start = None
         for _index, _key in enumerate(self.cpa_lines):
@@ -305,7 +307,8 @@ class CpaPlotter():
                 _start = _index
                 break
         if _start is None:
-            raise IndexError(f'Command {_cmd_id} not found.')
+            self._cli_help([f'\nCommand {_cmd_id} not found.'])
+            return
         if len(params) == 3:
             _end = _start + int(params[2])
         else:
@@ -321,12 +324,15 @@ class CpaPlotter():
 
     def _cli_close_plot(self, params: list[str]):
         if len(params) < 2:
-            raise IndexError('A plot ID is required.')
+            self._cli_help(['A plot ID is required.'])
+            return
         _i = int(params[1])
         if _i >= len(self.popup_list):
-            raise IndexError(f'Invalid plot number: {_i}')
+            self.out.console(f'\nInvalid plot number: {_i}')
+            return
         if self.popup_list[_i] is None:
-            raise IndexError(f'Plot {_i} is not open.')
+            self.out.console(f'\nPlot {_i} is not open.')
+            return
         self.popup_list[_i].close()
         self.popup_list[_i] = None
         self.out.console(f'\nPlot {_i} closed.')
@@ -338,16 +344,18 @@ class CpaPlotter():
             self.enable_stepping(False)
             self.out.console('\nStep mode is OFF.')
         else:
-            self.out.console('Invalid option for step command.')
+            self._cli_help(['Invalid option for step command.'])
 
     def _cli_run_to(self, params: list[str]):
         if len(params) < 2:
-            raise IndexError('A command ID is required.')
+            self._cli_help(['A command ID is required.'])
+            return
         self._stepping_cmd_id = int(params[1])
 
     def _cli_run_until(self, params: list[str]):
         if len(params) < 2:
-            raise IndexError('Number of plotted lines is required.')
+            self._cli_help(['Number of plotted lines is required.'])
+            return
         self._run_n_lines = int(params[1])
 
     def _cli_range(self, params: list[str]):
@@ -430,7 +438,7 @@ class CpaPlotter():
                         getattr(self, _cli_method)(_params)
                     except Exception as e:
                         self.out.console(e)
-                        #self._cli_help([f'Error in: {_cli_cmd}'])
+                        self._cli_help([f'Error in: {_cli_cmd}'])
                 else:
                     self._cli_help([f'Unknown command: {_cli_cmd}'])
 
