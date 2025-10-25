@@ -1,5 +1,6 @@
 '''Message emitter for the Ruida Protocol Analyzer'''
 import sys
+from pathlib import Path
 
 class CpaEmitter():
     '''
@@ -15,6 +16,10 @@ class CpaEmitter():
         self.cmd_n = 0
         self.dir = '---'
         self._msg_n = 0
+
+    @property
+    def out_stem(self):
+        return Path(self.args.output_file).with_suffix('')
 
     def open(self):
         if self.args.output_file:
@@ -35,11 +40,12 @@ class CpaEmitter():
         self.dir = dir
 
     def pause(self, message='Press Enter'):
-        _cmd = input('\n' + message + '(quit to exit): ')
-        if _cmd == 'quit':
-            raise KeyboardInterrupt
-        else:
-            return _cmd
+        return input('\n' + message + ': ')
+
+    def console(self, message: str):
+        '''Emit a message to the console (stdout) only.'''
+        sys.stdout.write(message)
+        sys.stdout.flush()
 
     def write(self, message: str):
         '''A write method to emulate an output file for the analyzer.

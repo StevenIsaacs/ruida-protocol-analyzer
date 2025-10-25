@@ -75,6 +75,10 @@ class CpaPopUp():
         self._plot_lines.append(_ax_line)
         self._cpa_lines[cpa_line.cmd_id] = cpa_line # For sanity check.
 
+    def savefig(self, out_file: str):
+        '''Save the plot image.'''
+        self._fig.savefig(out_file)
+
     def show(self, cpa_lines: dict[int, cpa_l.CpaLine]):
         '''Display the popup window.'''
         def _annotate(sel: mplcursors._pick_info.Selection):

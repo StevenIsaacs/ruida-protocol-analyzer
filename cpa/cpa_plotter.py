@@ -137,9 +137,10 @@ class CpaPlotter():
 
         self.plot_lines = []
         self.cpa_lines: dict[int, cpa_l.CpaLine] = {}
+        self.rectangles = []
 
         # For additional pop-up plots. Only three more plots.
-        self.popup_list: list(cpa_p.CpaPopUp) = [None, None, None]
+        self.popup_list: list[cpa_p.CpaPopUp] = [None, None, None]
 
         self.bed = None
 
@@ -173,6 +174,10 @@ class CpaPlotter():
             'help': (
                 '',
                     'Display this help.',
+            ),
+            'quit': (
+                '',
+                    'Exit the session.'
             ),
             'stats': (
                 '',
@@ -230,6 +235,11 @@ class CpaPlotter():
                 '',
                     'Close the power setting legend.',
                     ),
+            'save-plots': (
+                '[<id>]',
+                    'Save plot images as PNGs.\n'
+                    '\t<id> an optional id to add to the file name.'
+            ),
         }
 
     def _cli_help(self, params: list[str]):
@@ -237,7 +247,16 @@ class CpaPlotter():
         for _n in self._cli_commands:
             _c = self._cli_commands[_n]
             _help += f'\n{_n} {_c[0]}:\n\t{_c[1]}'
-        self.out.write(_help)
+        self.out.console(_help)
+
+    def _cli_quit(self, params: list[str]):
+        for _plt in self.popup_list:
+            if _plt is not None:
+                _plt.close()
+            if self._hist is not None:
+                mpl.close(self._hist)
+            mpl.close(self.plot)
+            exit(0)
 
     def _cli_stats(self, params: list[str]):
         '''Display plotting statistics.'''
@@ -260,7 +279,7 @@ class CpaPlotter():
             if _cmd_id in self.cpa_lines:
                 self.out.write(str(self.cpa_lines[_cmd_id]))
             else:
-                self.out.write(f'Command ID {_cmd_id} is not known.')
+                self.out.console(f'Command ID {_cmd_id} is not known.')
         else:
             self._cli_help(['A command ID is required.'])
 
@@ -289,7 +308,7 @@ class CpaPlotter():
         if len(params) == 3:
             _end = _start + int(params[2])
         else:
-            _end = _start + 50 # Just an arbitrary number.
+            _end = _start + 30 # Just an arbitrary number.
         if _end > len(self.cpa_lines):
             _end = len(self.cpa_lines) - 1
         _cpa_lines = dict(itertools.islice(
@@ -309,16 +328,16 @@ class CpaPlotter():
             raise IndexError(f'Plot {_i} is not open.')
         self.popup_list[_i].close()
         self.popup_list[_i] = None
-        self.out.write(f'\nPlot {_i} closed.')
+        self.out.console(f'\nPlot {_i} closed.')
 
     def _cli_step(self, params: list[str]):
         if params[1] == 'on':
             self.enable_stepping(True)
         elif params[1] == 'off':
             self.enable_stepping(False)
-            self.out.write('\nStep mode is OFF.')
+            self.out.console('\nStep mode is OFF.')
         else:
-            self.out.write('Invalid option for step command.')
+            self.out.console('Invalid option for step command.')
 
     def _cli_run_to(self, params: list[str]):
         if len(params) < 2:
@@ -337,18 +356,18 @@ class CpaPlotter():
         else:
             _end = 0
         self.step_on_cmd_id(_cmd_id, _end)
-        self.out.write(f'Step will resume at command: {_cmd_id}')
+        self.out.console(f'Step will resume at command: {_cmd_id}')
 
     def _cli_show_legend(self, params: list[str]):
-        self.ax.legend(
-            fontsize=6,
-            fancybox=True,
-            shadow=True,
-            draggable=True,
-            )
+        self.plot.legend(handles=self.rectangles,
+                         fontsize=6,
+                         fancybox=True,
+                         shadow=True,
+                         draggable=True)
+        self.plot.show()
 
     def _cli_close_legend(self, params: list[str]):
-        self.out.write('\nTBD')
+        self.out.console('\nTBD')
 
     def _cli_show_speed(self, params: list[str]):
         _str = ''
@@ -370,7 +389,22 @@ class CpaPlotter():
         self._hist.show()
 
     def _cli_close_power(self, params: list[str]):
-        self.out.write('\nTBD')
+        mpl.close(self._hist)
+        self._hist = None
+
+    def _cli_save_plots(self, params: list[str]):
+        if len(params) > 1:
+            _id = f'-{params[1]}'
+        else:
+            _id = ''
+        self.out.console(f'Saving plot images.')
+        _stem = f'{self.out.out_stem}{_id}'
+        self.plot.savefig(f'{_stem}.png')
+        if self._hist is not None:
+            self._hist.savefig(f'{_stem}-power.png')
+        for _plt in self.popup_list:
+            if _plt is not None:
+                _plt.savefig(f'{_stem}-plot-{_plt.id}.png')
 
     def cli(self, label: str):
         '''Handle user commands during pause.
@@ -394,7 +428,7 @@ class CpaPlotter():
                         _cli_method = f'_cli_{_cli_cmd}'.replace('-', '_')
                         getattr(self, _cli_method)(_params)
                     except Exception as e:
-                        self.out.write(e)
+                        self.out.console(e)
                         #self._cli_help([f'Error in: {_cli_cmd}'])
                 else:
                     self._cli_help([f'Unknown command: {_cli_cmd}'])
@@ -695,6 +729,7 @@ class CpaPlotter():
                           alpha=alpha,
                           hatch=hatch)
         self.ax.add_patch(_rect)
+        self.rectangles.append(_rect)
         self._min_win_x = _bl[0]
         self._max_win_x = _bl[0] + _w
         self._min_win_y = _bl[1]
