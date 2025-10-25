@@ -9,6 +9,7 @@ import itertools
 import matplotlib.pyplot as mpl
 from matplotlib.patches import Rectangle
 import mplcursors
+import numpy as np
 
 from cpa.cpa_emitter import CpaEmitter
 import cpa.cpa_popup as cpa_p
@@ -479,12 +480,19 @@ class CpaPlotter():
             else:
                 _pos_y = _end_y
 
+            _line_x_ends = _line.get_xdata()
+            _line_x_len = abs(_line_x_ends[0] - _line_x_ends[1])
+            _line_y_ends = _line.get_ydata()
+            _line_y_len = abs(_line_y_ends[0] - _line_y_ends[1])
+            _line_len = np.sqrt(_line_x_len**2 + _line_y_len**2)
+
             _label: str = _line.get_label()
             _cmd_id = int(_label.split(':')[0])
             _cmd = _label.split(':')[1]
             if self._last_annotation is not None:
                 self._last_annotation.remove()
             _a_text = f'{_label}\nx={-_end_x:.3f}mm\ny={-_end_y:.3f}mm'
+            _a_text += f'\nLength: {_line_len:.3f}mm'
             _a_text += f'\nPower={self.cpa_lines[_cmd_id].power:.1f}%'
             # TODO: How to check for cut vrs move?
             if _cmd in self.m_to_s_map:
