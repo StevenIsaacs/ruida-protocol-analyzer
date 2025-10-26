@@ -2,7 +2,7 @@ import matplotlib.pyplot as mpl
 import mplcursors
 import numpy as np
 
-import cpa.cpa_line as cpa_l
+import cpalib.cpa_line as cpa_l
 
 class CpaPopUp():
     '''Open a popup window with a focus at a set of lines.'''

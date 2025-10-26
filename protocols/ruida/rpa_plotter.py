@@ -4,8 +4,8 @@ Most of the work is done by CpaPlotter. This vectors Ruida protocol commands to
 the corresponding CpaPlotter methods.
 '''
 
-from cpa.cpa_emitter import CpaEmitter
-import cpa.cpa_plotter
+from cpalib.cpa_emitter import CpaEmitter
+import cpalib.cpa_plotter
 
 import protocols.ruida.rpa_protocol as rdap
 
@@ -123,7 +123,7 @@ class RpaPlotter():
         self.overscan_color = (0.8, 0.8, 0.8)
         self.overscan_alpha = 0.3
 
-        self.plot = cpa.cpa_plotter.CpaPlotter(
+        self.plot = cpalib.cpa_plotter.CpaPlotter(
             out, title, self.s, self.m_to_s_map,
             self.cmd_counters, self.mt_counters)
 

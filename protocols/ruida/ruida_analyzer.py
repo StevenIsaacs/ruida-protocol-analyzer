@@ -9,7 +9,7 @@ for more information.
 '''
 import protocols.ruida.ruida_parser as rp
 import protocols.ruida.rpa_protocol as rdap
-from cpa.cpa_emitter import CpaEmitter
+from cpalib.cpa_emitter import CpaEmitter
 
 class UdpDumpReader():
     '''Parse lines from the dump file or a live stream.

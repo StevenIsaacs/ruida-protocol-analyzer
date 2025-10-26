@@ -3,7 +3,7 @@ import sys
 import subprocess
 
 import protocols.ruida.ruida_analyzer as rpa
-from cpa.cpa_emitter import CpaEmitter
+from cpalib.cpa_emitter import CpaEmitter
 
 def parse_arguments():
     """Parse command line arguments for CNC protocol analyzer"""

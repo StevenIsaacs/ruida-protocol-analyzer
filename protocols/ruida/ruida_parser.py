@@ -5,7 +5,7 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
-from cpa.cpa_emitter import CpaEmitter
+from cpalib.cpa_emitter import CpaEmitter
 import protocols.ruida.rpa_protocol as rdap
 import protocols.ruida.rpa_plotter as rpa_plotter
 

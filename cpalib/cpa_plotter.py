@@ -11,9 +11,9 @@ from matplotlib.patches import Rectangle
 import mplcursors
 import numpy as np
 
-from cpa.cpa_emitter import CpaEmitter
-import cpa.cpa_popup as cpa_p
-import cpa.cpa_line as cpa_l
+from cpalib.cpa_emitter import CpaEmitter
+import cpalib.cpa_popup as cpa_p
+import cpalib.cpa_line as cpa_l
 
 class CpaPlotter():
     '''Generate a colorized plot of laser head movement.
