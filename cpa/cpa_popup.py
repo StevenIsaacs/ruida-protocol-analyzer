@@ -124,22 +124,8 @@ class CpaPopUp():
             if self._last_annotation is not None:
                 self._last_annotation.remove()
 
-            _line_x_ends = _line.get_xdata()
-            _line_x_len = abs(_line_x_ends[0] - _line_x_ends[1])
-            _line_y_ends = _line.get_ydata()
-            _line_y_len = abs(_line_y_ends[0] - _line_y_ends[1])
-            _line_len = np.sqrt(_line_x_len**2 + _line_y_len**2)
-
-            _a_text = (
-                f'{_label}\n'
-                f'x={self._plot_rel_x(_end_x):.3f}mm'
-                f'\ny={self._plot_rel_y(_end_y):.3f}mm'
-                f'\nLength: {_line_len:.3f}mm'
-                f'\nPower={self._cpa_lines[_cmd_id].power:.1f}%'
-                f'\nSpeed={self._cpa_lines[_cmd_id].speed:.1f}mm/S'
-            )
             self._last_annotation = self._ax.annotate(
-                _a_text,
+                self._cpa_lines[_cmd_id].annotation,
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',

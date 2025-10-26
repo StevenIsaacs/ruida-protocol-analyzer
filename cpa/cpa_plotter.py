@@ -314,7 +314,7 @@ class CpaPlotter():
         else:
             _end = _start + 30 # Just an arbitrary number.
         if _end > len(self.cpa_lines):
-            _end = len(self.cpa_lines) - 1
+            _end = len(self.cpa_lines)
         _cpa_lines = dict(itertools.islice(
             self.cpa_lines.items(), _start, _end))
 
@@ -488,28 +488,14 @@ class CpaPlotter():
             else:
                 _pos_y = _end_y
 
-            _line_x_ends = _line.get_xdata()
-            _line_x_len = abs(_line_x_ends[0] - _line_x_ends[1])
-            _line_y_ends = _line.get_ydata()
-            _line_y_len = abs(_line_y_ends[0] - _line_y_ends[1])
-            _line_len = np.sqrt(_line_x_len**2 + _line_y_len**2)
-
             _label: str = _line.get_label()
             _cmd_id = int(_label.split(':')[0])
             _cmd = _label.split(':')[1]
             if self._last_annotation is not None:
                 self._last_annotation.remove()
-            _a_text = f'{_label}\nx={-_end_x:.3f}mm\ny={-_end_y:.3f}mm'
-            _a_text += f'\nLength: {_line_len:.3f}mm'
-            _a_text += f'\nPower={self.cpa_lines[_cmd_id].power:.1f}%'
-            # TODO: How to check for cut vrs move?
-            if _cmd in self.m_to_s_map:
-                _speed = self.cpa_lines[_cmd_id].speed
-                _a_text += f'\nSpeed={_speed:.1f}mm/S'
-            else:
-                _a_text += f'\nSpeed=UNKNOWN'
+
             self._last_annotation = self.ax.annotate(
-                _a_text,
+                self.cpa_lines[_cmd_id].annotation,
                 xy=(_pos_x, _pos_y),
                 xytext=(5, 5),
                 textcoords='offset points',
