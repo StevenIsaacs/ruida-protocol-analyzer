@@ -263,21 +263,19 @@ def main():
         output.critical(f'{e}')
         output.critical(
             'Verify incoming data is a tshark dump of a Ruida UDP session.')
-        exit(1)
     except SyntaxError as e:
         output.critical(f'{e}')
-        exit(1)
     except RuntimeError as e:
         output.critical(f'Shutting down: {e}')
-        exit(1)
     except KeyboardInterrupt:
         output.info('Exiting at user request.\n')
         sys.stdout.flush()
         sys.stderr.flush()
-        sys.exit(0)
     except Exception as e:
         output.critical(f'Unhandled error:{e}')
         exit(1)
+    finally:
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     main()

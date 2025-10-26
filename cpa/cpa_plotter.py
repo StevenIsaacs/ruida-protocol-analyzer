@@ -251,6 +251,8 @@ class CpaPlotter():
         self.out.console(_help)
 
     def _cli_quit(self, params: list[str]):
+        import sys
+        from termios import tcflush, TCIOFLUSH
         for _plt in self.popup_list:
             if _plt is not None:
                 _plt.close()
