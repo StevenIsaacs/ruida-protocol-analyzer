@@ -272,7 +272,10 @@ def main():
         sys.stdout.flush()
         sys.stderr.flush()
     except Exception as e:
-        output.critical(f'Unhandled error:{e}')
+        if e is str:
+            output.critical(f'Unhandled error:{e}')
+        else:
+            output.critical(f'Unhandled exception {e.__str__}')
         exit(1)
     finally:
         sys.stdout.flush()
