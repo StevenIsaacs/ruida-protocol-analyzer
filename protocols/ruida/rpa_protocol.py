@@ -347,13 +347,13 @@ MT = {
         0x05: ('Total Doc Number', TBDU35), # 0x205
         0x07: ('Unknown', TBDU35), # LightBurn uses this
         0x08: ('Pre Work Time', TBD), # 0x208
-        0x21: ('Axis Preferred Position 1', TBD), # 0x221
+        0x21: ('Current Position X', XABSCOORD), # 0x221
         0x23: ('Total Work Length 1', TBD), # 0x223
-        0x31: ('Axis Preferred Position 2', TBD), # 0x231
+        0x31: ('Current Position Y', YABSCOORD), # 0x231
         0x33: ('Total Work Length 2', TBD), # 0x233
-        0x41: ('Axis Preferred Position 3', TBD), # 0x241
+        0x41: ('Current Position Z', ZABSCOORD), # 0x241
         0x43: ('Total Work Length 3', TBD), # 0x243
-        0x51: ('Axis Preferred Position 4', TBD), # 0x251
+        0x51: ('Current Position U', UABSCOORD), # 0x251
         0x53: ('Total Work Length 4', TBD), # 0x253
     },
     0x05: {
