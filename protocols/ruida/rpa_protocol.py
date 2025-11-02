@@ -488,6 +488,7 @@ CT = {
         0x40: ('ZU_MAP', VALUE),
         0x41: ('LAYER_SELECT', PART, UINT7), # Source: ruida-laser
     },
+    ENQ: 'ENQ',
     0xD0: {  # This was discovered with LightBurn
         0x29: ('Skipping 2 bytes:', SKIP, 2) # Follows with 0x89 0x89 --- wha???
     },

@@ -837,7 +837,7 @@ class RdParser():
     def _st_decode_parameters(self, datum):
         if self.is_reply:
             self.out.error('Reply packet when expecting parameters.')
-            self._enter_state('sync')
+            self._forward_to_state('mt_command')
         else:
             if self._h_is_command(datum):
                 # This can either be a problem with the incoming data or
@@ -918,7 +918,7 @@ class RdParser():
         '''A command has been received which has a sub-command list.'''
         if self.is_reply:
             self.out.error('Reply packet when expecting sub_command.')
-            self._enter_state('sync')
+            self._forward_to_state('mt_command')
         else:
             if self._h_is_command(datum):
                 self.out.error('Datum is command when should be sub_command.')
@@ -982,7 +982,7 @@ class RdParser():
         generate a protocol error and return to scanning for a command byte.'''
         if self.is_reply:
             self.out.error('Reply packet when expecting command.')
-            self._enter_state('sync')
+            self._forward_to_state('mt_command')
         else:
             if self._h_is_command(datum):
                 # Is it a known command for this state?
