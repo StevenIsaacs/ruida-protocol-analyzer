@@ -48,8 +48,10 @@ class RpaPlotter():
             'speed_axis_move': 0.0,
         } # Move speed.
         self.m_to_s_map = { # Move type to speed setting map.
+            'RAPID_MOVE_X': 'speed_axis_move',
+            'RAPID_MOVE_Y': 'speed_axis_move',
+            'RAPID_MOVE_XY': 'speed_axis_move',
             'MOVE_ABS_XY': 'speed_axis_move',
-            'MOVE_REL_XY': 'speed_axis',
             'MOVE_REL_X': 'speed_axis',
             'MOVE_REL_Y': 'speed_axis',
             'CUT_ABS_XY': 'speed_laser_1',
