@@ -5,3 +5,5 @@ tmp
 discovery
 testing
 *.png
+build
+dist
