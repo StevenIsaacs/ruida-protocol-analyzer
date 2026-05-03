@@ -51,12 +51,18 @@ git clone https://github.com/yourusername/ruida-protocol-analyzer.git
 cd ruida-protocol-analyzer
 ```
 
-2. Install dependencies (if any):
+2. Create and activate a Python virtual environment named `.venv`:
 ```bash
-pip install -r requirements.txt  # Currently no external dependencies
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-3. Make sure tshark is installed:
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Make sure tshark is installed:
 ```bash
 # Ubuntu/Debian
 sudo apt-get install wireshark
@@ -71,6 +77,11 @@ brew install wireshark
 ```
 
 ## Usage
+
+**Note:** When running from source code, make sure to activate your Python virtual environment first:
+```bash
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
 ### Capture Traffic with tshark
 
@@ -118,7 +129,7 @@ python cpa.py --quiet --stop-on-error -o results.txt capture.log
 | `--raw` | Include raw packet dumps with decoded output. |
 | `--unswizzled` | Output the unswizzled and unprocessed data. |
 | `--stop-on-error` | Stop processing on first decode error. |
-| **Ignored when `--on-the-fly` is enabled** |
+| **The following are ignored when `--on-the-fly` is enabled** |
 | `--step-packets` | Pause output after each host packet has been parsed. |
 | `--step-decode` | Pause output after each decode message. |
 | `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
