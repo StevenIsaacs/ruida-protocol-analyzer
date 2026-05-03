@@ -5,7 +5,7 @@ Ruida UDP communications protocol description tables and definitions.
 ACK = 0xCC  # Controller received data and is valid.
 ERR = 0xCD  # Controller detected a problem with the message.
 ENQ = 0xCE  # Keep alive. This should be replied to with a corresponding
-            # ENQ.
+            # ENQ or ACK.
 NAK = 0xCF  # Message checksum mismatch. Resend packet.
 
 CMD_MASK = 0x80 # Only the first byte of a command has the top bit set.
@@ -115,11 +115,14 @@ ABSCOORD = (    'ABS=' + COORD_FMT, 'coord',    'int_35')
 XABSCOORD = (   'X=' + COORD_FMT,   'coord',    'int_35')
 YABSCOORD = (   'Y=' + COORD_FMT,   'coord',    'int_35')
 ZABSCOORD = (   'Z=' + COORD_FMT,   'coord',    'int_35')
-AABSCOORD = (   'A=' + COORD_FMT,   'coord',    'int_35')
+AABSCOORD = (   'A=' + COORD_FMT,   'coord',    'int_35') # Should be Z?
 UABSCOORD = (   'U=' + COORD_FMT,   'coord',    'int_35')
-RELCOORD = (    'Rel=' + COORD_FMT, 'coord',    'int_14')
-XRELCOORD = (   'RelX=' + COORD_FMT,'coord',    'int_14')
-YRELCOORD = (   'RelY=' + COORD_FMT,'coord',    'int_14')
+RELCOORD35 = (  'Rel=' + COORD_FMT, 'coord',    'int_35')
+XRELCOORD35 = ( 'RelX=' + COORD_FMT,'coord',    'int_35')
+YRELCOORD35 = ( 'RelY=' + COORD_FMT,'coord',    'int_35')
+RELCOORD14 = (  'Rel=' + COORD_FMT, 'coord',    'int_14')
+XRELCOORD14 = ( 'RelX=' + COORD_FMT,'coord',    'int_14')
+YRELCOORD14 = ( 'RelY=' + COORD_FMT,'coord',    'int_14')
 POWER = (       'Power:{:.1f}%',    'power',    'uint_14')
 SPEED = (       'Speed:{:.3f}mm/S', 'speed',    'int_35')
 FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
@@ -400,22 +403,23 @@ REPLY = -1
 CT = {
     0x80: {
         0x00: ('AXIS_X_MOVE', XABSCOORD),
-        # TODO: Identify the Y move.
-        0x08: ('AXIS_Z_MOVE', YABSCOORD),
+        0x01: ('AXIS_Y_MOVE', YABSCOORD), # TODO: Verify the Y move.
+        0x02: ('AXIS_U_MOVE', UABSCOORD), # TODO: Verify the U move.
+        0x03: ('AXIS_Z_MOVE', ZABSCOORD),
     },
     0x88: ('MOVE_ABS_XY', XABSCOORD, YABSCOORD),
-    0x89: ('MOVE_REL_XY', XRELCOORD, YRELCOORD),
-    0x8A: ('MOVE_REL_X', XRELCOORD),
-    0x8B: ('MOVE_REL_Y', YRELCOORD),
+    0x89: ('MOVE_REL_XY', XRELCOORD14, YRELCOORD14),
+    0x8A: ('MOVE_REL_X', XRELCOORD14),
+    0x8B: ('MOVE_REL_Y', YRELCOORD14),
     0xA0: {
         0x00: ('AXIS_A_MOVE', AABSCOORD),
         0x08: ('AXIS_U_MOVE', UABSCOORD),
     },
     0xA7: KT, # KEYPRESS
     0xA8: ('CUT_ABS_XY', XABSCOORD, YABSCOORD),
-    0xA9: ('CUT_REL_XY', XRELCOORD, YRELCOORD),
-    0xAA: ('CUT_REL_X', XRELCOORD),
-    0xAB: ('CUT_REL_Y', YRELCOORD),
+    0xA9: ('CUT_REL_XY', XRELCOORD14, YRELCOORD14),
+    0xAA: ('CUT_REL_X', XRELCOORD14),
+    0xAB: ('CUT_REL_Y', YRELCOORD14),
     0xC0: ('IMD_POWER_2', POWER),
     0xC1: ('END_POWER_2', POWER),
     0xC2: ('IMD_POWER_3', POWER),
@@ -523,13 +527,13 @@ CT = {
         0x37: 'KEYUP_U_BACKWARDS',
     },
     0xD9: {
-        0x00: ('RAPID_MOVE_X', RAPID, XABSCOORD),
-        0x01: ('RAPID_MOVE_Y', RAPID, YABSCOORD),
-        0x02: ('RAPID_MOVE_Z', RAPID, ZABSCOORD),
-        0x03: ('RAPID_MOVE_U', RAPID, UABSCOORD),
+        0x00: ('REL_MOVE_X', RAPID, XABSCOORD),
+        0x01: ('REL_MOVE_Y', RAPID, YABSCOORD),
+        0x02: ('REL_MOVE_Z', RAPID, ZABSCOORD),
+        0x03: ('REL_MOVE_U', RAPID, UABSCOORD),
         0x0F: ('RAPID_FEED_AXIS_MOVE', RAPID),
-        0x10: ('RAPID_MOVE_XY', RAPID, XABSCOORD, YABSCOORD),
-        0x30: ('RAPID_MOVE_XYU', RAPID, XABSCOORD, YABSCOORD, UABSCOORD),
+        0x10: ('REL_MOVE_XY', RAPID, XABSCOORD, YABSCOORD),
+        0x30: ('REL_MOVE_XYU', RAPID, XABSCOORD, YABSCOORD, UABSCOORD),
     },
     0xDA: { # SETTING
         0x00: ('GET_SETTING', MEMORY),  # SETTING_READ
