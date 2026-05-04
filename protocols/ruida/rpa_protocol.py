@@ -48,7 +48,7 @@ RD_TYPES = {
     'chksum':   [   32,         5], # For file checksum calculation.
     'card_id':  [   32,         5], # Card ID reply.
     'tbd':      [   -1,        -1], # Type is unknown signal read to end of packet.
-                                    # Use this for reverse engineering data.
+                                    # Use this for analyzing data.
 }
 
 # Card ID reply to model name lookup table.
@@ -139,7 +139,7 @@ FILE_SUM = (    'Sum:0x{0:010X} ({0})',
                                     'checksum', 'uint_35')
 
 # For when the format and type of data is not known.
-# Use this for data that needs to be reverse engineered
+# Use this for data that needs to be analyzed
 TBD = (         '\nTBD:{0:035b}b: 0x{0:08x}: {0}',
                                     'tbd',      'tbd')
 # Use these once the size is known but needs further investigation.
