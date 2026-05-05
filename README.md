@@ -1,6 +1,6 @@
 # CNC Protocol Analyzer -- CPA
 
-A comprehensive Python-based protocol analyzer for reverse engineering and analyzing CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary protocols used in laser cutters, engravers, and CNC machines.
+A comprehensive Python-based protocol analyzer for analyzing CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary protocols used in laser cutters, engravers, and CNC machines.
 
 NOTE: Currently only the Ruida UDP protocol is supported.
 
@@ -15,15 +15,7 @@ NOTE: Currently only the Ruida UDP protocol is supported.
 - **Error Handling**: Configurable error handling with resync capabilities
 - **Move and Cut Plotting**: When enabled moves and cut lines are plotted using build123d
 
-This tool is designed to be used to discover and diagnose problems related to
-UDP communications with a Ruida controller. Much of the Ruida protocol is
-unknown and new commands or parameters may be discovered during analysis. The
-nature of such discovery is many times new experiments or parsing algorithms
-are needed. Because of this the best experience using this tool is within
-VSCode. This enables stepping code through along with side by side display of
-moves and cuts. And, when needed, this tool can be hacked to refine analysis.
-If you create a hack which can be useful to others please consider contributing
-it to this project.
+This tool is designed to be used to discover and diagnose problems related to UDP communications with a Ruida controller. Much of the Ruida protocol is unknown and new commands or parameters may be discovered during analysis. The nature of such discovery often requires new experiments or parsing algorithms when new information is learned. Because of this the best experience using this tool is within VSCode or its forks like VSCodium and Antigravity. These IDEs allow stepping through the code to observe the analyzer's behavior along with side by side display of moves and cuts. And, when needed, this tool can be hacked to refine analysis. If you create a hack which can be useful to others please consider contributing it to this project.
 
 ## Background
 
@@ -347,7 +339,7 @@ The analyzer uses a finite state machine with the following states:
 
 ## Contributing
 
-Contributions are welcome! This is an ongoing reverse engineering project. Areas where help is needed:
+Contributions are welcome! This is an ongoing analysis project. Areas where help is needed:
 
 - **Protocol Documentation**: Adding new command interpretations
 - **Parameter Types**: Implementing additional data type decoders
@@ -374,7 +366,7 @@ This project is released under the MIT License. See [LICENSE](LICENSE) for detai
 
 ## Disclaimer
 
-This tool is for educational and research purposes. The Ruida protocol is proprietary, and this analyzer is based on observation and reverse engineering. Use responsibly and respect intellectual property rights.
+This tool is for educational and research purposes. The Ruida protocol is proprietary, and this analyzer is based on analysis of network traffic. Use responsibly and respect intellectual property rights.
 
 ## Acknowledgments
 
