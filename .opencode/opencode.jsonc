@@ -1,0 +1,48 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@opencode_weave/weave"
+  ],
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "watcher": {
+    "ignore": [
+      "discovery/**",
+      "testing/**",
+      "tmp/**",
+      "build/**",
+      "dist/**",
+      "__pycache__/**",
+      "*.png"
+    ]
+  },
+  "command": {
+    "decode": {
+      "template": "Run ./decode <file> to decode a capture log. This requires a venv to be active.\nProduces <file>.txt (summary) and <file>-vrb.txt (verbose).\nIf the file is not specified, check discovery/ for available .log files.",
+      "description": "Decode a capture log into .txt and -vrb.txt"
+    },
+    "capture": {
+      "template": "Run ./capture <ip> <file> to capture Ruida UDP traffic using tshark.\nRequires tshark installed and the controller reachable at <ip>.\nOn Windows, use ./capture.ps1 -if Ethernet -ip <IP> -out <file> instead.",
+      "description": "Capture Ruida traffic with tshark"
+    },
+    "verify": {
+      "template": "Verify changes by running cpa.py against existing capture logs in discovery/.\nCheck that decode output is sensible and no regressions occurred.\nThere are no unit tests, linter, or type checker — manual verification is required.",
+      "description": "Manually verify changes against existing captures"
+    },
+    "link": {
+      "template": "Run ./link <type> <case> <app> to symlink a test case into discovery/.\nType: tc (test case), prb (problem), dev (development)\nApp: mk (MeerK40t), lb (LightBurn), rdw (RDWorks)\nCreates discovery/selected.log, selected.txt, selected-vrb.txt symlinks.",
+      "description": "Select a test case for analysis"
+    }
+  },
+  "mcp": {
+    "codesearch": {
+      "type": "local",
+      "command": [
+        "codesearch",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  }
+}
