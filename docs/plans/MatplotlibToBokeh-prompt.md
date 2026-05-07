@@ -48,7 +48,7 @@ Visualization must be done with python and the charts must be rendered on a web 
 
 ## Special Considerations
   - Saving Plots natively: Use the built-in browser save plot functionality to save as an image file or html file. Do not use selenium or other tools to save plots. Provide a method to save the plots as svg files.
-  - CLI interaction: The CLI should be able to pause for input while the plot remains interactive in the browser. This should be achieved by running an embedded Bokeh server in a background thread. When the CLI steps through commands, it should push data updates to the ColumnDataSource using document.add_next_tick_callback() to ensure thread safety.
+  - Terminal CLI interaction: With the exception of --on-the-fly and command filtering, CLI behavior should be preserved. The CLI should be able to pause for input while the plot remains interactive in the browser. This should be achieved by running an embedded Bokeh server in a background thread. When the CLI steps through commands, it should push data updates to the ColumnDataSource using document.add_next_tick_callback() to ensure thread safety.
   - CLI commands: Update the CLI commands to work with the new plotting system. Provide a method to save the plots as svg files.
   - On the fly: Because the Bokeh server will run in the background the --on-the-fly option and restrictions can be removed.
   - "Scale" Mouse Control: Use Box Zoom (drawing a rectangle to zoom into) in addition to the scroll wheel zoom. Provide a quick button to reset the view to the original settings.
