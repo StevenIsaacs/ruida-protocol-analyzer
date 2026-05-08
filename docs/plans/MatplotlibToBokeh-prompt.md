@@ -12,6 +12,8 @@ The generated document sequence is: Product Requirements Document (PRD), Impleme
 
 The Implementation Plan should include a layout of the GUI for displaying the plots and including pull downs for changing views, styles, colors, and other plot parameters.
 
+The Task List should break the Implementation Plan down into individual tasks that can be delegated to subagents. Each task should be clearly defined and should include the steps required to complete the task.
+
 In all generated documentation, include approval sections that asks the user to approve the generated document before the next document in the sequence is generated.
 
 Include a completion check box for each task in the Task List. A phase cannot be marked as complete until all tasks in the phase are marked as complete.
@@ -77,6 +79,6 @@ Provide information in the Implementation Plan on how to test the Bokeh plotting
 Ask any questions you may have while developing the PRD and I will answer them to ensure that the PRD is complete and accurate.
 
 ## File and Directory Naming Conventions
-- Save the PRD as a markdown file in a subdirectory of the docs/plans directory named bokeh_plotting-<llm_name> where llm_name is the name of the LLM that generated the document. Replace any spaces in the LLM name with hyphens. The directory should be created if it doesn't exist.
+- Save the PRD, IP and TL documents as markdown files in a subdirectory of the docs/plans directory named bokeh_plotting-<llm_name> where llm_name is the name of the LLM that generated the document. Replace any spaces in the LLM name with hyphens. The directory should be created if it doesn't exist.
 - The base file name is bokeh_plotting_<DOC_TYPE>.md where <DOC_TYPE> is replaced with PRD for Product Requirements Document, IP for Implementation Plan, and TL for Task List.
 
