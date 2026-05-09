@@ -4,7 +4,7 @@ usage () {
   cat <<EOF
 Usage: $_self <file> [<options>]
 
-Use this script to run rpa.py to process a log file previously captured
+Use this script to run cpa.py to process a log file previously captured
 by the capture script. The log file is processed twice. First to produce a
 summarized decode and second to produce a verbose decode.
 
