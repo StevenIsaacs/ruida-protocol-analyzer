@@ -1,28 +1,9 @@
-Write the following documents for the replacement of matplotlib with Bokeh for responsive and interactive charts capable of handling thousands of vectors in a 2D space and structured to allow for 3D capability in the future. Features similar to those currently implemented using matplotlib should be maintained and optimized for Bokeh. This is especially important for hover tooltips showing vector attributes similar to those displayed by the current implementation.
-
-The generated documents should be:
-  1. A Product Requirements Document (PRD)
-  2. An Implementation Plan (IP)
-  3. A Task List (TL)
+Write an improved, more detailed, and more comprehensive implementation plan for the replacement of matplotlib with Bokeh for responsive and interactive charts capable of handling thousands of vectors in a 2D space and structured to allow for 3D capability in the future. Features similar to those currently implemented using matplotlib should be maintained and optimized for Bokeh. This is especially important for hover tooltips showing vector attributes similar to those displayed by the current implementation.
 
 # Planning and Design Requirements
-The PRD should be a markdown summary which can be used to generate an Implementation Plan or detailed prompts using AI tools. Do not include implementation details in the PRD unless specified here as an explicit implementation requirement.
+- The plan file name is bokeh_plotting_<TIMESTAMP>.md where <TIMESTAMP> is the current date and time in the format YYYYMMDD-HHMMSS.
 
-The generated document sequence is: Product Requirements Document (PRD), Implementation Plan (IP), and Task List (TL).
-
-The Implementation Plan should include a layout of the GUI for displaying the plots and including pull downs for changing views, styles, colors, and other plot parameters.
-
-The Task List should break the Implementation Plan down into individual tasks that can be delegated to subagents. Each task should be clearly defined and should include the steps required to complete the task.
-
-In all generated documentation, include approval sections that asks the user to approve the generated document before the next document in the sequence is generated.
-
-Include a completion check box for each task in the Task List. A phase cannot be marked as complete until all tasks in the phase are marked as complete.
-
-Include instructions in the Product Requirements Document (PRD) for generating the corresponding Implementation Plan (IP) once the PRD has been approved. Similarly, include instructions in the Implementation Plan (IP) for generating a Task List (TL) which can be delegated to subagents. Implementation can not begin until the Implementation Plan (IP) has been approved and the corresponding Task List (TL) has been approved by the user.
-
-Approval can be revoked at any time by the user. If approval is revoked for any document, begin the process again with the generation of a new document. Approval for subsequent documents is contingent on the approval of previous documents in the sequence.
-
-Do NOT begin implementation until all of the above plans have been approved and you are explicitly told to do so.
+Do NOT begin implementation until all of the plan been approved and you are explicitly told to do so.
 
 # Implementation Requirements
 A key requirement is the complete removal of all matplotlib references from the source code and documentation and replaced as needed with Bokeh references.
@@ -79,6 +60,5 @@ Provide information in the Implementation Plan on how to test the Bokeh plotting
 Ask any questions you may have while developing the PRD and I will answer them to ensure that the PRD is complete and accurate.
 
 ## File and Directory Naming Conventions
-- Save the PRD, IP and TL documents as markdown files in a subdirectory of the docs/plans directory named bokeh_plotting-<llm_name> where llm_name is the name of the LLM that generated the document. Replace any spaces in the LLM name with hyphens. The directory should be created if it doesn't exist.
-- The base file name is bokeh_plotting_<DOC_TYPE>.md where <DOC_TYPE> is replaced with PRD for Product Requirements Document, IP for Implementation Plan, and TL for Task List.
+- Save the plans documents as markdown files in a subdirectory of the docs/plans directory named MatplotlibToBokeh.
 
