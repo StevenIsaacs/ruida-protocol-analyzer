@@ -28,6 +28,7 @@ class CpaEmitter():
     def close(self):
         if self._out_fp is not None:
             self._out_fp.close()
+            self._out_fp = None
 
     def set_pkt_n(self, pkt_n: int):
         self.pkt_n = pkt_n

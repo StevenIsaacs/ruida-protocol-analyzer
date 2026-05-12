@@ -289,29 +289,34 @@ def main():
     try:
         analyzer.decode()  # Does not return until decode is complete.
 
+        output.info('Decode complete.\n')
+        output.close()
+
         if args.plot_moves and not args.on_the_fly and BokehApp is not None:
-            # File mode: start Bokeh server after decode completes.
+            # File mode: start Bokeh server after output file is written.
             try:
                 bokeh_app = BokehApp(analyzer.parser.plot.plot)
                 if bokeh_app.start(port=args.bokeh_port):
-                    output.info(
-                        'Now plotting moves. Close browser window to exit.')
+                    print(
+                        'Now plotting moves. Press Ctrl+C to exit.',
+                        file=sys.stderr)
                     # Block until user presses Ctrl+C.
                     try:
                         while bokeh_app._running:
                             time.sleep(0.1)
                     except KeyboardInterrupt:
                         pass
-                    finally:
-                        if bokeh_app is not None:
-                            bokeh_app.shutdown()
                 else:
-                    output.warning('Failed to start Bokeh server.')
+                    print(
+                        'Failed to start Bokeh server.',
+                        file=sys.stderr)
+                    bokeh_app = None
             except Exception as e:
-                output.warning(f'Failed to start Bokeh server: {e}.')
+                print(
+                    f'Failed to start Bokeh server: {e}.',
+                    file=sys.stderr)
+                bokeh_app = None
 
-        output.info('Decode complete.\n')
-        output.close()
     except LookupError as e:
         output.critical(f'{e}')
         output.critical(

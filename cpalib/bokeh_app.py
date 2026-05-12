@@ -82,8 +82,14 @@ class BokehApp():
         # ColumnDataSource populated with data decoded before server start.
         _source = ColumnDataSource(data=self._initial_data)
 
+        # Resolve output stem for save filenames
+        _out_stem = None
+        if self.plotter.out.args.output_file:
+            _out_stem = str(self.plotter.out.out_stem)
         # Create the primary tab holding the XY plot and histograms.
-        _view = BokehView(source=_source, title='All Vectors')
+        _view = BokehView(source=_source, title='All Vectors',
+                          color_lut=self.plotter.color_lut,
+                          out_stem=_out_stem)
         _view.set_app(self)
         _view.update_histograms()
         self.views.append(_view)
@@ -94,7 +100,7 @@ class BokehApp():
 
         # Status banner shown above the plot area.
         _status = Div(
-            text='Now plotting moves. Close browser window to exit.',
+            text='Now plotting moves. Press Ctrl+C to exit.',
             styles={'font-size': '14px', 'margin': '10px 0'},
         )
 
@@ -174,8 +180,14 @@ class BokehApp():
         if not hasattr(self, 'tabs'):
             return None
 
+        # Resolve output stem for save filenames
+        _out_stem = None
+        if self.plotter.out.args.output_file:
+            _out_stem = str(self.plotter.out.out_stem)
         _source = ColumnDataSource(data=source_data)
-        _view = BokehView(source=_source, title=title)
+        _view = BokehView(source=_source, title=title,
+                          color_lut=self.plotter.color_lut,
+                          out_stem=_out_stem)
         _view.set_app(self)
         _view.update_histograms()
         self.views.append(_view)
@@ -298,6 +310,7 @@ class BokehApp():
                     {'/': _app},
                     port=self.port,
                     allow_websocket_origin=['*'],
+                    session_token_expiration=86400,  # 24 hours
                 )
                 self.server.start()
                 self._running = True

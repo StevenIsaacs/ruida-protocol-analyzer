@@ -113,6 +113,11 @@ class BokehPlotter():
         '''
         self._stepping_enabled = enable
 
+    @property
+    def color_lut(self):
+        '''Public access to the color lookup table for histogram colorization.'''
+        return self._color_lut
+
     def step_on_cmd_id(self, cmd_id, end=0):
         '''Set the command ID at which to start stepping moves.
 

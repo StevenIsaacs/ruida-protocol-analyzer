@@ -10,7 +10,7 @@ import json
 try:
     from bokeh.plotting import figure
     from bokeh.models import (
-        ColumnDataSource, HoverTool, WheelZoomTool, PanTool, BoxSelectTool,
+        ColumnDataSource, HoverTool, WheelZoomTool, PanTool, BoxZoomTool,
         TabPanel, CustomJS, Dropdown, Button, Spinner, Paragraph,
         AutocompleteInput, Div, CheckboxButtonGroup, RangeSlider,
     )
@@ -29,12 +29,19 @@ class BokehView():
     - Speed histogram (bottom-right)
     '''
 
-    def __init__(self, source: ColumnDataSource, title: str = 'All Vectors'):
+    def __init__(self, source: ColumnDataSource, title: str = 'All Vectors',
+                 color_lut: list = None, out_stem: str = None):
         '''Create a new view tab.
 
         Parameters:
-            source  Shared ColumnDataSource with vector data.
-            title   Tab title string.
+            source    Shared ColumnDataSource with vector data.
+            title     Tab title string.
+            color_lut Color lookup table (list of 101 hex strings) for
+                      power histogram bar colors.  Falls back to 'navy'
+                      when not provided.
+            out_stem  Output file stem for save filenames (e.g. the decoded
+                      text file base name).  Falls back to old naming when
+                      None.
         '''
         self.title = title
         self.source = source
@@ -49,20 +56,26 @@ class BokehView():
         # Full unfiltered data for range slider filtering.
         self._full_data = {k: list(v) for k, v in source.data.items()}
 
+        # Color LUT for power histogram (shared with vector coloring).
+        self._color_lut = color_lut
+
+        # Output file stem for save filenames (uses decoded text file base name).
+        self._out_stem = str(out_stem) if out_stem is not None else None
+
         # Z-axis placeholder: Future 3D capability will add z coordinate
         # support for multi-layer engraving visualization.
 
         # ---- XY Plot ----
         # Drag tools for the plot toolbar
-        self._box_select = BoxSelectTool()
+        self._box_zoom = BoxZoomTool()
         self._pan = PanTool()
         self._wheel_zoom = WheelZoomTool()
 
         self.xy_plot = figure(
             title='Laser Head Movement',
             width=800, height=600,
-            tools=[self._box_select, self._pan, self._wheel_zoom, 'reset', 'save'],
-            active_drag=self._box_select,
+            tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset', 'save'],
+            active_drag=self._box_zoom,
             active_scroll=self._wheel_zoom,
             output_backend='webgl',
         )
@@ -123,7 +136,7 @@ Speed=@{speed}{%.1f}mm/S
         self.xy_plot.add_tools(hover)
 
         # Tool switching is handled by the Bokeh toolbar buttons.
-        # BoxSelectTool is the default active_drag (set during figure creation).
+        # BoxZoomTool is the default active_drag (set during figure creation).
         # PanTool and WheelZoomTool are also available via the toolbar.
 
         # Backup initial ranges for reset
@@ -157,14 +170,37 @@ Speed=@{speed}{%.1f}mm/S
         self.speed_hist.yaxis.axis_label = 'Frequency'
         self.speed_hist.grid.grid_line_alpha = 0.3
 
+        # ---- Persistent Histogram Sources (Phase 5e) ----
+        # Persistent ColumnDataSources prevent UnknownReferenceError by avoiding
+        # destruction/recreation of renderer models.  Data is updated in-place.
+        self._power_hist_source = ColumnDataSource(data={
+            'top': [], 'center': [], 'width': [], 'color': [],
+        })
+        self.power_hist.vbar(
+            x='center', top='top', width='width',
+            source=self._power_hist_source, fill_color='color', alpha=0.7,
+        )
+
+        self._speed_hist_source = ColumnDataSource(data={
+            'top': [], 'center': [], 'width': [],
+        })
+        self.speed_hist.vbar(
+            x='center', top='top', width='width',
+            source=self._speed_hist_source, fill_color='green', alpha=0.7,
+        )
+
         # ---- Menu Bar (Phase 5b.1) ----
-        # File menu: Save views as PNG, SVG, or standalone HTML.
+        # File menu: Save plots, histograms as PNG/SVG, or all as HTML.
         self._file_dropdown = Dropdown(
             label='File',
             menu=[
-                ('Save as PNG', 'png'),
-                ('Save as SVG', 'svg'),
-                ('Save as Standalone HTML', 'html'),
+                ('Save Plot as PNG', 'plot_png'),
+                ('Save Plot as SVG', 'plot_svg'),
+                ('Save Power Histogram as PNG', 'power_png'),
+                ('Save Power Histogram as SVG', 'power_svg'),
+                ('Save Speed Histogram as PNG', 'speed_png'),
+                ('Save Speed Histogram as SVG', 'speed_svg'),
+                ('Save All as HTML', 'html'),
             ],
         )
         self._file_dropdown.on_click(self._on_file_menu)
@@ -456,35 +492,42 @@ Speed=@{speed}{%.1f}mm/S
     def update_histograms(self, source: ColumnDataSource = None):
         '''Rebuild power and speed histograms from source data.
 
+        Uses persistent ColumnDataSources to avoid destroying and recreating
+        renderer models, which causes UnknownReferenceError on the server.
+
         Parameters:
             source  Optional override source. Defaults to self.source.
         '''
         if source is None:
             source = self.source
 
-        # Clear existing renderers
-        self.power_hist.renderers = []
-        self.speed_hist.renderers = []
-
-        # Power histogram
+        # Power histogram — update persistent source data in-place.
         if len(source.data.get('power', [])) > 0:
             _p_hist, _p_edges = self._compute_histogram(
                 source.data['power'], bins=20, range_min=0, range_max=100)
-            if _p_hist:
-                _p_centers = [
-                    (_p_edges[i] + _p_edges[i + 1]) / 2
-                    for i in range(len(_p_edges) - 1)]
-                _p_source = ColumnDataSource(data={
-                    'top': _p_hist,
-                    'center': _p_centers,
-                    'width': [_p_edges[1] - _p_edges[0]] * len(_p_hist),
-                })
-                self.power_hist.vbar(
-                    x='center', top='top', width='width',
-                    source=_p_source, fill_color='navy', alpha=0.7,
-                )
+            _p_centers = [
+                (_p_edges[i] + _p_edges[i + 1]) / 2
+                for i in range(len(_p_edges) - 1)]
+            # Map each bin's center power to a color from the LUT
+            if self._color_lut:
+                _p_colors = []
+                for _c in _p_centers:
+                    _idx = min(100, max(0, round(_c)))
+                    _p_colors.append(self._color_lut[_idx])
+            else:
+                _p_colors = ['navy'] * len(_p_hist)
+            self._power_hist_source.data = {
+                'top': _p_hist,
+                'center': _p_centers,
+                'width': [_p_edges[1] - _p_edges[0]] * len(_p_hist),
+                'color': _p_colors,
+            }
+        else:
+            self._power_hist_source.data = {
+                'top': [], 'center': [], 'width': [], 'color': [],
+            }
 
-        # Speed histogram
+        # Speed histogram — update persistent source data in-place.
         if len(source.data.get('speed', [])) > 0:
             _s_vals = source.data['speed']
             _s_min = min(_s_vals)
@@ -497,15 +540,19 @@ Speed=@{speed}{%.1f}mm/S
                     _s_centers = [
                         (_s_edges[i] + _s_edges[i + 1]) / 2
                         for i in range(len(_s_edges) - 1)]
-                    _s_source = ColumnDataSource(data={
+                    self._speed_hist_source.data = {
                         'top': _s_hist,
                         'center': _s_centers,
                         'width': [_s_edges[1] - _s_edges[0]] * len(_s_hist),
-                    })
-                    self.speed_hist.vbar(
-                        x='center', top='top', width='width',
-                        source=_s_source, fill_color='green', alpha=0.7,
-                    )
+                    }
+            else:
+                self._speed_hist_source.data = {
+                    'top': [], 'center': [], 'width': [],
+                }
+        else:
+            self._speed_hist_source.data = {
+                'top': [], 'center': [], 'width': [],
+            }
 
     # ---- App Integration ----
 
@@ -523,12 +570,20 @@ Speed=@{speed}{%.1f}mm/S
         '''Dispatch File dropdown menu selections.
 
         Parameters:
-            value  The menu item value string ('png', 'svg', or 'html').
+            value  The menu item value string.
         '''
-        if value == 'png':
+        if value == 'plot_png':
             self._save_png()
-        elif value == 'svg':
+        elif value == 'plot_svg':
             self._save_svg()
+        elif value == 'power_png':
+            self._save_power_hist_png()
+        elif value == 'power_svg':
+            self._save_power_hist_svg()
+        elif value == 'speed_png':
+            self._save_speed_hist_png()
+        elif value == 'speed_svg':
+            self._save_speed_hist_svg()
         elif value == 'html':
             self._save_html()
 
@@ -544,7 +599,10 @@ Speed=@{speed}{%.1f}mm/S
                   'Install with: pip install bokeh')
             return
 
-        _name = f'ruida_plot_{self.title.replace(" ", "_")}.png'
+        if self._out_stem:
+            _name = f'{self._out_stem}-plot.png'
+        else:
+            _name = f'ruida_plot_{self.title.replace(" ", "_")}.png'
         try:
             # Temporarily switch to canvas backend for reliable PNG export.
             _old_backend = self.xy_plot.output_backend
@@ -568,7 +626,10 @@ Speed=@{speed}{%.1f}mm/S
                   'Install with: pip install bokeh')
             return
 
-        _name = f'ruida_plot_{self.title.replace(" ", "_")}.svg'
+        if self._out_stem:
+            _name = f'{self._out_stem}-plot.svg'
+        else:
+            _name = f'ruida_plot_{self.title.replace(" ", "_")}.svg'
         try:
             _old_backend = self.xy_plot.output_backend
             self.xy_plot.output_backend = 'svg'
@@ -580,7 +641,7 @@ Speed=@{speed}{%.1f}mm/S
                   'Selenium/webdriver may not be installed.')
 
     def _save_html(self):
-        '''Export the view layout as a standalone HTML file.
+        '''Export the full view layout as a standalone HTML file.
 
         Works without selenium — pure Bokeh embed API.
         '''
@@ -592,14 +653,121 @@ Speed=@{speed}{%.1f}mm/S
                   'Install with: pip install bokeh')
             return
 
-        _name = f'ruida_plot_{self.title.replace(" ", "_")}.html'
+        if self._out_stem:
+            _name = f'{self._out_stem}-full.html'
+        else:
+            _name = f'ruida_plot_{self.title.replace(" ", "_")}.html'
         try:
-            _html = file_html(self.xy_plot, CDN, self.title)
+            _html = file_html(self.layout, CDN, self.title)
             with open(_name, 'w', encoding='utf-8') as _f:
                 _f.write(_html)
             print(f'Saved: {_name}')
         except Exception as _exc:
             print(f'HTML export failed: {_exc}.')
+
+    def _save_power_hist_png(self):
+        '''Export the Power Distribution histogram as a PNG image.
+
+        Requires selenium with headless Chrome/Firefox.
+        '''
+        try:
+            from bokeh.io import export_png
+        except ImportError:
+            print('PNG export requires bokeh.io. '
+                  'Install with: pip install bokeh')
+            return
+
+        if self._out_stem:
+            _name = f'{self._out_stem}-power.png'
+        else:
+            _name = f'ruida_power_hist_{self.title.replace(" ", "_")}.png'
+        try:
+            _old_backend = self.power_hist.output_backend
+            self.power_hist.output_backend = 'canvas'
+            export_png(self.power_hist, filename=_name)
+            self.power_hist.output_backend = _old_backend
+            print(f'Saved: {_name}')
+        except Exception as _exc:
+            print(f'PNG export failed: {_exc}. '
+                  'Selenium/webdriver may not be installed.')
+
+    def _save_power_hist_svg(self):
+        '''Export the Power Distribution histogram as an SVG image.
+
+        Requires selenium with headless Chrome/Firefox.
+        '''
+        try:
+            from bokeh.io import export_svgs
+        except ImportError:
+            print('SVG export requires bokeh.io. '
+                  'Install with: pip install bokeh')
+            return
+
+        if self._out_stem:
+            _name = f'{self._out_stem}-power.svg'
+        else:
+            _name = f'ruida_power_hist_{self.title.replace(" ", "_")}.svg'
+        try:
+            _old_backend = self.power_hist.output_backend
+            self.power_hist.output_backend = 'svg'
+            export_svgs(self.power_hist, filename=_name)
+            self.power_hist.output_backend = _old_backend
+            print(f'Saved: {_name}')
+        except Exception as _exc:
+            print(f'SVG export failed: {_exc}. '
+                  'Selenium/webdriver may not be installed.')
+
+    def _save_speed_hist_png(self):
+        '''Export the Speed Distribution histogram as a PNG image.
+
+        Requires selenium with headless Chrome/Firefox.
+        '''
+        try:
+            from bokeh.io import export_png
+        except ImportError:
+            print('PNG export requires bokeh.io. '
+                  'Install with: pip install bokeh')
+            return
+
+        if self._out_stem:
+            _name = f'{self._out_stem}-speed.png'
+        else:
+            _name = f'ruida_speed_hist_{self.title.replace(" ", "_")}.png'
+        try:
+            _old_backend = self.speed_hist.output_backend
+            self.speed_hist.output_backend = 'canvas'
+            export_png(self.speed_hist, filename=_name)
+            self.speed_hist.output_backend = _old_backend
+            print(f'Saved: {_name}')
+        except Exception as _exc:
+            print(f'PNG export failed: {_exc}. '
+                  'Selenium/webdriver may not be installed.')
+
+    def _save_speed_hist_svg(self):
+        '''Export the Speed Distribution histogram as an SVG image.
+
+        Requires selenium with headless Chrome/Firefox.
+        '''
+        try:
+            from bokeh.io import export_svgs
+        except ImportError:
+            print('SVG export requires bokeh.io. '
+                  'Install with: pip install bokeh')
+            return
+
+        if self._out_stem:
+            _name = f'{self._out_stem}-speed.svg'
+        else:
+            _name = f'ruida_speed_hist_{self.title.replace(" ", "_")}.svg'
+        try:
+            _old_backend = self.speed_hist.output_backend
+            self.speed_hist.output_backend = 'svg'
+            export_svgs(self.speed_hist, filename=_name)
+            self.speed_hist.output_backend = _old_backend
+            print(f'Saved: {_name}')
+        except Exception as _exc:
+            print(f'SVG export failed: {_exc}. '
+                  'Selenium/webdriver may not be installed.')
 
     # ---- Settings Menu Handlers ----
 
@@ -863,7 +1031,7 @@ Speed=@{speed}{%.1f}mm/S
             old   Previous value.
             new   New value.
         '''
-        _data = self.source.data
+        _data = dict(self.source.data)
         _total = len(_data.get('cmd_id', []))
         # Guard clause: no data to filter
         if _total == 0:
