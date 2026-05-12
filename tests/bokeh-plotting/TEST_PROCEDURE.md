@@ -26,18 +26,18 @@
 ### Test 1: Basic Decode (no plotting)
 **Command:**
 ```bash
-python cpa.py -o /tmp/tc1.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
+python cpa.py -o tmp/tc1.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
 ```
 **Verify:**
 - Exit code 0
-- Output created at /tmp/tc1.txt
+- Output created at tmp/tc1.txt
 - File contains decoded commands (not empty)
 - No ERROR or CRITICAL messages (WARN is OK)
 
 ### Test 2: Verbose Decode (no plotting)
 **Command:**
 ```bash
-python cpa.py --verbose --raw -o /tmp/tc2.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
+python cpa.py --verbose --raw -o tmp/tc2.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
 ```
 **Verify:**
 - Exit code 0
@@ -47,7 +47,7 @@ python cpa.py --verbose --raw -o /tmp/tc2.txt discovery/tc/tc-2025-10-11-1/tc-20
 ### Test 3: Basic Plot Mode (--plot-moves)
 **Command:**
 ```bash
-python cpa.py --plot-moves -o /tmp/tc3.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
+python cpa.py --plot-moves -o tmp/tc3.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
 ```
 **Verify:**
 - Exit code 0
@@ -59,8 +59,8 @@ python cpa.py --plot-moves -o /tmp/tc3.txt discovery/tc/tc-2025-10-11-1/tc-2025-
 ### Test 4: Plot Mode with Different Cases
 **Commands:**
 ```bash
-python cpa.py --plot-moves -o /tmp/tc4a.txt discovery/tc/tc-2025-10-12-1/tc-2025-10-12-1-lb.log
-python cpa.py --plot-moves -o /tmp/tc4b.txt discovery/tc/tc-2025-10-21-1/tc-2025-10-21-1-mk.log
+python cpa.py --plot-moves -o tmp/tc4a.txt discovery/tc/tc-2025-10-12-1/tc-2025-10-12-1-lb.log
+python cpa.py --plot-moves -o tmp/tc4b.txt discovery/tc/tc-2025-10-21-1/tc-2025-10-21-1-mk.log
 ```
 **Verify:** Same as Test 3 for each case
 
@@ -75,7 +75,7 @@ With a Bokeh plot open (from Test 3 or 4):
 
 ### Test 6: Menu Bar
 - [ ] File → Save as PNG — file created
-- [ ] File → Save as SVG — file created  
+- [ ] File → Save as SVG — file created
 - [ ] File → Save as HTML — file created, opens in browser
 - [ ] Settings → Fit to Data — axes rescale to data bounds
 - [ ] Settings → 1:1 Aspect — aspect ratio toggles
@@ -98,7 +98,7 @@ With a Bokeh plot open (from Test 3 or 4):
 ### Test 9: Custom Port
 **Command:**
 ```bash
-python cpa.py --plot-moves --bokeh-port 6000 -o /tmp/tc9.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
+python cpa.py --plot-moves --bokeh-port 6000 -o tmp/tc9.txt discovery/tc/tc-2025-10-11-1/tc-2025-10-11-1-mk.log
 ```
 **Verify:**
 - Server starts on port 6000
