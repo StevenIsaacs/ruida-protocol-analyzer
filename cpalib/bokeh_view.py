@@ -10,11 +10,12 @@ import json
 try:
     from bokeh.plotting import figure
     from bokeh.models import (
-        ColumnDataSource, HoverTool, WheelZoomTool, PanTool, BoxZoomTool,
+        ColumnDataSource, HoverTool, SaveTool, WheelZoomTool, PanTool, BoxZoomTool,
         TabPanel, CustomJS, Dropdown, Button, Spinner, Paragraph,
         AutocompleteInput, Div, CheckboxButtonGroup, RangeSlider,
     )
     from bokeh.layouts import row, column
+
 except ImportError:
     raise ImportError(
         'Bokeh is required for plotting. Install with: pip install bokeh')
@@ -74,10 +75,10 @@ class BokehView():
         self.xy_plot = figure(
             title='Laser Head Movement',
             width=800, height=600,
-            tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset', 'save'],
+            tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset'],
             active_drag=self._box_zoom,
             active_scroll=self._wheel_zoom,
-            output_backend='webgl',
+            output_backend='canvas',
         )
 
         # 1:1 aspect ratio to prevent distortion of CNC toolpaths
@@ -135,6 +136,10 @@ Speed=@{speed}{%.1f}mm/S
         )
         self.xy_plot.add_tools(hover)
 
+        # SaveTool: native Bokeh save icon in the plot toolbar.
+        self._save_tool = SaveTool()
+        self.xy_plot.add_tools(self._save_tool)
+
         # Tool switching is handled by the Bokeh toolbar buttons.
         # BoxZoomTool is the default active_drag (set during figure creation).
         # PanTool and WheelZoomTool are also available via the toolbar.
@@ -153,7 +158,7 @@ Speed=@{speed}{%.1f}mm/S
             title='Power Distribution',
             width=400, height=250,
             tools='',
-            output_backend='webgl',
+            output_backend='svg',
         )
         self.power_hist.xaxis.axis_label = 'Power %'
         self.power_hist.yaxis.axis_label = 'Frequency'
@@ -164,7 +169,7 @@ Speed=@{speed}{%.1f}mm/S
             title='Speed Distribution',
             width=400, height=250,
             tools='',
-            output_backend='webgl',
+            output_backend='svg',
         )
         self.speed_hist.xaxis.axis_label = 'Speed (mm/S)'
         self.speed_hist.yaxis.axis_label = 'Frequency'
@@ -189,21 +194,8 @@ Speed=@{speed}{%.1f}mm/S
             source=self._speed_hist_source, fill_color='green', alpha=0.7,
         )
 
-        # ---- Menu Bar (Phase 5b.1) ----
-        # File menu: Save plots, histograms as PNG/SVG, or all as HTML.
-        self._file_dropdown = Dropdown(
-            label='File',
-            menu=[
-                ('Save Plot as PNG', 'plot_png'),
-                ('Save Plot as SVG', 'plot_svg'),
-                ('Save Power Histogram as PNG', 'power_png'),
-                ('Save Power Histogram as SVG', 'power_svg'),
-                ('Save Speed Histogram as PNG', 'speed_png'),
-                ('Save Speed Histogram as SVG', 'speed_svg'),
-                ('Save All as HTML', 'html'),
-            ],
-        )
-        self._file_dropdown.on_click(self._on_file_menu)
+        # ---- Menu Bar ----
+        # View presets and toggles (Settings menu saved for app integration).
 
         # Settings menu: view presets and toggles.
         self._settings_dropdown = Dropdown(
@@ -303,7 +295,6 @@ Speed=@{speed}{%.1f}mm/S
 
         # Menu bar row.
         self._menu_bar = row(
-            self._file_dropdown,
             self._settings_dropdown,
             self._reset_btn,
             self._start_spinner,
@@ -350,7 +341,13 @@ Speed=@{speed}{%.1f}mm/S
 
                 var plotEl = document.getElementById(plot.id);
                 if (plotEl) {
-                    var canvas = plotEl.querySelector('.bk-canvas');
+                    function findInShadow(root, sel) {
+                        var found = root.querySelector(sel);
+                        if (found) return found;
+                        if (root.shadowRoot) return findInShadow(root.shadowRoot, sel);
+                        return null;
+                    }
+                    var canvas = findInShadow(plotEl, '.bk-canvas');
                     if (canvas) {
                         canvas.addEventListener('contextmenu', function (e) {
                             e.preventDefault();
@@ -563,211 +560,6 @@ Speed=@{speed}{%.1f}mm/S
             app  The BokehApp instance that owns this view.
         '''
         self._app = app
-
-    # ---- File Menu Handlers ----
-
-    def _on_file_menu(self, value: str):
-        '''Dispatch File dropdown menu selections.
-
-        Parameters:
-            value  The menu item value string.
-        '''
-        if value == 'plot_png':
-            self._save_png()
-        elif value == 'plot_svg':
-            self._save_svg()
-        elif value == 'power_png':
-            self._save_power_hist_png()
-        elif value == 'power_svg':
-            self._save_power_hist_svg()
-        elif value == 'speed_png':
-            self._save_speed_hist_png()
-        elif value == 'speed_svg':
-            self._save_speed_hist_svg()
-        elif value == 'html':
-            self._save_html()
-
-    def _save_png(self):
-        '''Export the XY plot as a PNG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_png
-        except ImportError:
-            print('PNG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-plot.png'
-        else:
-            _name = f'ruida_plot_{self.title.replace(" ", "_")}.png'
-        try:
-            # Temporarily switch to canvas backend for reliable PNG export.
-            _old_backend = self.xy_plot.output_backend
-            self.xy_plot.output_backend = 'canvas'
-            export_png(self.xy_plot, filename=_name)
-            self.xy_plot.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'PNG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
-
-    def _save_svg(self):
-        '''Export the XY plot as an SVG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_svgs
-        except ImportError:
-            print('SVG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-plot.svg'
-        else:
-            _name = f'ruida_plot_{self.title.replace(" ", "_")}.svg'
-        try:
-            _old_backend = self.xy_plot.output_backend
-            self.xy_plot.output_backend = 'svg'
-            export_svgs(self.xy_plot, filename=_name)
-            self.xy_plot.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'SVG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
-
-    def _save_html(self):
-        '''Export the full view layout as a standalone HTML file.
-
-        Works without selenium — pure Bokeh embed API.
-        '''
-        try:
-            from bokeh.embed import file_html
-            from bokeh.resources import CDN
-        except ImportError:
-            print('HTML export requires bokeh.embed. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-full.html'
-        else:
-            _name = f'ruida_plot_{self.title.replace(" ", "_")}.html'
-        try:
-            _html = file_html(self.layout, CDN, self.title)
-            with open(_name, 'w', encoding='utf-8') as _f:
-                _f.write(_html)
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'HTML export failed: {_exc}.')
-
-    def _save_power_hist_png(self):
-        '''Export the Power Distribution histogram as a PNG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_png
-        except ImportError:
-            print('PNG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-power.png'
-        else:
-            _name = f'ruida_power_hist_{self.title.replace(" ", "_")}.png'
-        try:
-            _old_backend = self.power_hist.output_backend
-            self.power_hist.output_backend = 'canvas'
-            export_png(self.power_hist, filename=_name)
-            self.power_hist.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'PNG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
-
-    def _save_power_hist_svg(self):
-        '''Export the Power Distribution histogram as an SVG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_svgs
-        except ImportError:
-            print('SVG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-power.svg'
-        else:
-            _name = f'ruida_power_hist_{self.title.replace(" ", "_")}.svg'
-        try:
-            _old_backend = self.power_hist.output_backend
-            self.power_hist.output_backend = 'svg'
-            export_svgs(self.power_hist, filename=_name)
-            self.power_hist.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'SVG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
-
-    def _save_speed_hist_png(self):
-        '''Export the Speed Distribution histogram as a PNG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_png
-        except ImportError:
-            print('PNG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-speed.png'
-        else:
-            _name = f'ruida_speed_hist_{self.title.replace(" ", "_")}.png'
-        try:
-            _old_backend = self.speed_hist.output_backend
-            self.speed_hist.output_backend = 'canvas'
-            export_png(self.speed_hist, filename=_name)
-            self.speed_hist.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'PNG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
-
-    def _save_speed_hist_svg(self):
-        '''Export the Speed Distribution histogram as an SVG image.
-
-        Requires selenium with headless Chrome/Firefox.
-        '''
-        try:
-            from bokeh.io import export_svgs
-        except ImportError:
-            print('SVG export requires bokeh.io. '
-                  'Install with: pip install bokeh')
-            return
-
-        if self._out_stem:
-            _name = f'{self._out_stem}-speed.svg'
-        else:
-            _name = f'ruida_speed_hist_{self.title.replace(" ", "_")}.svg'
-        try:
-            _old_backend = self.speed_hist.output_backend
-            self.speed_hist.output_backend = 'svg'
-            export_svgs(self.speed_hist, filename=_name)
-            self.speed_hist.output_backend = _old_backend
-            print(f'Saved: {_name}')
-        except Exception as _exc:
-            print(f'SVG export failed: {_exc}. '
-                  'Selenium/webdriver may not be installed.')
 
     # ---- Settings Menu Handlers ----
 

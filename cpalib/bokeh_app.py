@@ -104,6 +104,9 @@ class BokehApp():
             styles={'font-size': '14px', 'margin': '10px 0'},
         )
 
+        # Set the browser window/tab title.
+        doc.title = 'Ruida Protocol Analyzer'
+
         # Assemble the root layout.
         doc.add_root(column(_status, self.tabs, sizing_mode='stretch_width'))
 
