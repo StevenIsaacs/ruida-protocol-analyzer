@@ -1,6 +1,7 @@
 .venv
 .venv-bokeh
 __pycache__
+.codesearch.db
 .vscode/settings.json
 tmp
 discovery
