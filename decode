@@ -8,11 +8,8 @@ Use this script to run cpa.py to process a log file previously captured
 by the capture script. The log file is processed twice. First to produce a
 summarized decode and second to produce a verbose decode.
 
-The verbose decode generates a plot of all moves and steps for each move.
-
-NOTE: This script requires that Python be run in a virtual environment. Be
-sure a virtual environment is active before running this script. A
-requirements.txt is provided if it is necessary to create a virtual environment.
+The verbose decode generates an interactive Bokeh plot of all moves and cuts.
+Requires a virtual environment with Bokeh installed. Create one from requirements.txt.
 
 Parameters:
  1 The capture file name -- not including extension. Processes <file>.log.
@@ -33,10 +30,22 @@ if [ ! -e $_file.log ]; then
     usage
 fi
 
-if [[ -n "$VIRTUAL_ENV" ]]; then
-    python cpa.py -o $_file.txt $_file.log
-    python cpa.py --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
-else
-    echo ERROR: A virtual environment is not active.
-    usage
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Venv precedence:
+#   1. $VIRTUAL_ENV if set (user-activated venv)
+#   2. .venv/        (primary development venv)
+#   3. .venv-bokeh/  (legacy migration venv)
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    if [ -d "$_script_dir/.venv" ]; then
+        source "$_script_dir/.venv/bin/activate"
+    elif [ -d "$_script_dir/.venv-bokeh" ]; then
+        source "$_script_dir/.venv-bokeh/bin/activate"
+    else
+        echo ERROR: No virtual environment found. Create one from requirements.txt.
+        usage
+    fi
 fi
+
+python cpa.py -o $_file.txt $_file.log
+python cpa.py --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log

@@ -1,11 +1,11 @@
-'''Visualize laser head movements as defined by the Ruida protoco..\
+'''Visualize laser head movements as defined by the Ruida protocol.
 
-Most of the work is done by CpaPlotter. This vectors Ruida protocol commands to
-the corresponding CpaPlotter methods.
+Most of the work is done by BokehPlotter. This routes Ruida protocol commands to
+the corresponding BokehPlotter methods.
 '''
 
 from cpalib.cpa_emitter import CpaEmitter
-import cpalib.cpa_plotter
+import cpalib.bokeh_plotter
 
 import protocols.ruida.rpa_protocol as rdap
 
@@ -125,7 +125,7 @@ class RpaPlotter():
         self.overscan_color = (0.8, 0.8, 0.8)
         self.overscan_alpha = 0.3
 
-        self.plot = cpalib.cpa_plotter.CpaPlotter(
+        self.plot = cpalib.bokeh_plotter.BokehPlotter(
             out, title, self.s, self.m_to_s_map,
             self.cmd_counters, self.mt_counters)
 

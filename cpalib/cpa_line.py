@@ -1,4 +1,4 @@
-import numpy as np
+import math
 
 class CpaLine():
     '''A line representing a move of the virtual head.
@@ -9,7 +9,7 @@ class CpaLine():
         _line_x_len = abs(_line_x_ends[0] - _line_x_ends[1])
         _line_y_ends = (start[1], end[1])
         _line_y_len = abs(_line_y_ends[0] - _line_y_ends[1])
-        return  np.sqrt(_line_x_len**2 + _line_y_len**2)
+        return math.hypot(_line_x_len, _line_y_len)
 
     def __init__(self,
                  cmd_id, cmd_label, index, start, end, speed,

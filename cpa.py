@@ -5,6 +5,14 @@ import subprocess
 import protocols.ruida.ruida_analyzer as rpa
 from cpalib.cpa_emitter import CpaEmitter
 
+import time
+
+# Graceful Bokeh import: BokehApp is None if Bokeh not installed.
+try:
+    from cpalib.bokeh_app import BokehApp
+except ImportError:
+    BokehApp = None
+
 def parse_arguments():
     """Parse command line arguments for CNC protocol analyzer"""
     parser = argparse.ArgumentParser(
@@ -132,14 +140,14 @@ Examples:
     parser.add_argument(
         '--step-decode',
         action='store_true',
-        help='Pause output after each decode message (disables --on-the-fly).'
+        help='Pause output after each decode message.'
     )
 
     # Single step mode -- moves
     parser.add_argument(
         '--step-moves',
         action='store_true',
-        help='Pause plot output after each move command has been parsed (ignored when --on-the-fly).'
+        help='Pause plot output after each move command has been parsed.'
     )
 
     # Single step mode -- moves -- Start stepping command number.
@@ -147,21 +155,30 @@ Examples:
         '--step-on-command',
         default=0,
         metavar='<step_on_command>',
-        help='Pause plot output after command N has been parsed  and start stepping (ignored when --on-the-fly).'
+        help='Pause plot output after command N has been parsed and start stepping.'
     )
 
     # Plot moves.
     parser.add_argument(
         '--plot-moves',
         action='store_true',
-        help='Plot all moves and cuts (ignored when --on-the-fly).'
+        help='Plot all moves and cuts in an interactive Bokeh visualization.'
+    )
+
+    # Bokeh server port
+    parser.add_argument(
+        '--bokeh-port',
+        type=int,
+        default=5006,
+        metavar='<port>',
+        help='Port for the Bokeh visualization server (default: 5006).'
     )
 
     # Enter interactive mode (CLI)
     parser.add_argument(
         '--interactive',
         action='store_true',
-        help='Enter an interactive mode on the console (ignored when --on-the-fly).'
+        help='Enter an interactive mode on the console after decode completes.'
     )
 
     args = parser.parse_args()
@@ -181,15 +198,6 @@ Examples:
 
     if args.magic is not None and args.protocol != 'ruida':
         parser.error("--magic can only be used with the ruida protocol.")
-
-    if args.on_the_fly:
-        args.step_decode = False
-        args.step_packets = False
-        args.step_moves = False
-        args.step_on_command = 0
-        args.plot_moves = False
-        args.interactive = False
-        parser.print('Stepping is disabled when --on-the-fly is enabled')
 
     # Parse magic number if provided
     if args.magic:
@@ -240,23 +248,68 @@ def open_input(args):
 def main():
     """Main function with command line argument processing"""
     args = parse_arguments()
-    input = open_input(args)
+    input_stream = open_input(args)
 
     # Set up output handling
     output = CpaEmitter(args)
     output.open()
 
     # Initialize analyzer with magic number if provided
-    analyzer = rpa.RuidaProtocolAnalyzer(args, input, output)
+    analyzer = rpa.RuidaProtocolAnalyzer(args, input_stream, output)
+
+    bokeh_app = None
+
     if args.plot_moves:
         analyzer.parser.plot.plot.step_on_cmd_id(args.step_on_command)
         analyzer.parser.plot.plot.enable_stepping(args.step_moves)
         analyzer.parser.plot.plot.enable()
 
+        if BokehApp is None:
+            output.warning(
+                'Bokeh is not installed. Install with: pip install bokeh')
+        elif args.on_the_fly:
+            # For on-the-fly, start Bokeh server before decode.
+            try:
+                bokeh_app = BokehApp(analyzer.parser.plot.plot)
+                if bokeh_app.start(port=args.bokeh_port):
+                    output.info(
+                        'Bokeh visualization server started at '
+                        f'http://localhost:{bokeh_app.port}')
+                else:
+                    output.warning(
+                        'Failed to start Bokeh server. '
+                        'Continuing without plot.')
+                    bokeh_app = None
+            except Exception as e:
+                output.warning(
+                    f'Failed to start Bokeh server: {e}. '
+                    'Continuing without plot.')
+                bokeh_app = None
+
     try:
-        analyzer.decode() # Does not return until decode is complete.
-        if args.plot_moves:
-            analyzer.parser.plot.plot.show(wait=True)
+        analyzer.decode()  # Does not return until decode is complete.
+
+        if args.plot_moves and not args.on_the_fly and BokehApp is not None:
+            # File mode: start Bokeh server after decode completes.
+            try:
+                bokeh_app = BokehApp(analyzer.parser.plot.plot)
+                if bokeh_app.start(port=args.bokeh_port):
+                    output.info(
+                        'Now plotting moves. Close browser window to exit.')
+                    # Block until user presses Ctrl+C.
+                    try:
+                        while bokeh_app._running:
+                            time.sleep(0.1)
+                    except KeyboardInterrupt:
+                        pass
+                    finally:
+                        if bokeh_app is not None:
+                            bokeh_app.shutdown()
+                else:
+                    output.warning('Failed to start Bokeh server.')
+            except Exception as e:
+                output.warning(f'Failed to start Bokeh server: {e}.')
+
         output.info('Decode complete.\n')
         output.close()
     except LookupError as e:
@@ -272,12 +325,14 @@ def main():
         sys.stdout.flush()
         sys.stderr.flush()
     except Exception as e:
-        if e is str:
-            output.verbose(f'Unhandled error:{e}')
+        if isinstance(e, str):
+            output.verbose(f'Unhandled error: {e}')
         else:
-            output.verbose(f'Unhandled exception {e.__str__}')
+            output.verbose(f'Unhandled exception {e.__str__()}')
         exit(1)
     finally:
+        if bokeh_app is not None:
+            bokeh_app.shutdown()
         sys.stdout.flush()
 
 if __name__ == "__main__":

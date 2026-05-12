@@ -1,4 +1,5 @@
 .venv
+.venv-bokeh
 __pycache__
 .vscode/settings.json
 tmp

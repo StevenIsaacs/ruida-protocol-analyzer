@@ -1,3 +1,4 @@
-# Required to support plotting.
-matplotlib
-mplcursors
+bokeh
+
+# Optional: for PNG export via Bokeh's export_png (requires headless Chrome/Firefox)
+# selenium

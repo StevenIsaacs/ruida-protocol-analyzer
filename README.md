@@ -13,7 +13,7 @@ NOTE: Currently only the Ruida UDP protocol is supported.
 - **Type-aware Parameters**: Decodes coordinates, power levels, speeds, and other data types
 - **Flexible Output**: Console output, file output, verbose modes, and raw packet display
 - **Error Handling**: Configurable error handling with resync capabilities
-- **Move and Cut Plotting**: When enabled moves and cut lines are plotted using build123d
+- **Move and Cut Plotting**: When enabled moves and cut lines are plotted using Bokeh
 
 This tool is designed to be used to discover and diagnose problems related to UDP communications with a Ruida controller. Much of the Ruida protocol is unknown and new commands or parameters may be discovered during analysis. The nature of such discovery often requires new experiments or parsing algorithms when new information is learned. Because of this the best experience using this tool is within VSCode or its forks like VSCodium and Antigravity. These IDEs allow stepping through the code to observe the analyzer's behavior along with side by side display of moves and cuts. And, when needed, this tool can be hacked to refine analysis. If you create a hack which can be useful to others please consider contributing it to this project.
 
@@ -306,9 +306,12 @@ difference =7028
 ```
 
 ### Move Plotting
-When move plotting is enabled a separate window opens showing all individual
-head moves. Hovering over a line will open a popup showing the move command
-ID along with the end point coordinates and power and speed settings.
+When move plotting is enabled an interactive Bokeh visualization is opened
+in a browser window showing all individual head moves. Hovering over a line
+will display a tooltip showing the move command ID, end point coordinates,
+length, power, and speed. The visualization supports filtering by move type
+(moves/cuts), power range, and speed range. Right-click on any vector for
+context menu options including opening a new tab filtered from that command.
 
 ![Example:](example-moves.png)
 

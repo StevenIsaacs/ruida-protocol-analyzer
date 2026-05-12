@@ -16,7 +16,7 @@ python cpa.py --on-the-fly --ip <IP>   # Live capture via tshark
 ```
 
 - `./decode` **requires a venv to be active** (checks `$VIRTUAL_ENV`). Create one from `requirements.txt` if needed.
-- `requirements.txt` has `bokeh` and `numpy` (plotting). Everything else is stdlib.
+- `requirements.txt` has `bokeh` (plotting). Everything else is stdlib.
 
 ## Architecture
 
