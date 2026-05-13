@@ -5,6 +5,7 @@ with interactive tools (zoom, pan, box select, hover), menu bar,
 and right-click context menu.'''
 
 import json
+from pathlib import Path
 
 # Fail-fast import check
 try:
@@ -139,7 +140,8 @@ Speed=@{speed}{%.1f}mm/S
         self.xy_plot.add_tools(hover)
 
         # SaveTool: native Bokeh save icon in the plot toolbar.
-        self._save_tool = SaveTool()
+        _f = Path(self.args.input_file).with_suffix('')
+        self._save_tool = SaveTool(filename=str(_f))
         self.xy_plot.add_tools(self._save_tool)
 
         # Tool switching is handled by the Bokeh toolbar buttons.
