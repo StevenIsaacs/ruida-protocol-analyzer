@@ -4,7 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
@@ -13,15 +12,17 @@
             "console": "externalTerminal",
             // "args": "${command:pickArgs}"
             "args": [
-                    "--verbose",
-                     // "--step-decode",
-                     "--raw",
-                     "--plot-moves",
-                     "--step-moves",
-                     //"--input-encoding=utf-16",
-                     // "--stop-on-error",
-                     "-o", "discovery/selected.txt",
-                     "discovery/selected.log"]
+                "--verbose",
+                // "--step-decode",
+                "--raw",
+                "--plot-moves",
+                //"--step-moves",
+                //"--input-encoding=utf-16",
+                // "--stop-on-error",
+                "-o",
+                "discovery/selected.txt",
+                "discovery/selected.log"
+            ]
         }
     ]
 }
