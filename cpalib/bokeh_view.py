@@ -215,10 +215,6 @@ Speed=@{speed}{%.1f}mm/S
         )
         self._settings_dropdown.on_click(self._on_settings_menu)
 
-        # Reset button — restores initial axis ranges and data.
-        self._reset_btn = Button(label='\u21BA Reset View', button_type='default')
-        self._reset_btn.on_click(self.reset_view)
-
         # Vector range slider (start index + count).
         _total = len(self._full_data.get('cmd_id', []))
         self._start_spinner = Spinner(
@@ -300,7 +296,6 @@ Speed=@{speed}{%.1f}mm/S
         # Menu bar row.
         self._menu_bar = row(
             self._settings_dropdown,
-            self._reset_btn,
             self._start_spinner,
             self._count_spinner,
             self._type_filter,
