@@ -42,12 +42,14 @@ class BokehApp():
     DEFAULT_PORT = 5006
     MAX_PORT_ATTEMPTS = 5
 
-    def __init__(self, plotter):
+    def __init__(self, args, plotter):
         '''Initialise the Bokeh application.
 
         Parameters:
+            args        Command line arguments for the cpa program.
             plotter  A BokehPlotter instance providing to_column_data().
         '''
+        self.args = args
         self.plotter = plotter
 
         # Thread-safe queue: decoder thread pushes data, server thread drains.
@@ -87,7 +89,7 @@ class BokehApp():
         if self.plotter.out.args.output_file:
             _out_stem = str(self.plotter.out.out_stem)
         # Create the primary tab holding the XY plot and histograms.
-        _view = BokehView(source=_source, title='All Vectors',
+        _view = BokehView(self.args, source=_source, title='All Vectors',
                           color_lut=self.plotter.color_lut,
                           out_stem=_out_stem)
         _view.set_app(self)
@@ -188,7 +190,7 @@ class BokehApp():
         if self.plotter.out.args.output_file:
             _out_stem = str(self.plotter.out.out_stem)
         _source = ColumnDataSource(data=source_data)
-        _view = BokehView(source=_source, title=title,
+        _view = BokehView(self.args, source=_source, title=title,
                           color_lut=self.plotter.color_lut,
                           out_stem=_out_stem)
         _view.set_app(self)

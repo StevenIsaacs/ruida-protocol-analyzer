@@ -270,7 +270,7 @@ def main():
         elif args.on_the_fly:
             # For on-the-fly, start Bokeh server before decode.
             try:
-                bokeh_app = BokehApp(analyzer.parser.plot.plot)
+                bokeh_app = BokehApp(args, analyzer.parser.plot.plot)
                 if bokeh_app.start(port=args.bokeh_port):
                     output.info(
                         'Bokeh visualization server started at '
@@ -295,7 +295,7 @@ def main():
         if args.plot_moves and not args.on_the_fly and BokehApp is not None:
             # File mode: start Bokeh server after output file is written.
             try:
-                bokeh_app = BokehApp(analyzer.parser.plot.plot)
+                bokeh_app = BokehApp(args, analyzer.parser.plot.plot)
                 if bokeh_app.start(port=args.bokeh_port):
                     print(
                         'Now plotting moves. Press Ctrl+C to exit.',

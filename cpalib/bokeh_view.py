@@ -30,11 +30,12 @@ class BokehView():
     - Speed histogram (bottom-right)
     '''
 
-    def __init__(self, source: ColumnDataSource, title: str = 'All Vectors',
+    def __init__(self, args, source: ColumnDataSource, title: str = 'All Vectors',
                  color_lut: list = None, out_stem: str = None):
         '''Create a new view tab.
 
         Parameters:
+            args      Command line arguments for the cpa program.
             source    Shared ColumnDataSource with vector data.
             title     Tab title string.
             color_lut Color lookup table (list of 101 hex strings) for
@@ -44,6 +45,7 @@ class BokehView():
                       text file base name).  Falls back to old naming when
                       None.
         '''
+        self.args = args
         self.title = title
         self.source = source
 
@@ -73,7 +75,7 @@ class BokehView():
         self._wheel_zoom = WheelZoomTool()
 
         self.xy_plot = figure(
-            title='Laser Head Movement',
+            title=f'{self.args.input_file}: {self.title}\nLaser Head Movement',
             width=800, height=600,
             tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset'],
             active_drag=self._box_zoom,
