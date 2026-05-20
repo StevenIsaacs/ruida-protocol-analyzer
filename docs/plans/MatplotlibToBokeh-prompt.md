@@ -1,7 +1,7 @@
 Write an improved, more detailed, and more comprehensive implementation plan for the replacement of matplotlib with Bokeh for responsive and interactive charts capable of handling thousands of vectors in a 2D space and structured to allow for 3D capability in the future. Features similar to those currently implemented using matplotlib should be maintained and optimized for Bokeh. This is especially important for hover tooltips showing vector attributes similar to those displayed by the current implementation.
 
 # Planning and Design Requirements
-The plan file name is bokeh_plotting_<TIMESTAMP>.md where <TIMESTAMP> is the current date and time in the format YYYYMMDD-HHMMSS.
+The plan file name is `bokeh_plotting_<TIMESTAMP>.md` where `<TIMESTAMP>` is the current date and time in the format `YYYYMMDD-HHMMSS`.
 
 The plan should be written as a detailed implementation plan such that each step can be performed sequentially and resumed in separate sessions, if necessary.
 
