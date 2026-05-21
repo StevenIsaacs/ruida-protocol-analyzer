@@ -66,6 +66,9 @@ class BokehView():
         # Output file stem for save filenames (uses decoded text file base name).
         self._out_stem = str(out_stem) if out_stem is not None else None
 
+        # Grid line alpha for plot and histograms (consistent styling).
+        self._grid_line_alpha = 0.8
+
         # Z-axis placeholder: Future 3D capability will add z coordinate
         # support for multi-layer engraving visualization.
 
@@ -77,7 +80,7 @@ class BokehView():
 
         self.xy_plot = figure(
             title=f'{self.args.input_file}: {self.title}\nLaser Head Movement',
-            width=800, height=600,
+            width=1000, height=800,
             tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset'],
             active_drag=self._box_zoom,
             active_scroll=self._wheel_zoom,
@@ -93,7 +96,7 @@ class BokehView():
         self.xy_plot.yaxis.axis_label = 'Bed Y (mm)'
 
         # Grid
-        self.xy_plot.grid.grid_line_alpha = 0.3
+        self.xy_plot.grid.grid_line_alpha = self._grid_line_alpha
 
         # Render vector segments using the segment glyph
         self.xy_renderer = self.xy_plot.segment(
@@ -166,7 +169,7 @@ Speed=@{speed}{%.1f}mm/S
         )
         self.power_hist.xaxis.axis_label = 'Power %'
         self.power_hist.yaxis.axis_label = 'Frequency'
-        self.power_hist.grid.grid_line_alpha = 0.3
+        self.power_hist.grid.grid_line_alpha = self._grid_line_alpha
 
         # ---- Speed Histogram ----
         self.speed_hist = figure(
@@ -177,7 +180,7 @@ Speed=@{speed}{%.1f}mm/S
         )
         self.speed_hist.xaxis.axis_label = 'Speed (mm/S)'
         self.speed_hist.yaxis.axis_label = 'Frequency'
-        self.speed_hist.grid.grid_line_alpha = 0.3
+        self.speed_hist.grid.grid_line_alpha = self._grid_line_alpha
 
         # ---- Persistent Histogram Sources (Phase 5e) ----
         # Persistent ColumnDataSources prevent UnknownReferenceError by avoiding
@@ -200,20 +203,6 @@ Speed=@{speed}{%.1f}mm/S
 
         # ---- Menu Bar ----
         # View presets and toggles (Settings menu saved for app integration).
-
-        # Settings menu: view presets and toggles.
-        self._settings_dropdown = Dropdown(
-            label='Settings',
-            menu=[
-                ('Fit to Data', 'fit'),
-                ('1:1 Aspect', 'aspect'),
-                ('Show Grid', 'grid'),
-                ('Color: Gradient', 'color_gradient'),
-                ('Color: Discrete', 'color_discrete'),
-                ('Color: None', 'color_none'),
-            ],
-        )
-        self._settings_dropdown.on_click(self._on_settings_menu)
 
         # Vector range slider (start index + count).
         _total = len(self._full_data.get('cmd_id', []))
@@ -284,7 +273,7 @@ Speed=@{speed}{%.1f}mm/S
         # Command summary display area
         self._cmd_summary = Div(
             text='Hover or select a command to see details',
-            width=300, height=60,
+            width=300, height=100,
             styles={'font-size': '12px', 'overflow-y': 'auto'},
         )
 
@@ -295,7 +284,6 @@ Speed=@{speed}{%.1f}mm/S
 
         # Menu bar row.
         self._menu_bar = row(
-            self._settings_dropdown,
             self._start_spinner,
             self._count_spinner,
             self._type_filter,
@@ -440,11 +428,19 @@ Speed=@{speed}{%.1f}mm/S
         self.xy_plot.js_on_event('press', _ctx_menu_js)
 
         # ---- Layout ----
+        self._plots = (
+                row(
+                    column(
+                        self.power_hist,
+                        self.speed_hist,
+                        self._cmd_summary,
+                        ),
+                    self.xy_plot)
+            )
+
         self.layout = column(
             self._menu_bar,
-            self._cmd_summary,
-            self.xy_plot,
-            row(self.power_hist, self.speed_hist),
+            self._plots,
             sizing_mode='stretch_width',
         )
 
@@ -559,54 +555,6 @@ Speed=@{speed}{%.1f}mm/S
             app  The BokehApp instance that owns this view.
         '''
         self._app = app
-
-    # ---- Settings Menu Handlers ----
-
-    def _on_settings_menu(self, value: str):
-        '''Dispatch Settings dropdown menu selections.
-
-        Parameters:
-            value  The menu item value string.
-        '''
-        if value == 'fit':
-            self._fit_to_data()
-        elif value == 'aspect':
-            self._toggle_aspect()
-        elif value == 'grid':
-            self._toggle_grid()
-        elif value == 'color_gradient':
-            print('Color: Gradient — not yet implemented (stub)')
-        elif value == 'color_discrete':
-            print('Color: Discrete — not yet implemented (stub)')
-        elif value == 'color_none':
-            print('Color: None — not yet implemented (stub)')
-
-    def _fit_to_data(self):
-        '''Reset axis ranges to fit all visible data with 5 % padding.'''
-        _data = self.source.data
-        _all_x = _data.get('start_x', []) + _data.get('end_x', [])
-        _all_y = _data.get('start_y', []) + _data.get('end_y', [])
-        if not _all_x or not _all_y:
-            return
-
-        _x_min, _x_max = min(_all_x), max(_all_x)
-        _y_min, _y_max = min(_all_y), max(_all_y)
-        _pad_x = max(1.0, (_x_max - _x_min) * 0.05)
-        _pad_y = max(1.0, (_y_max - _y_min) * 0.05)
-
-        self.xy_plot.x_range.start = _x_min - _pad_x
-        self.xy_plot.x_range.end = _x_max + _pad_x
-        self.xy_plot.y_range.start = _y_min - _pad_y
-        self.xy_plot.y_range.end = _y_max + _pad_y
-
-    def _toggle_aspect(self):
-        '''Toggle 1:1 aspect ratio on the XY plot.'''
-        self.xy_plot.match_aspect = not self.xy_plot.match_aspect
-
-    def _toggle_grid(self):
-        '''Toggle grid visibility on the XY plot.'''
-        _current = self.xy_plot.grid.grid_line_alpha
-        self.xy_plot.grid.grid_line_alpha = 0.0 if _current > 0 else 0.3
 
     # ---- Range Slider ----
 
