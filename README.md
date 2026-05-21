@@ -37,36 +37,56 @@ Over time this tool will grow to support other CNC protocols such as G-Code.
 
 ## Installation
 
-1. Clone the repository:
+### Option 1: Install from source (recommended for development)
+
 ```bash
 git clone https://github.com/yourusername/ruida-protocol-analyzer.git
 cd ruida-protocol-analyzer
-```
 
-2. Create and activate a Python virtual environment named `.venv`:
-```bash
+# Create and activate a virtual environment
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package in editable mode
+pip install -e .
+
+# For plotting support:
+pip install -e ".[plotting]"
 ```
 
-3. Install dependencies:
+### Option 2: Direct install from source
+
 ```bash
-pip install -r requirements.txt
+pip install git+https://github.com/yourusername/ruida-protocol-analyzer.git
 ```
 
-4. Make sure tshark is installed:
+After installation, the `cpa` command is available globally (when the venv is active):
 ```bash
-# Ubuntu/Debian
-sudo apt-get install wireshark
-
-# Fedora
-sudo dnf install wireshark
-
-# macOS
-brew install wireshark
-
-# Windows - Download from https://www.wireshark.org/
+cpa --help
 ```
+
+### Requirements
+
+- Python 3.7+
+- Wireshark/tshark installed and accessible in PATH
+- Network access to capture Ruida controller communications
+
+### Building a Standalone Binary
+
+A standalone binary (no Python required) can be built with PyInstaller:
+
+```bash
+# Linux
+./build.sh
+
+# Windows (PowerShell)
+.\build.ps1
+
+# The binary is placed in dist/
+./dist/cpa --help
+```
+
+Requirements: PyInstaller (`pip install pyinstaller`) and a working build environment (gcc/clang on Linux, Visual Studio on Windows).
 
 ## Usage
 

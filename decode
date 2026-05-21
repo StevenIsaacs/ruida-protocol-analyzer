@@ -47,5 +47,8 @@ if [[ -z "$VIRTUAL_ENV" ]]; then
     fi
 fi
 
-python cpa.py -o $_file.txt $_file.log
-python cpa.py --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
+_cpa_cmd=cpa
+command -v cpa >/dev/null 2>&1 || _cpa_cmd="python cpa.py"
+
+$_cpa_cmd -o $_file.txt $_file.log
+$_cpa_cmd --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log

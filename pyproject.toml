@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ruida-protocol-analyzer"
+version = "0.1.0"
+description = "CNC Protocol Analyzer - Parse and decode CNC protocol packets"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.7"
+authors = [
+    {name = "Ruida Protocol Analyzer Contributors"}
+]
+
+[project.scripts]
+cpa = "cpa:main"
+
+[project.optional-dependencies]
+plotting = ["bokeh"]
+
+[tool.setuptools]
+py-modules = ["cpa"]
+
+[tool.setuptools.packages.find]
+include = ["cpalib*", "protocols*"]

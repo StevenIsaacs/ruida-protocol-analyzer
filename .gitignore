@@ -9,3 +9,5 @@ testing
 *.png
 build
 dist
+release
+*.egg-info

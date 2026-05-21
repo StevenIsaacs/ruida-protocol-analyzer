@@ -13,6 +13,19 @@ try:
 except ImportError:
     BokehApp = None
 
+# --- Version detection ---
+# Prefer importlib.metadata (works when package is pip-installed or built with PyInstaller).
+# Falls back to a dev version when running cpa.py directly from source.
+try:
+    from importlib.metadata import version as _pkg_version, PackageNotFoundError
+    try:
+        __version__ = _pkg_version('ruida-protocol-analyzer')
+    except PackageNotFoundError:
+        __version__ = '0.1.0-dev'
+except ImportError:
+    # Python < 3.8 fallback
+    __version__ = '0.1.0-dev'
+
 def parse_arguments():
     """Parse command line arguments for CNC protocol analyzer"""
     parser = argparse.ArgumentParser(
@@ -179,6 +192,13 @@ Examples:
         '--interactive',
         action='store_true',
         help='Enter an interactive mode on the console after decode completes.'
+    )
+
+    # Version
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
     )
 
     args = parser.parse_args()
