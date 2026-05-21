@@ -232,11 +232,13 @@ class BokehPlotter():
             _lw = 1
             _c = self.color
             _ls = 'solid'
+            _speed = self.s[self.m_to_s_map.get(
+                self.cmd_label, 'speed_laser_1_part')]
         else:
             _lw = 0.5
             _c = self._move_color
             _ls = 'dashed'
-
+            _speed = self.s[self.m_to_s_map.get(self.cmd_label, 'speed_axis_move')]
         # Store the CpaLine regardless of stepping state.
         _cpa_line = cpa_l.CpaLine(
             self.cmd_id,
@@ -244,7 +246,7 @@ class BokehPlotter():
             len(self.cpa_lines),
             (self._last_x, self._last_y),
             (x, y),
-            self.s[self.m_to_s_map.get(self.cmd_label, 'speed_axis_move')],
+            _speed,
             self.p,
             _lw,
             _ls,

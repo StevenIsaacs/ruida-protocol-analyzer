@@ -98,7 +98,7 @@ class RpaPlotter():
             'cmd_speed_axis': 0,
             'cmd_speed_laser_1_part': 0,
             'cmd_force_eng_speed': 0,
-            'cmd_axis_move': 0,
+            'cmd_speed_axis_move': 0,
             'cmd_rapid_move_x': 0,
             'cmd_rapid_move_y': 0,
             'cmd_rapid_move_xy': 0,
@@ -166,12 +166,12 @@ class RpaPlotter():
     def cmd_force_eng_speed(self, values: list[float]):
         '''Unknown.
         '''
-        self.plot.s['speed_laser_1'] = values[0]
+        self.plot.s['force_eng_speed'] = values[0]
 
     def cmd_speed_axis_move(self, values: list[float]):
         '''Used for moves?
         '''
-        self.plot.s['speed_laser_1'] = values[0]
+        self.plot.s['speed_axis_move'] = values[0]
 
     def cmd_move_abs_xy(self, values: list[float]):
         '''This effectively a move with the laser off.
@@ -639,7 +639,7 @@ class RpaPlotter():
             0x03: 'cmd_speed_axis',
             0x04: 'cmd_speed_laser_1_part',
             0x05: 'cmd_force_eng_speed',
-            0x06: 'cmd_axis_move',
+            0x06: 'cmd_speed_axis_move',
         },
         0xD9: {
             0x00: 'cmd_rapid_move_x',
@@ -683,7 +683,8 @@ class RpaPlotter():
                         self.cmd_counters[_method] += 1
                         getattr(self, _method)(values)
                     except Exception as e:
-                        pass
+                        self.out.error(
+                            f'Plotter dispatch error for {_method}: {e}')
             else:
                 try:
                     self.plot.cmd_id = cmd_id
@@ -692,7 +693,8 @@ class RpaPlotter():
                     self.cmd_counters[_method] += 1
                     getattr(self, _method)(values)
                 except Exception as e:
-                    pass
+                    self.out.error(
+                        f'Plotter dispatch error for {_method}: {e}')
 
     _mt = {
         0x00: {
