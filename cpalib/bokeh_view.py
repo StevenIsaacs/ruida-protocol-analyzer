@@ -16,6 +16,8 @@ try:
         AutocompleteInput, Div, CheckboxButtonGroup, RangeSlider,
     )
     from bokeh.layouts import row, column
+    from bokeh.embed import file_html
+    from bokeh.resources import CDN
 
 except ImportError:
     raise ImportError(
@@ -59,6 +61,8 @@ class BokehView():
 
         # Full unfiltered data for range slider filtering.
         self._full_data = {k: list(v) for k, v in source.data.items()}
+        # Full unfiltered data as a CDS for CustomJS range slicing in standalone HTML.
+        self._full_source = ColumnDataSource(data=self._full_data)
 
         # Color LUT for power histogram (shared with vector coloring).
         self._color_lut = color_lut
@@ -252,6 +256,133 @@ Speed=@{speed}{:.1f}mm/S
         )
         self._speed_filter.on_change('value', self._on_filter_change)
 
+        # ---- CustomJS callbacks for standalone HTML export ----
+        # These replicate the Python filter logic in JavaScript so
+        # that the Moves/Cuts, Power, and Speed filters work in
+        # exported standalone HTML (no Bokeh server).
+        _filter_cb = CustomJS(args=dict(
+            source=self.source,
+            type_filter=self._type_filter,
+            power_filter=self._power_filter,
+            speed_filter=self._speed_filter,
+        ), code="""
+            const data = source.data;
+            const total = data.cmd_id.length;
+            if (total === 0) return;
+
+            const active_types = type_filter.active;
+            const power_range = power_filter.value;
+            const speed_range = speed_filter.value;
+
+            const new_alpha = new Array(total);
+            for (let i = 0; i < total; i++) {
+                let visible = true;
+
+                // Type filter
+                const style = data.style[i] || 'solid';
+                const is_move = (style === 'dashed');
+                const is_cut = (style === 'solid');
+                if (active_types.indexOf(0) === -1 && is_move) visible = false;
+                if (active_types.indexOf(1) === -1 && is_cut) visible = false;
+
+                // Power filter
+                const power = data.power[i];
+                if (power < power_range[0] || power > power_range[1]) visible = false;
+
+                // Speed filter
+                const speed = data.speed[i];
+                if (speed < speed_range[0] || speed > speed_range[1]) visible = false;
+
+                new_alpha[i] = visible ? 1.0 : 0.2;
+            }
+            data.alpha = new_alpha;
+            source.change.emit();
+        """)
+
+        self._type_filter.js_on_change('active', _filter_cb)
+        self._power_filter.js_on_change('value', _filter_cb)
+        self._speed_filter.js_on_change('value', _filter_cb)
+
+        # ---- CustomJS callbacks for Start/Count range spinners ----
+        # Replicates the Python _on_range_change logic in JavaScript so
+        # that the Start and Count spinners work in exported standalone HTML.
+        _range_cb = CustomJS(args=dict(
+            full_source=self._full_source,
+            source=self.source,
+            start_spinner=self._start_spinner,
+            count_spinner=self._count_spinner,
+            type_filter=self._type_filter,
+            power_filter=self._power_filter,
+            speed_filter=self._speed_filter,
+        ), code="""
+            // Guard: prevent recursion from programmatic value sync.
+            if (window._rangeUpdating) return;
+            window._rangeUpdating = true;
+
+            const total = full_source.data.cmd_id.length;
+            if (total === 0) { window._rangeUpdating = false; return; }
+
+            let start = parseInt(start_spinner.value);
+            let count = parseInt(count_spinner.value);
+
+            // Clamp to valid bounds (same as Python _on_range_change).
+            start = Math.max(0, Math.min(start, total - 1));
+            count = Math.max(1, Math.min(count, total - start));
+
+            // Sync spinners to clamped values.
+            start_spinner.value = start;
+            count_spinner.value = count;
+
+            const end = start + count;
+            const full = full_source.data;
+
+            // Build sliced data dict from full source.
+            const sliced = {};
+            for (const key in full) {
+                if (full.hasOwnProperty(key)) {
+                    sliced[key] = full[key].slice(start, end);
+                }
+            }
+            if (!('alpha' in sliced)) {
+                sliced.alpha = new Array(sliced.cmd_id.length).fill(1.0);
+            }
+
+            // Re-apply type/power/speed filter logic on the sliced data.
+            const active_types = type_filter.active;
+            const power_range = power_filter.value;
+            const speed_range = speed_filter.value;
+
+            const new_alpha = sliced.alpha;
+            for (let i = 0; i < sliced.cmd_id.length; i++) {
+                let visible = true;
+
+                // Type filter: dashed = move (index 0), solid = cut (index 1)
+                const style = sliced.style[i] || 'solid';
+                const is_move = (style === 'dashed');
+                const is_cut = (style === 'solid');
+                if (active_types.indexOf(0) === -1 && is_move) visible = false;
+                if (active_types.indexOf(1) === -1 && is_cut) visible = false;
+
+                // Power filter
+                const power = sliced.power[i];
+                if (power < power_range[0] || power > power_range[1]) visible = false;
+
+                // Speed filter
+                const speed = sliced.speed[i];
+                if (speed < speed_range[0] || speed > speed_range[1]) visible = false;
+
+                new_alpha[i] = visible ? 1.0 : 0.2;
+            }
+
+            source.data = sliced;
+            source.change.emit();
+
+            window._rangeUpdating = false;
+        """)
+
+        self._start_spinner.js_on_change('value', _range_cb)
+        self._count_spinner.js_on_change('value', _range_cb)
+
         # ---- Phase 5c.1: Searchable Command Pull-down ----
         # Command search autocomplete
         _cmd_completions = [
@@ -277,10 +408,85 @@ Speed=@{speed}{:.1f}mm/S
             styles={'font-size': '12px', 'overflow-y': 'auto'},
         )
 
+        # CustomJS for command search in standalone HTML export.
+        # Highlights the matching vector and updates the summary display.
+        self._cmd_search.js_on_change('value', CustomJS(args=dict(
+            source=self.source,
+            hl_source=self._highlight_source,
+            summary=self._cmd_summary,
+        ), code="""
+            const value = cb_obj.value;
+            if (!value) {
+                hl_source.data = {
+                    x0: [], y0: [], x1: [], y1: [],
+                    color: [], width: [],
+                };
+                hl_source.change.emit();
+                summary.text = '';
+                return;
+            }
+
+            const parts = value.split(':');
+            const cmd_id = parseInt(parts[0], 10);
+            if (isNaN(cmd_id)) return;
+
+            const data = source.data;
+            const cmd_ids = data.cmd_id || [];
+            for (let i = 0; i < cmd_ids.length; i++) {
+                if (cmd_ids[i] === cmd_id) {
+                    hl_source.data = {
+                        x0: [data.start_x[i]],
+                        y0: [data.start_y[i]],
+                        x1: [data.end_x[i]],
+                        y1: [data.end_y[i]],
+                        color: ['#FF0000'],
+                        width: [3],
+                    };
+                    hl_source.change.emit();
+
+                    const sx = Number(data.start_x[i]).toFixed(3);
+                    const sy = Number(data.start_y[i]).toFixed(3);
+                    const ex = Number(data.end_x[i]).toFixed(3);
+                    const ey = Number(data.end_y[i]).toFixed(3);
+                    const len = Number(data.length[i]).toFixed(3);
+                    const pwr = Number(data.power[i]).toFixed(1);
+                    const spd = Number(data.speed[i]).toFixed(1);
+
+                    summary.text = '<b>' + cmd_id + ':' + data.command[i] + '</b><br>' +
+                        'start=(' + sx + 'mm, ' + sy + 'mm) \\u2192 ' +
+                        'end=(' + ex + 'mm, ' + ey + 'mm)<br>' +
+                        'Length: ' + len + 'mm | Power: ' + pwr + '% | ' +
+                        'Speed: ' + spd + 'mm/S | Type: ' + data.style[i];
+                    return;
+                }
+            }
+            summary.text = 'Command not found in current view';
+            hl_source.data = {
+                x0: [], y0: [], x1: [], y1: [],
+                color: [], width: [],
+            };
+            hl_source.change.emit();
+        """))
+
         # "Open in new tab" button for the search result
         self._cmd_open_tab_btn = Button(label='Open Tab', button_type='primary', width=80)
         self._cmd_open_tab_btn.on_click(self._on_cmd_open_tab)
         self._cmd_open_tab_btn.disabled = True
+
+        # ---- Save HTML ----
+        # Rate-limiting guard to prevent concurrent saves from rapid clicks
+        self._saving = False
+
+        # Status Div for save confirmation messages
+        self._save_status = Div(
+            text='',
+            width=140, height=20,
+            styles={'font-size': '12px', 'color': '#666', 'margin-left': '8px'},
+        )
+
+        # Save HTML button: exports current view as standalone interactive HTML
+        self._save_html_btn = Button(label='Save HTML', button_type='success', width=100)
+        self._save_html_btn.on_click(self._on_save_html)
 
         # Menu bar row.
         self._menu_bar = row(
@@ -291,6 +497,8 @@ Speed=@{speed}{:.1f}mm/S
             self._speed_filter,
             self._cmd_search,
             self._cmd_open_tab_btn,
+            self._save_html_btn,
+            self._save_status,
             sizing_mode='stretch_width',
         )
 
@@ -338,6 +546,9 @@ Speed=@{speed}{:.1f}mm/S
                     if (canvas) {
                         canvas.addEventListener('contextmenu', function (e) {
                             e.preventDefault();
+
+                            // Guard: suppress context menu in standalone (no-server) mode
+                            if (typeof Bokeh !== 'undefined' && !Bokeh.session) return;
 
                             // Read coordinates stored by the press handler below.
                             var cx = window._rt_ctx_cx;
@@ -827,3 +1038,45 @@ Speed=@{speed}{:.1f}mm/S
             )
         ]
         self._cmd_search.completions = _completions
+
+    # ---- Save HTML Callback ----
+
+    def _on_save_html(self):
+        '''Export the current view layout as a standalone interactive HTML file.
+
+        Guard clause prevents concurrent saves.  Delegates to file_html() to
+        generate the full Bokeh document with all interactive tools embedded.
+        Writes the output alongside the input file with a -view.html suffix.
+        '''
+        # Guard: prevent concurrent saves from rapid clicks
+        if self._saving:
+            return
+        self._saving = True
+        self._save_html_btn.disabled = True
+        self._save_status.text = 'Saving...'
+
+        try:
+            # Resolve output filename
+            if self._out_stem:
+                _out = Path(self._out_stem).with_suffix('')
+                _path = _out.parent / f'{_out.stem}-view.html'
+            elif self.args.input_file:
+                _in = Path(self.args.input_file).with_suffix('')
+                _path = _in.parent / f'{_in.stem}-view.html'
+            else:
+                _path = Path('ruida-session-view.html')
+
+            # Generate standalone HTML from the current view layout
+            _html = file_html(self.layout, CDN, title=self.title)
+
+            # Write to file
+            _path.write_text(_html, encoding='utf-8')
+
+            self._save_status.text = f'Saved → {_path.name}'
+
+        except Exception as _exc:
+            self._save_status.text = f'Save failed: {_exc}'
+
+        finally:
+            self._save_html_btn.disabled = False
+            self._saving = False
