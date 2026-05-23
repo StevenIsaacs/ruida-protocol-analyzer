@@ -9,7 +9,7 @@ usage () {
   cat <<EOF
 Usage: $_self [--tag <tag>] [--draft]
 
-Create a GitHub release with CPA artifacts.
+Create a GitHub release with RPA artifacts.
 
 Options:
   --tag <tag>    Git tag for the release (default: reads version from pyproject.toml)
@@ -48,7 +48,7 @@ fi
 command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not found. Install from https://cli.github.com/"; exit 1; }
 
 # Verify artifacts exist
-_release_dir="release/cpa-${_tag#v}"
+_release_dir="release/rpa-${_tag#v}"
 if [ ! -d "$_release_dir" ]; then
   echo "Error: $_release_dir not found. Run release.sh first."
   exit 1
@@ -57,12 +57,12 @@ fi
 echo "Creating GitHub release $_tag..."
 _notes=$(mktemp)
 cat > "$_notes" <<EOF
-## CPA ${_tag#v}
+## RPA ${_tag#v}
 
 ### Artifacts
 EOF
 
-_gh_args=(release create "$_tag" --title "CPA ${_tag#v}" --notes-file "$_notes")
+_gh_args=(release create "$_tag" --title "RPA ${_tag#v}" --notes-file "$_notes")
 [ "$_draft" = true ] && _gh_args+=(--draft)
 
 for file in "$_release_dir"/*; do

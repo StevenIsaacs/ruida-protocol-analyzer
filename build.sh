@@ -9,7 +9,7 @@ usage () {
   cat <<EOF
 Usage: $_self [--pip-install]
 
-Build a standalone CPA binary using PyInstaller.
+Build a standalone RPA binary using PyInstaller.
 
 Options:
   --pip-install    Run pip install -e . before building (useful for clean builds)
@@ -53,12 +53,12 @@ if ! command -v pyinstaller &>/dev/null; then
 fi
 
 # Build
-echo "Building CPA standalone binary..."
-pyinstaller --clean cpa.spec
+echo "Building RPA standalone binary..."
+pyinstaller --clean rpa.spec
 
 echo ""
-echo "Build complete! Binary at: dist/cpa"
+echo "Build complete! Binary at: dist/rpa"
 echo ""
 echo "Verify with:"
-echo "  dist/cpa --help"
+echo "  dist/rpa --help"
 echo ""

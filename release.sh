@@ -9,7 +9,7 @@ usage () {
   cat <<EOF
 Usage: $_self [--dist-only] [--wheel-only]
 
-Build a versioned release of CPA in release/
+Build a versioned release of RPA in release/
 
 Options:
   --dist-only    Only build PyInstaller binary (skip wheel)
@@ -48,11 +48,11 @@ with open('pyproject.toml', 'rb') as f:
 print(data['project']['version'])
 ")
 
-echo "Building CPA release v$_version"
+echo "Building RPA release v$_version"
 echo ""
 
 # --- Create release directory ---
-_release_dir="release/cpa-$_version"
+_release_dir="release/rpa-$_version"
 mkdir -p "$_release_dir"
 
 # --- Build pip wheel ---
@@ -70,8 +70,8 @@ if [ "$_wheel_only" = false ]; then
     echo "Installing PyInstaller..."
     pip install pyinstaller
   fi
-  pyinstaller --clean cpa.spec
-  cp dist/cpa "$_release_dir/cpa-v$_version"
+  pyinstaller --clean rpa.spec
+  cp dist/rpa "$_release_dir/rpa-v$_version"
   echo "Binary built."
   echo ""
 fi

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build a versioned release of CPA in release/
+    Build a versioned release of RPA in release/
 .DESCRIPTION
     Creates a release/ directory with pip wheel + PyInstaller binary + SHA256 checksums.
 .PARAMETER DistOnly
@@ -36,10 +36,10 @@ with open('pyproject.toml', 'rb') as f:
 print(data['project']['version'])
 "@
 
-Write-Host "Building CPA release v$version"
+Write-Host "Building RPA release v$version"
 Write-Host ""
 
-$releaseDir = "release\cpa-$version"
+$releaseDir = "release\rpa-$version"
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
 # --- Build pip wheel ---
@@ -58,8 +58,8 @@ if (-not $WheelOnly) {
         Write-Host "Installing PyInstaller..."
         pip install pyinstaller
     }
-    pyinstaller --clean --onefile cpa.spec
-    Copy-Item "dist\cpa.exe" "$releaseDir\cpa-v$version.exe"
+    pyinstaller --clean --onefile rpa.spec
+    Copy-Item "dist\rpa.exe" "$releaseDir\rpa-v$version.exe"
     Write-Host "Binary built."
     Write-Host ""
 }

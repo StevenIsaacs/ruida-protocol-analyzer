@@ -5,7 +5,7 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
-from cpalib.cpa_emitter import CpaEmitter
+from rpalib.rpa_emitter import RpaEmitter
 import protocols.ruida.rpa_protocol as rdap
 import protocols.ruida.rpa_plotter as rpa_plotter
 
@@ -37,7 +37,7 @@ class RdDecoder():
                 The result of the rd_checksum decoder. This is reset by the
                 parser.
             '''
-    def __init__(self, output: CpaEmitter):
+    def __init__(self, output: RpaEmitter):
         self.out = output
         self.accumulating = False
         self.format: str = ''
@@ -378,7 +378,7 @@ class RdParser():
                         checksum.
         verbose         The method to call when emitting verbose messages.
     '''
-    def __init__(self, output: CpaEmitter, title: str):
+    def __init__(self, output: RpaEmitter, title: str):
         '''Initialize the parsing state machine.
 
         Parameters:

@@ -39,7 +39,7 @@ class BokehView():
         '''Create a new view tab.
 
         Parameters:
-            args      Command line arguments for the cpa program.
+            args      Command line arguments for the rpa program.
             source    Shared ColumnDataSource with vector data.
             title     Tab title string.
             color_lut Color lookup table (list of 101 hex strings) for
@@ -128,7 +128,7 @@ class BokehView():
             line_dash='solid',
         )
 
-        # HoverTool formatted to match CpaLine.annotation format.
+        # HoverTool formatted to match RpaLine.annotation format.
         # The multi-line string format renders a single HTML tooltip div
         # (as opposed to the list-of-tuples format which renders an HTML table).
         hover = HoverTool(

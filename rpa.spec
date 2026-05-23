@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for CPA — one-file standalone binary.
+"""PyInstaller spec for RPA — one-file standalone binary.
 Excludes flexiblas (Fedora's BLAS wrapper) so the system version is used.
 """
 
@@ -10,12 +10,12 @@ from PyInstaller.utils.hooks import copy_metadata
 
 block_cipher = None
 
-# Root of the source tree (where cpa.py lives)
+# Root of the source tree (where rpa.py lives)
 # Note: __file__ is not available in spec exec context, use cwd
 root_dir = Path.cwd()
 
 a = Analysis(
-    [str(root_dir / 'cpa.py')],
+    [str(root_dir / 'rpa.py')],
     pathex=[str(root_dir)],
     binaries=[],
     datas=(
@@ -59,7 +59,7 @@ exe = EXE(
     a.datas,
     [],
     exclude_binaries=False,
-    name='cpa',
+    name='rpa',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

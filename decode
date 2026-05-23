@@ -4,7 +4,7 @@ usage () {
   cat <<EOF
 Usage: $_self <file> [<options>]
 
-Use this script to run cpa.py to process a log file previously captured
+Use this script to run rpa.py to process a log file previously captured
 by the capture script. The log file is processed twice. First to produce a
 summarized decode and second to produce a verbose decode.
 
@@ -47,8 +47,8 @@ if [[ -z "$VIRTUAL_ENV" ]]; then
     fi
 fi
 
-_cpa_cmd=cpa
-command -v cpa >/dev/null 2>&1 || _cpa_cmd="python cpa.py"
+_rpa_cmd=rpa
+command -v rpa >/dev/null 2>&1 || _rpa_cmd="python rpa.py"
 
-$_cpa_cmd -o $_file.txt $_file.log
-$_cpa_cmd --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
+$_rpa_cmd -o $_file.txt $_file.log
+$_rpa_cmd --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log

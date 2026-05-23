@@ -9,7 +9,7 @@ for more information.
 '''
 import protocols.ruida.ruida_parser as rp
 import protocols.ruida.rpa_protocol as rdap
-from cpalib.cpa_emitter import CpaEmitter
+from rpalib.rpa_emitter import RpaEmitter
 
 class UdpDumpReader():
     '''Parse lines from the dump file or a live stream.
@@ -36,7 +36,7 @@ class UdpDumpReader():
         length      The length of the payload (not including the checksum)
         data        The binary swizzled data payload (not including checksum).
     '''
-    def __init__(self, args, input, output: CpaEmitter):
+    def __init__(self, args, input, output: RpaEmitter):
         self.args = args
         self.input = input
         self.out = output
@@ -147,7 +147,7 @@ class RdPacket():
         # TODO: Add more magic numbers.
     }
 
-    def __init__(self, args, reader: UdpDumpReader, output: CpaEmitter):
+    def __init__(self, args, reader: UdpDumpReader, output: RpaEmitter):
         '''
         Parameters:
         args        The command line arguments.
@@ -355,7 +355,7 @@ class RuidaProtocolAnalyzer():
         MAGIC_LUT   A lookup table to convert a RAW ACK or NAK to a magic number
                     for un-swizzling data.
     '''
-    def __init__(self, args, input, output: CpaEmitter):
+    def __init__(self, args, input, output: RpaEmitter):
         self.args = args
         self.out = output
         self.new_packet = False

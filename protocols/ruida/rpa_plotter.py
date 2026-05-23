@@ -4,8 +4,8 @@ Most of the work is done by BokehPlotter. This routes Ruida protocol commands to
 the corresponding BokehPlotter methods.
 '''
 
-from cpalib.cpa_emitter import CpaEmitter
-import cpalib.bokeh_plotter
+from rpalib.rpa_emitter import RpaEmitter
+import rpalib.bokeh_plotter
 
 import protocols.ruida.rpa_protocol as rdap
 
@@ -37,7 +37,7 @@ class RpaArea():
 class RpaPlotter():
     '''Create and update a plot of Ruida movement and power setting commands.
     '''
-    def __init__(self, out: CpaEmitter, title: str):
+    def __init__(self, out: RpaEmitter, title: str):
         self.out = out
         self.title = title
         self.s = { # Speed settings.
@@ -125,7 +125,7 @@ class RpaPlotter():
         self.overscan_color = (0.8, 0.8, 0.8)
         self.overscan_alpha = 0.3
 
-        self.plot = cpalib.bokeh_plotter.BokehPlotter(
+        self.plot = rpalib.bokeh_plotter.BokehPlotter(
             out, title, self.s, self.m_to_s_map,
             self.cmd_counters, self.mt_counters)
 

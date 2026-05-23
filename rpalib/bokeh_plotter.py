@@ -1,6 +1,6 @@
 '''Bokeh-based data collection and state management for laser head movement visualization.
 
-Replaced cpalib.cpa_plotter.CpaPlotter with a Bokeh-compatible data model.
+Replaced cpalib.rpa_plotter.RpaPlotter with a Bokeh-compatible data model.
 Maintains the same public interface for compatibility with RpaPlotter.'''
 
 # Fail-fast import check
@@ -10,14 +10,14 @@ except ImportError:
     raise ImportError(
         'Bokeh is required for plotting. Install with: pip install bokeh')
 
-from cpalib.cpa_emitter import CpaEmitter
-import cpalib.cpa_line as cpa_l
+from rpalib.rpa_emitter import RpaEmitter
+import rpalib.rpa_line as rpa_l
 
 
 class BokehPlotter():
     '''Data model and state manager for laser head movement visualization.
 
-    Maintains the same public interface as CpaPlotter (methods called by
+    Maintains the same public interface as RpaPlotter (methods called by
     RpaPlotter) but does NOT create matplotlib figures. Instead it stores
     data in a ColumnDataSource-compatible format for Bokeh rendering.
 
@@ -25,7 +25,7 @@ class BokehPlotter():
     for multi-layer engraving visualization.
     '''
 
-    def __init__(self, out: CpaEmitter,
+    def __init__(self, out: RpaEmitter,
                  title: str, s: dict,
                  m_to_s_map: dict,
                  cmd_counters: dict,
@@ -74,7 +74,7 @@ class BokehPlotter():
 
         self.plot_title = title
 
-        self.cpa_lines: dict[int, cpa_l.CpaLine] = {}
+        self.rpa_lines: dict[int, rpa_l.RpaLine] = {}
 
         self.bed_xy = {'X': 0, 'Y': 0}
         self.bed_sized = False
@@ -202,7 +202,7 @@ class BokehPlotter():
             self.out.verbose('No change in bed size.')
 
     def add_line(self, x: float, y: float, cut=False):
-        '''Position the virtual head at x,y. Creates a CpaLine and stores it.
+        '''Position the virtual head at x,y. Creates an RpaLine and stores it.
 
         If cut is True then this is a virtual move with the laser on. All
         such moves are drawn with a color corresponding to laser power.
@@ -239,11 +239,11 @@ class BokehPlotter():
             _c = self._move_color
             _ls = 'dashed'
             _speed = self.s[self.m_to_s_map.get(self.cmd_label, 'speed_axis_move')]
-        # Store the CpaLine regardless of stepping state.
-        _cpa_line = cpa_l.CpaLine(
+        # Store the RpaLine regardless of stepping state.
+        _rpa_line = rpa_l.RpaLine(
             self.cmd_id,
             self.cmd_label,
-            len(self.cpa_lines),
+            len(self.rpa_lines),
             (self._last_x, self._last_y),
             (x, y),
             _speed,
@@ -252,7 +252,7 @@ class BokehPlotter():
             _ls,
             _c,
         )
-        self.cpa_lines[self.cmd_id] = _cpa_line
+        self.rpa_lines[self.cmd_id] = _rpa_line
 
         if self._run_n_lines > 0:
             self._run_n_lines -= 1
@@ -354,7 +354,7 @@ class BokehPlotter():
         )
 
     def to_column_data(self):
-        '''Convert all stored CpaLines to a ColumnDataSource-compatible dict.
+        '''Convert all stored RpaLines to a ColumnDataSource-compatible dict.
 
         Coordinates are negated because Ruida home is far-right.
 
@@ -364,7 +364,7 @@ class BokehPlotter():
               length, speed, power, width, style, color, annotation.
         '''
         # Guard clause: return empty structure when no lines stored.
-        if not self.cpa_lines:
+        if not self.rpa_lines:
             return {
                 'cmd_id': [], 'command': [], 'index': [],
                 'start_x': [], 'start_y': [], 'end_x': [], 'end_y': [],
@@ -382,8 +382,8 @@ class BokehPlotter():
         ]}
 
         # Sort by cmd_id to ensure consistent ordering.
-        for _cmd_id in sorted(self.cpa_lines.keys()):
-            _l = self.cpa_lines[_cmd_id]
+        for _cmd_id in sorted(self.rpa_lines.keys()):
+            _l = self.rpa_lines[_cmd_id]
             # Negate coordinates for Ruida home-is-far-right convention.
             _data['cmd_id'].append(_l.cmd_id)
             _data['command'].append(_l.command)
@@ -397,13 +397,13 @@ class BokehPlotter():
             _data['power'].append(_l.power)
             _data['width'].append(_l.width)
             _data['style'].append(_l.style)
-            _data['color'].append(self._cpa_color_to_hex(_l.color))
+            _data['color'].append(self._rpa_color_to_hex(_l.color))
             _data['annotation'].append(_l.annotation)
 
         return _data
 
     @staticmethod
-    def _cpa_color_to_hex(color):
+    def _rpa_color_to_hex(color):
         '''Convert an RGB tuple (0-1 float) to a hex string #RRGGBB.
 
         If the input is already a hex string, it is returned as-is.

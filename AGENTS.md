@@ -2,13 +2,13 @@
 
 ## Project at a glance
 
-A tool that decodes binary UDP packets captured from Ruida CNC/laser controllers. Entry point: `cpa.py`.
+A tool that decodes binary UDP packets captured from Ruida CNC/laser controllers. Entry point: `rpa.py`.
 
 ## Commands
 
 ```
-python cpa.py capture.log              # Decode a tshark log file
-python cpa.py --on-the-fly --ip <IP>   # Live capture via tshark
+python rpa.py capture.log              # Decode a tshark log file
+python rpa.py --on-the-fly --ip <IP>   # Live capture via tshark
 ./capture <ip> <file>                  # Capture tshark log (bash)
 ./capture.ps1 -if Ethernet -ip <IP> -out <file>  # Capture (PowerShell)
 ./decode <file>                        # Produces <file>.txt + <file>-vrb.txt
@@ -22,8 +22,8 @@ python cpa.py --on-the-fly --ip <IP>   # Live capture via tshark
 
 | Path | Role |
 |------|------|
-| `cpa.py` | CLI entry — arg parsing, opens input, runs analyzer |
-| `cpalib/` | Output emission, line parsing, plotting UI (Bokeh) |
+| `rpa.py` | CLI entry — arg parsing, opens input, runs analyzer |
+| `rpalib/` | Output emission, line parsing, plotting UI (Bokeh) |
 | `protocols/ruida/` | Protocol state machine, parser, command tables, checksum logic |
 | `discovery/` | **Git submodule** — test cases (`tc/`), problems (`prb/`), captured logs |
 
@@ -46,7 +46,7 @@ The `./link` script creates symlinks (`discovery/selected.log`, `selected.txt`, 
 
 ## No test/lint/CI infrastructure
 
-There are no unit tests, no formatter, no linter, no type checker, and no CI pipeline. Verify changes manually by running `cpa.py` against existing capture logs in `discovery/`.
+There are no unit tests, no formatter, no linter, no type checker, and no CI pipeline. Verify changes manually by running `rpa.py` against existing capture logs in `discovery/`.
 
 ## Dev tips
 

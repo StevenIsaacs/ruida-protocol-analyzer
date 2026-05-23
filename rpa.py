@@ -3,34 +3,34 @@ import sys
 import subprocess
 
 import protocols.ruida.ruida_analyzer as rpa
-from cpalib.cpa_emitter import CpaEmitter
+from rpalib.rpa_emitter import RpaEmitter
 
 import time
 
 # Graceful Bokeh import: BokehApp is None if Bokeh not installed.
 try:
-    from cpalib.bokeh_app import BokehApp
+    from rpalib.bokeh_app import BokehApp
 except ImportError:
     BokehApp = None
 
 # --- Version detection ---
 # Prefer importlib.metadata (works when package is pip-installed or built with PyInstaller).
-# Falls back to a dev version when running cpa.py directly from source.
+# Falls back to a dev version when running rpa.py directly from source.
 try:
     from importlib.metadata import version as _pkg_version, PackageNotFoundError
     try:
         __version__ = _pkg_version('ruida-protocol-analyzer')
     except PackageNotFoundError:
-        __version__ = '0.1.0-dev'
+        __version__ = '0.2.0-dev'
 except ImportError:
     # Python < 3.8 fallback
-    __version__ = '0.1.0-dev'
+    __version__ = '0.2.0-dev'
 
 def parse_arguments():
-    """Parse command line arguments for CNC protocol analyzer"""
+    """Parse command line arguments for Ruida protocol analyzer"""
     parser = argparse.ArgumentParser(
         description='''
-CNC Protocol Analyzer - Parse and decode CNC protocol packets.
+Ruida Protocol Analyzer - Parse and decode Ruida protocol packets.
 
 The tshark log file must be in a specific format. Use this command to capture:
 
@@ -271,7 +271,7 @@ def main():
     input_stream = open_input(args)
 
     # Set up output handling
-    output = CpaEmitter(args)
+    output = RpaEmitter(args)
     output.open()
 
     # Initialize analyzer with magic number if provided

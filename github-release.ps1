@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Create a GitHub release with CPA artifacts.
+    Create a GitHub release with RPA artifacts.
 .PARAMETER Tag
     Git tag for the release (default: reads version from pyproject.toml).
 .PARAMETER Draft
@@ -37,7 +37,7 @@ $gh = Get-Command gh -ErrorAction SilentlyContinue
 if (-not $gh) { Write-Error "gh CLI not found. Install from https://cli.github.com/"; exit 1 }
 
 # Verify artifacts exist
-$releaseDir = "release\cpa-$($Tag.TrimStart('v'))"
+$releaseDir = "release\rpa-$($Tag.TrimStart('v'))"
 if (-not (Test-Path $releaseDir)) {
     Write-Error "$releaseDir not found. Run release.ps1 first."
     exit 1
@@ -47,7 +47,7 @@ Write-Host "Creating GitHub release $Tag..."
 
 $notes = [System.IO.Path]::GetTempFileName()
 @"
-## CPA $($Tag.TrimStart('v'))
+## RPA $($Tag.TrimStart('v'))
 
 ### Artifacts
 "@ | Out-File -FilePath $notes -Encoding utf8

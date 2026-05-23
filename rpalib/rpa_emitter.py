@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 
-class CpaEmitter():
+class RpaEmitter():
     '''
     A class to write messages to the output file and console.
 

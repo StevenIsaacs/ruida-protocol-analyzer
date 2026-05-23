@@ -1,6 +1,6 @@
 import math
 
-class CpaLine():
+class RpaLine():
     '''A line representing a move of the virtual head.
 
     '''

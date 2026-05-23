@@ -19,7 +19,7 @@ except ImportError:
         'Bokeh and Tornado are required for plotting. '
         'Install with: pip install bokeh')
 
-from cpalib.bokeh_view import BokehView
+from rpalib.bokeh_view import BokehView
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class BokehApp():
         '''Initialise the Bokeh application.
 
         Parameters:
-            args        Command line arguments for the cpa program.
+            args        Command line arguments for the rpa program.
             plotter  A BokehPlotter instance providing to_column_data().
         '''
         self.args = args

@@ -1,4 +1,4 @@
-name: CPA Build & Release
+name: RPA Build & Release
 
 on:
   push:
@@ -24,8 +24,8 @@ jobs:
           pip install -e .
       - name: Verify CLI
         run: |
-          cpa --help
-          cpa --version
+          rpa --help
+          rpa --version
 
   build-wheel:
     name: Build pip wheel
@@ -64,14 +64,14 @@ jobs:
           pip install pyinstaller
           pip install -e .
       - name: Build binary
-        run: pyinstaller --clean cpa.spec
+        run: pyinstaller --clean rpa.spec
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: cpa-${{ runner.os }}
+          name: rpa-${{ runner.os }}
           path: |
-            dist/cpa
-            dist/cpa.exe
+            dist/rpa
+            dist/rpa.exe
 
   release:
     name: Create Release

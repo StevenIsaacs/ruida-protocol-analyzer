@@ -1,6 +1,6 @@
-# CNC Protocol Analyzer -- CPA
+# RPA — Ruida Protocol Analyzer
 
-A comprehensive Python-based protocol analyzer for analyzing CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary protocols used in laser cutters, engravers, and CNC machines.
+A comprehensive Python-based protocol analyzer for analyzing Ruida CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary Ruida protocol used in laser cutters, engravers, and CNC machines.
 
 NOTE: Currently only the Ruida UDP protocol is supported.
 
@@ -27,7 +27,7 @@ The Ruida protocol is a proprietary binary communication protocol used by Ruida 
 
 This analyzer was developed to understand and document the protocol for research, debugging, and integration purposes.
 
-Over time this tool will grow to support other CNC protocols such as G-Code.
+This tool is laser-focused on the Ruida protocol only.
 
 ## Requirements
 
@@ -60,9 +60,9 @@ pip install -e ".[plotting]"
 pip install git+https://github.com/yourusername/ruida-protocol-analyzer.git
 ```
 
-After installation, the `cpa` command is available globally (when the venv is active):
+After installation, the `rpa` command is available globally (when the venv is active):
 ```bash
-cpa --help
+rpa --help
 ```
 
 ### Requirements
@@ -83,7 +83,7 @@ A standalone binary (no Python required) can be built with PyInstaller:
 .\build.ps1
 
 # The binary is placed in dist/
-./dist/cpa --help
+./dist/rpa --help
 ```
 
 Requirements: PyInstaller (`pip install pyinstaller`) and a working build environment (gcc/clang on Linux, Visual Studio on Windows).
@@ -108,24 +108,24 @@ tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
 
 #### Basic Analysis
 ```bash
-python cpa.py capture.log
+python rpa.py capture.log
 ```
 
 #### Real-time Analysis
 ```bash
-python cpa.py --on-the-fly
+python rpa.py --on-the-fly
 ```
 
 #### Advanced Options
 ```bash
 # Verbose output with raw packet data
-python cpa.py --verbose --raw capture.log
+python rpa.py --verbose --raw capture.log
 
 # Save decoded output to file
-python cpa.py -o decoded.txt capture.log
+python rpa.py -o decoded.txt capture.log
 
 # Quiet mode, stop on first error
-python cpa.py --quiet --stop-on-error -o results.txt capture.log
+python rpa.py --quiet --stop-on-error -o results.txt capture.log
 ```
 
 ## Command Line Options
@@ -393,7 +393,7 @@ This tool is for educational and research purposes. The Ruida protocol is propri
 
 ## Acknowledgments
 
-- Developed for understanding CNC/laser cutter communications
+- Developed for understanding Ruida CNC/laser cutter communications
 - Inspired by the need for open tools in the CNC/laser space
 - Built with insights from the embedded systems and maker communities
 

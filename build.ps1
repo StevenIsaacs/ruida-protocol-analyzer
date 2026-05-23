@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Build a standalone CPA binary using PyInstaller on Windows.
+    Build a standalone RPA binary using PyInstaller on Windows.
 .DESCRIPTION
-    Builds a one-file CPA executable from cpa.spec.
+    Builds a one-file RPA executable from rpa.spec.
 .PARAMETER PipInstall
     Run pip install -e . before building.
 .EXAMPLE
@@ -44,12 +44,12 @@ if (-not $pyinst) {
 }
 
 # Build
-Write-Host "Building CPA standalone binary..."
-pyinstaller --clean --onefile cpa.spec
+Write-Host "Building RPA standalone binary..."
+pyinstaller --clean --onefile rpa.spec
 
 Write-Host ""
-Write-Host "Build complete! Binary at: dist\cpa.exe"
+Write-Host "Build complete! Binary at: dist\rpa.exe"
 Write-Host ""
 Write-Host "Verify with:"
-Write-Host "  dist\cpa.exe --help"
+Write-Host "  dist\rpa.exe --help"
 Write-Host ""
