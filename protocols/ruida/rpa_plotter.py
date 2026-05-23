@@ -5,7 +5,6 @@ the corresponding BokehPlotter methods.
 '''
 
 from rpalib.rpa_emitter import RpaEmitter
-import rpalib.bokeh_plotter
 
 import protocols.ruida.rpa_protocol as rdap
 
@@ -39,6 +38,7 @@ class RpaPlotter():
     '''
     def __init__(self, out: RpaEmitter, title: str):
         self.out = out
+        import rpalib.bokeh_plotter as _bokeh_plotter
         self.title = title
         self.s = { # Speed settings.
             'speed_laser_1': 0.0,
@@ -125,7 +125,7 @@ class RpaPlotter():
         self.overscan_color = (0.8, 0.8, 0.8)
         self.overscan_alpha = 0.3
 
-        self.plot = rpalib.bokeh_plotter.BokehPlotter(
+        self.plot = _bokeh_plotter.BokehPlotter(
             out, title, self.s, self.m_to_s_map,
             self.cmd_counters, self.mt_counters)
 
