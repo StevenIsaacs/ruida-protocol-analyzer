@@ -136,11 +136,11 @@ class BokehView():
             tooltips="""
 @{cmd_id}:@{command}
 
-start=(@{start_x}{:.3f}mm, @{start_y}{:.3f}mm)
-end=(@{end_x}{:.3f}mm, @{end_y}{:.3f}mm)
-Length: @{length}{:.3f}mm
-Power=@{power}{:.1f}%
-Speed=@{speed}{:.1f}mm/S
+start=(@{start_x}mm, @{start_y}mm)
+end=(@{end_x}mm, @{end_y}mm)
+Length=@{length}mm
+Power=@{power}{f.1}%
+Speed=@{speed}{f.03}mm/S
 """,
             point_policy='snap_to_data',
             mode='mouse',
