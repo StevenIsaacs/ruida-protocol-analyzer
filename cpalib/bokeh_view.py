@@ -6,6 +6,7 @@ and right-click context menu.'''
 
 import json
 from pathlib import Path
+import time
 
 # Fail-fast import check
 try:
@@ -13,7 +14,7 @@ try:
     from bokeh.models import (
         ColumnDataSource, HoverTool, SaveTool, WheelZoomTool, PanTool, BoxZoomTool,
         TabPanel, CustomJS, Dropdown, Button, Spinner, Paragraph,
-        AutocompleteInput, Div, CheckboxButtonGroup, RangeSlider,
+        TextInput, Div, CheckboxButtonGroup, RangeSlider, TapTool,
     )
     from bokeh.layouts import row, column
     from bokeh.embed import file_html
@@ -78,13 +79,13 @@ class BokehView():
 
         # ---- XY Plot ----
         # Drag tools for the plot toolbar
-        self._box_zoom = BoxZoomTool()
+        self._box_zoom = BoxZoomTool(match_aspect=True)
         self._pan = PanTool()
         self._wheel_zoom = WheelZoomTool()
 
         self.xy_plot = figure(
             title=f'{self.args.input_file}: {self.title}\nLaser Head Movement',
-            width=1000, height=800,
+            width=800, height=800,
             tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset'],
             active_drag=self._box_zoom,
             active_scroll=self._wheel_zoom,
@@ -164,6 +165,11 @@ Speed=@{speed}{:.1f}mm/S
         # Guard to prevent re-entrant range-slider updates.
         self._updating_range = False
 
+        # Debounce: minimum interval (in seconds) between range change
+        # processing.  Prevents event queue buildup during auto-repeat
+        # (holding the spinner increment/decrement button).
+        self._last_range_update = 0.0
+
         # ---- Power Histogram ----
         self.power_hist = figure(
             title='Power Distribution',
@@ -214,13 +220,15 @@ Speed=@{speed}{:.1f}mm/S
             title='Start:', low=0, high=max(0, _total - 1),
             value=0, step=1, width=80,
         )
-        self._start_spinner.on_change('value', self._on_range_change)
+        self._start_spinner.on_change('value', lambda attr, old, new: self._on_range_change('start', old, new))
 
         self._count_spinner = Spinner(
             title='Count:', low=1, high=max(1, _total),
             value=max(1, _total), step=1, width=80,
         )
-        self._count_spinner.on_change('value', self._on_range_change)
+        self._count_spinner.on_change('value', lambda attr, old, new: self._on_range_change('count', old, new))
+
+
 
         # ---- Phase 5c.2: Advanced Filter Controls ----
         # Vector type filter: Move vs Cut
@@ -315,9 +323,44 @@ Speed=@{speed}{:.1f}mm/S
             power_filter=self._power_filter,
             speed_filter=self._speed_filter,
         ), code="""
+            // One-shot: attach keyup → blur on Enter for spinner inputs.
+            // Bokeh Spinner's <input type="number"> only fires the `change`
+            // event on blur (clicking outside), not on Enter keypress.
+            // Blurring on Enter triggers the native `change` event,
+            // which syncs the model `value` and fires both
+            // js_on_change('value', ...) (CustomJS) and
+            // on_change('value', Python callback).
+            if (!window._spinnerEnterSetup) {
+                window._spinnerEnterSetup = true;
+                setTimeout(function() {
+                    const setupSpinner = (sp) => {
+                        const view = Bokeh.index[sp.id];
+                        if (view && view.el) {
+                            const input = view.el.querySelector('input');
+                            if (input) {
+                                input.addEventListener('keyup', function(e) {
+                                    if (e.key === 'Enter') this.blur();
+                                });
+                            }
+                        }
+                    };
+                    setupSpinner(start_spinner);
+                    setupSpinner(count_spinner);
+                }, 200);
+            }
+
             // Guard: prevent recursion from programmatic value sync.
             if (window._rangeUpdating) return;
             window._rangeUpdating = true;
+
+            // Debounce: skip events faster than 50ms to prevent event
+            // queue buildup during auto-repeat (holding spinner button).
+            const _now = Date.now();
+            if (window._lastRangeUpdate && (_now - window._lastRangeUpdate < 50)) {
+                window._rangeUpdating = false;
+                return;
+            }
+            window._lastRangeUpdate = _now;
 
             const total = full_source.data.cmd_id.length;
             if (total === 0) { window._rangeUpdating = false; return; }
@@ -329,9 +372,14 @@ Speed=@{speed}{:.1f}mm/S
             start = Math.max(0, Math.min(start, total - 1));
             count = Math.max(1, Math.min(count, total - start));
 
-            // Sync spinners to clamped values.
-            start_spinner.value = start;
-            count_spinner.value = count;
+            // Sync spinners to clamped values (only if value changed to
+            // avoid triggering recursive js_on_change callbacks from auto-repeat).
+            if (start_spinner.value !== start) {
+                start_spinner.value = start;
+            }
+            if (count_spinner.value !== count) {
+                count_spinner.value = count;
+            }
 
             const end = start + count;
             const full = full_source.data;
@@ -383,19 +431,10 @@ Speed=@{speed}{:.1f}mm/S
         self._start_spinner.js_on_change('value', _range_cb)
         self._count_spinner.js_on_change('value', _range_cb)
 
-        # ---- Phase 5c.1: Searchable Command Pull-down ----
-        # Command search autocomplete
-        _cmd_completions = [
-            f"{cid}:{cmd}"
-            for cid, cmd in zip(
-                self.source.data.get('cmd_id', []),
-                self.source.data.get('command', [])
-            )
-        ]
-        self._cmd_search = AutocompleteInput(
+        # ---- Phase 5c.1: Command Search ----
+        # TextInput search box: type `cmd_id:command_name` to highlight a vector.
+        self._cmd_search = TextInput(
             value='',
-            completions=_cmd_completions,
-            min_characters=0,
             placeholder='Search command (cmd_id:name)...',
             width=250,
         )
@@ -427,13 +466,15 @@ Speed=@{speed}{:.1f}mm/S
             }
 
             const parts = value.split(':');
-            const cmd_id = parseInt(parts[0], 10);
-            if (isNaN(cmd_id)) return;
+            const target = parseInt(parts[0], 10);
+            if (isNaN(target)) return;
 
             const data = source.data;
             const cmd_ids = data.cmd_id || [];
+
+            // Pass 1: Exact match — cmd_id === target
             for (let i = 0; i < cmd_ids.length; i++) {
-                if (cmd_ids[i] === cmd_id) {
+                if (cmd_ids[i] === target) {
                     hl_source.data = {
                         x0: [data.start_x[i]],
                         y0: [data.start_y[i]],
@@ -452,7 +493,7 @@ Speed=@{speed}{:.1f}mm/S
                     const pwr = Number(data.power[i]).toFixed(1);
                     const spd = Number(data.speed[i]).toFixed(1);
 
-                    summary.text = '<b>' + cmd_id + ':' + data.command[i] + '</b><br>' +
+                    summary.text = '<b>' + target + ':' + data.command[i] + '</b><br>' +
                         'start=(' + sx + 'mm, ' + sy + 'mm) \\u2192 ' +
                         'end=(' + ex + 'mm, ' + ey + 'mm)<br>' +
                         'Length: ' + len + 'mm | Power: ' + pwr + '% | ' +
@@ -460,13 +501,91 @@ Speed=@{speed}{:.1f}mm/S
                     return;
                 }
             }
-            summary.text = 'Command not found in current view';
+
+            // Pass 2: Nearest match — prefer next higher, fall back to highest lower
+            let higherIdx = null;
+            let lowerIdx = null;
+            for (let i = 0; i < cmd_ids.length; i++) {
+                if (cmd_ids[i] > target && (higherIdx === null || cmd_ids[i] < cmd_ids[higherIdx])) {
+                    higherIdx = i;
+                }
+                if (cmd_ids[i] < target && (lowerIdx === null || cmd_ids[i] > cmd_ids[lowerIdx])) {
+                    lowerIdx = i;
+                }
+            }
+
+            let matchIdx;
+            if (higherIdx !== null) {
+                matchIdx = higherIdx;
+            } else if (lowerIdx !== null) {
+                matchIdx = lowerIdx;
+            } else {
+                summary.text = 'Command not found in current view';
+                hl_source.data = {
+                    x0: [], y0: [], x1: [], y1: [],
+                    color: [], width: [],
+                };
+                hl_source.change.emit();
+                return;
+            }
+
+            // Show the matched vector
+            const i = matchIdx;
             hl_source.data = {
-                x0: [], y0: [], x1: [], y1: [],
-                color: [], width: [],
+                x0: [data.start_x[i]],
+                y0: [data.start_y[i]],
+                x1: [data.end_x[i]],
+                y1: [data.end_y[i]],
+                color: ['#FF0000'],
+                width: [3],
             };
             hl_source.change.emit();
+
+            const sx = Number(data.start_x[i]).toFixed(3);
+            const sy = Number(data.start_y[i]).toFixed(3);
+            const ex = Number(data.end_x[i]).toFixed(3);
+            const ey = Number(data.end_y[i]).toFixed(3);
+            const len = Number(data.length[i]).toFixed(3);
+            const pwr = Number(data.power[i]).toFixed(1);
+            const spd = Number(data.speed[i]).toFixed(1);
+
+            summary.text = '<b>' + cmd_ids[i] + ':' + data.command[i] + '</b><br>' +
+                'start=(' + sx + 'mm, ' + sy + 'mm) \\u2192 ' +
+                'end=(' + ex + 'mm, ' + ey + 'mm)<br>' +
+                'Length: ' + len + 'mm | Power: ' + pwr + '% | ' +
+                'Speed: ' + spd + 'mm/S | Type: ' + data.style[i];
         """))
+        # ---- Tap-to-populate search bar ----
+        # When the user taps/clicks on a vector segment in the plot,
+        # the TapTool hit-tests the nearest segment and sets the
+        # source's selected indices.  We read those indices and
+        # populate the search bar with the selected vector's info.
+        # CustomJS for standalone HTML export:
+        _tap_cb = CustomJS(args=dict(
+            source=self.source,
+            search_input=self._cmd_search,
+        ), code="""
+            if (window._tapGuard) return;
+            window._tapGuard = true;
+            const indices = source.selected.indices;
+            if (indices.length > 0) {
+                const idx = indices[0];
+                const cid = source.data.cmd_id[idx];
+                const cmd = source.data.command[idx];
+                if (cid !== undefined && cmd !== undefined) {
+                    search_input.value = String(cid) + ':' + String(cmd);
+                }
+            }
+            // Clear selection to avoid visual indicator.
+            source.selected.indices = [];
+            window._tapGuard = false;
+        """)
+        self.source.selected.js_on_change('indices', _tap_cb)
+        # Python callback for server mode:
+        self.source.selected.on_change('indices', self._on_tap_select)
+
+        # Add TapTool to the plot (hit-tests against main vector segments).
+        self.xy_plot.add_tools(TapTool(renderers=[self.xy_renderer]))
 
         # "Open in new tab" button for the search result
         self._cmd_open_tab_btn = Button(label='Open Tab', button_type='primary', width=80)
@@ -769,19 +888,32 @@ Speed=@{speed}{:.1f}mm/S
 
     # ---- Range Slider ----
 
-    def _on_range_change(self, attr: str, old, new):
+    def _on_range_change(self, source: str, old, new):
         '''Handle changes to the start/count spinners.
 
         Filters the full dataset to show only vectors in the range
         [start:start+count].  Silently clamps values to valid bounds.
 
+        Changing Start adjusts the starting index; changing Count adjusts
+        how many vectors to show.  Both values are silently clamped to
+        valid bounds.
+
         Parameters:
-            attr  The property that changed ('value').
-            old   Previous value.
-            new   New value.
+            source  Which spinner triggered: 'start' or 'count'.
+            old     Previous value of the spinner that changed.
+            new     New value of the spinner that changed.
         '''
         if self._updating_range:
             return
+
+        # Debounce: skip events that arrive faster than the minimum
+        # processing interval (50ms).  During auto-repeat, events queue
+        # up faster than they can be processed, causing compounding
+        # backlog and eventual infinite-loop symptoms.
+        _now = time.monotonic()
+        if _now - self._last_range_update < 0.05:
+            return
+        self._last_range_update = _now
 
         self._updating_range = True
         try:
@@ -796,9 +928,12 @@ Speed=@{speed}{:.1f}mm/S
             _start = max(0, min(_start, _total - 1))
             _count = max(1, min(_count, _total - _start))
 
-            # Sync spinners to clamped values.
-            self._start_spinner.value = _start
-            self._count_spinner.value = _count
+            # Sync spinners to clamped values (only if value changed to
+            # avoid triggering recursive on_change callbacks from auto-repeat).
+            if self._start_spinner.value != _start:
+                self._start_spinner.value = _start
+            if self._count_spinner.value != _count:
+                self._count_spinner.value = _count
 
             _end = _start + _count
             _filtered = {}
@@ -856,7 +991,10 @@ Speed=@{speed}{:.1f}mm/S
         '''Handle command search selection.
 
         Parses the "cmd_id:command_name" format and highlights the
-        matching vector. Resets highlight when input is cleared.
+        matching vector. Uses nearest-match logic:
+        1. Exact match (cmd_id == entered number)
+        2. Next higher (smallest cmd_id > entered number)
+        3. Highest lower (largest cmd_id < entered number)
 
         Parameters:
             attr  The property that changed ('value').
@@ -871,25 +1009,71 @@ Speed=@{speed}{:.1f}mm/S
 
         # Parse cmd_id from "cmd_id:command_name" format at boundary
         try:
-            _cmd_id = int(new.split(':')[0])
+            _target = int(new.split(':')[0])
         except (ValueError, IndexError):
             return
 
-        # Find the vector and show summary
         _data = self.source.data
-        for i, cid in enumerate(_data.get('cmd_id', [])):
-            if cid == _cmd_id:
+        _cmd_ids = _data.get('cmd_id', [])
+        if not _cmd_ids:
+            self._cmd_summary.text = 'No commands in current view'
+            self._clear_highlight()
+            self._cmd_open_tab_btn.disabled = True
+            return
+
+        # Pass 1: Exact match — cmd_id == target
+        for i, cid in enumerate(_cmd_ids):
+            if cid == _target:
                 _summary = self._build_command_summary(i)
                 self._cmd_summary.text = _summary
                 self._highlight_vector(i)
                 self._cmd_open_tab_btn.disabled = False
-                self._searched_cmd_id = _cmd_id
+                self._searched_cmd_id = cid
                 return
 
-        # Not found in current view
-        self._cmd_summary.text = 'Command not found in current view'
-        self._clear_highlight()
-        self._cmd_open_tab_btn.disabled = True
+        # Pass 2: Nearest match — prefer next higher, fall back to highest lower
+        _higher_idx = None
+        _lower_idx = None
+        for i, cid in enumerate(_cmd_ids):
+            if cid > _target and (_higher_idx is None or cid < _cmd_ids[_higher_idx]):
+                _higher_idx = i
+            if cid < _target and (_lower_idx is None or cid > _cmd_ids[_lower_idx]):
+                _lower_idx = i
+
+        if _higher_idx is not None:
+            _match_idx = _higher_idx
+        elif _lower_idx is not None:
+            _match_idx = _lower_idx
+        else:
+            self._cmd_summary.text = 'Command not found in current view'
+            self._clear_highlight()
+            self._cmd_open_tab_btn.disabled = True
+            return
+
+        _summary = self._build_command_summary(_match_idx)
+        self._cmd_summary.text = _summary
+        self._highlight_vector(_match_idx)
+        self._cmd_open_tab_btn.disabled = False
+        self._searched_cmd_id = _cmd_ids[_match_idx]
+
+    def _on_tap_select(self, attr, old, new):
+        '''Handle plot tap selection: populate search box with nearest vector.
+
+        Parameters:
+            attr  The property that changed ('indices').
+            old   Previous indices list.
+            new   New indices list (should have one index on tap).
+        '''
+        if not new:  # empty selection (cleared by guard)
+            return
+        idx = new[0]
+        _data = self.source.data
+        _cid = _data.get('cmd_id', [])[idx]
+        _cmd = _data.get('command', [])[idx]
+        if _cid is not None and _cmd is not None:
+            self._cmd_search.value = f"{_cid}:{_cmd}"
+        # Clear selection to avoid persistent visual indicator.
+        self.source.selected.indices = []
 
     def _build_command_summary(self, idx: int) -> str:
         '''Build an HTML summary string for the vector at index idx.
@@ -1023,21 +1207,7 @@ Speed=@{speed}{:.1f}mm/S
         self._clear_highlight()
 
     def _update_cmd_completions(self):
-        '''Update the command search dropdown with latest command list.
-
-        Called periodically in on-the-fly mode when new data arrives,
-        ensuring the autocomplete drop-down stays in sync with the
-        current ColumnDataSource contents.
-        '''
-        _data = self.source.data
-        _completions = [
-            f"{cid}:{cmd}"
-            for cid, cmd in zip(
-                _data.get('cmd_id', []),
-                _data.get('command', [])
-            )
-        ]
-        self._cmd_search.completions = _completions
+        '''No-op: TextInput search has no completions to maintain.'''
 
     # ---- Save HTML Callback ----
 

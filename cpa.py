@@ -318,7 +318,7 @@ def main():
                 bokeh_app = BokehApp(args, analyzer.parser.plot.plot)
                 if bokeh_app.start(port=args.bokeh_port):
                     print(
-                        'Now plotting moves. Press Ctrl+C to exit.',
+                        'Now plotting moves. Press Ctrl+C in the terminal to exit.',
                         file=sys.stderr)
                     # Block until user presses Ctrl+C.
                     try:

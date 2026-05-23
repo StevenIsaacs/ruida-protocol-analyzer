@@ -102,7 +102,7 @@ class BokehApp():
 
         # Status banner shown above the plot area.
         _status = Div(
-            text='Now plotting moves. Press Ctrl+C to exit.',
+            text='Now plotting moves. Press Ctrl+C in the terminal to exit.',
             styles={'font-size': '14px', 'margin': '10px 0'},
         )
 
