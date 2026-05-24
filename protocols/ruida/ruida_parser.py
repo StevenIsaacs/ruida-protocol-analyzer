@@ -6,7 +6,7 @@ byte and whether the current byte is part of a reply or not.
 NOTE: This does not verify the host/controller packet handshake.
 '''
 from rpalib.rpa_emitter import RpaEmitter
-import protocols.ruida.rpa_protocol as rdap
+import protocols.ruida.ruida_protocol as rdap
 import protocols.ruida.rpa_plotter as rpa_plotter
 
 class RdDecoder():

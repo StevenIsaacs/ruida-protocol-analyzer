@@ -8,7 +8,7 @@ session data previously captured using tshark (Wireshark CLI). See decode
 for more information.
 '''
 import protocols.ruida.ruida_parser as rp
-import protocols.ruida.rpa_protocol as rdap
+import protocols.ruida.ruida_protocol as rdap
 from rpalib.rpa_emitter import RpaEmitter
 
 class UdpDumpReader():

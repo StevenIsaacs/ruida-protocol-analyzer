@@ -6,7 +6,7 @@ the corresponding BokehPlotter methods.
 
 from rpalib.rpa_emitter import RpaEmitter
 
-import protocols.ruida.rpa_protocol as rdap
+import protocols.ruida.ruida_protocol as rdap
 
 class RpaArea():
     '''For commands which define top left and bottom right corners.
