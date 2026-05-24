@@ -15,7 +15,7 @@ Parameters:
  1 The capture file name -- not including extension. Processes <file>.log.
    The output is written to <file>.txt and <file>-vrb.txt.
  2 Optional command line arguments for verbose mode. Often this will be used
-   to generate a plot of all head movements. e.g.: "--plot-moves --step-moves".
+    to generate a plot of all head movements. e.g.: "--plot-moves".
 EOF
 exit 1
 }

@@ -21,10 +21,10 @@ try:
     try:
         __version__ = _pkg_version('ruida-protocol-analyzer')
     except PackageNotFoundError:
-        __version__ = '0.2.1-dev'
+        __version__ = '0.3.0-dev'
 except ImportError:
     # Python < 3.8 fallback
-    __version__ = '0.2.1-dev'
+    __version__ = '0.3.0-dev'
 
 def parse_arguments():
     """Parse command line arguments for Ruida protocol analyzer"""
@@ -48,7 +48,6 @@ Examples:
   %(prog)s -o output.txt capture.log        # Save decoded output to file
   %(prog)s --verbose --raw capture.log      # Detailed output with raw data
   %(prog)s --magic 0x88 capture.log         # Use specific magic number
-  %(prog)s --step-decode capture.log        # Pause for each decoded output
         '''
     )
 
@@ -140,35 +139,6 @@ Examples:
         '--stop-on-error',
         action='store_true',
         help='Stop decode when an error is detected -- do not attempt to resync.'
-    )
-
-    # Single step mode -- packets
-    parser.add_argument(
-        '--step-packets',
-        action='store_true',
-        help='Pause output after each host packet has been parsed (ignored when --on-the-fly).'
-    )
-
-    # Single step mode -- commands
-    parser.add_argument(
-        '--step-decode',
-        action='store_true',
-        help='Pause output after each decode message.'
-    )
-
-    # Single step mode -- moves
-    parser.add_argument(
-        '--step-moves',
-        action='store_true',
-        help='Pause plot output after each move command has been parsed.'
-    )
-
-    # Single step mode -- moves -- Start stepping command number.
-    parser.add_argument(
-        '--step-on-command',
-        default=0,
-        metavar='<step_on_command>',
-        help='Pause plot output after command N has been parsed and start stepping.'
     )
 
     # Plot moves.
@@ -280,8 +250,6 @@ def main():
     bokeh_app = None
 
     if args.plot_moves:
-        analyzer.parser.plot.plot.step_on_cmd_id(args.step_on_command)
-        analyzer.parser.plot.plot.enable_stepping(args.step_moves)
         analyzer.parser.plot.plot.enable()
 
         if BokehApp is None:

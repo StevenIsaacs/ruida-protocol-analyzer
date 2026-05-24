@@ -109,7 +109,7 @@ Replace all matplotlib-based plotting in the Ruida Protocol Analyzer with a Boke
   - `--on-the-fly`: Remove restrictions — plot is updated in real-time as vectors are decoded via thread-safe queue
   - Remove `args.plot_moves = False` override (cpa.py lines 185-192)
   - Remove stepping-override lines that disable `--plot-moves` with `--on-the-fly`
-  - `--step-moves`: Still functional, works in CLI alongside live Bokeh plot
+   - `--step-moves`: Removed — Bokeh interactivity eliminates need for CLI stepping
   - Post-decode: Launch Bokeh server (if `--plot-moves`) and enter CLI interactive mode
   - Update help text for all affected arguments
   - Add new argument `--bokeh-port` (default: 5006)

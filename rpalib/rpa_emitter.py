@@ -68,8 +68,6 @@ class RpaEmitter():
     def parser(self, message: str):
         '''Emit a message related to parsing the incoming data.'''
         self.write(f'PRT:PRS:{self.dir}:' + message)
-        if self.args.step_decode:
-            self.pause()
 
     def error(self, message: str):
         '''Emit error messages related to the incoming stream.'''
@@ -92,8 +90,6 @@ class RpaEmitter():
         '''Emit raw unprocessed data messages or packets.'''
         if self.args.raw:
             self.write(f'PRT:raw:{self.dir}:\n' + message)
-            if self.args.step_packets:
-                self.pause()
 
     # Internal messages.
     def protocol(self, message: str):

@@ -141,17 +141,8 @@ python rpa.py --quiet --stop-on-error -o results.txt capture.log
 | `--raw` | Include raw packet dumps with decoded output. |
 | `--unswizzled` | Output the unswizzled and unprocessed data. |
 | `--stop-on-error` | Stop processing on first decode error. |
-| **The following are ignored when `--on-the-fly` is enabled** |
-| `--step-packets` | Pause output after each host packet has been parsed. |
-| `--step-decode` | Pause output after each decode message. |
 | `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
-| `--step-moves` | Pause output on each move when plotting moves. |
-| `--step-on-command <command>` | Begin stepping moves when command N has been decoded. |
-| | `<command>`: |
-| | `help`: Show a help message. |
-| | `no-step`: Turn off move stepping. |
-| | `until <cmd-id>`: Begin stepping moves at _cmd-id_. |
-| | `--interactive`: (Future) Enter an interactive mode on the console. |
+| `--interactive` | (Future) Enter an interactive mode on the console. |
 
 ## Output Format
 

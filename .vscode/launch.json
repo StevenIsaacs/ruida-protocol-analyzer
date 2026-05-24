@@ -13,10 +13,8 @@
             // "args": "${command:pickArgs}"
             "args": [
                 "--verbose",
-                // "--step-decode",
                 "--raw",
                 "--plot-moves",
-                //"--step-moves",
                 //"--input-encoding=utf-16",
                 // "--stop-on-error",
                 "-o",

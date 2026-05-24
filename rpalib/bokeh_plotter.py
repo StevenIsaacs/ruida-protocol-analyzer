@@ -81,10 +81,6 @@ class BokehPlotter():
         self._moved = False
 
         self.enabled = False
-        self._stepping_enabled = False
-        self._stepping_cmd_id = 0
-        self._stepping_end = 0
-        self._run_n_lines = 0
 
         self._x_min = -5       # For some overshoot.
         self._y_min = -5       # For some overshoot.
@@ -102,36 +98,10 @@ class BokehPlotter():
         '''Enable plotting.'''
         self.enabled = True
 
-    def enable_stepping(self, enable: bool):
-        '''Enable or disable single stepping.
-
-        When stepping is enabled the plot is re-displayed when a line is
-        added.
-
-        Parameters:
-            enable  True to enable stepping, False to disable.
-        '''
-        self._stepping_enabled = enable
-
     @property
     def color_lut(self):
         '''Public access to the color lookup table for histogram colorization.'''
         return self._color_lut
-
-    def step_on_cmd_id(self, cmd_id, end=0):
-        '''Set the command ID at which to start stepping moves.
-
-        This is ignored when stepping is disabled.
-
-        Set to 0 to disable and step all commands.
-
-        Parameters:
-            cmd_id  The command ID to start stepping from.
-            end     The last command ID to step through (0 = no end).
-        '''
-        self._stepping_cmd_id = cmd_id
-        self._stepping_end = end
-        self._stepping_enabled = True
 
     def set_power(self, power: float):
         '''Set line power and color.
@@ -239,7 +209,7 @@ class BokehPlotter():
             _c = self._move_color
             _ls = 'dashed'
             _speed = self.s[self.m_to_s_map.get(self.cmd_label, 'speed_axis_move')]
-        # Store the RpaLine regardless of stepping state.
+        # Store the RpaLine unconditionally.
         _rpa_line = rpa_l.RpaLine(
             self.cmd_id,
             self.cmd_label,
@@ -254,8 +224,6 @@ class BokehPlotter():
         )
         self.rpa_lines[self.cmd_id] = _rpa_line
 
-        if self._run_n_lines > 0:
-            self._run_n_lines -= 1
         self._moved = True
 
     def add_rect(self,
@@ -333,25 +301,6 @@ class BokehPlotter():
             # Store as hex string for Bokeh.
             _lut.append(f'#{_r:02X}{_g:02X}{_b_val:02X}')
         return _lut
-
-    def _stepping(self):
-        '''Check if stepping is currently active.
-
-        Returns:
-            True if the plotter should pause at the current line.
-        '''
-        return (
-            (self._run_n_lines <= 0) and (
-                (self._stepping_enabled and self._stepping_cmd_id == 0) or (
-                    self._stepping_enabled and (
-                        (self.cmd_id >= self._stepping_cmd_id) and (
-                            (self._stepping_end == 0) or
-                            (self.cmd_id <= self._stepping_end)
-                        )
-                    )
-                )
-            )
-        )
 
     def to_column_data(self):
         '''Convert all stored RpaLines to a ColumnDataSource-compatible dict.
