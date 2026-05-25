@@ -264,6 +264,7 @@ def main():
         script_path = str(Path(base).with_suffix('.rds'))
         script_gen = ScriptGenerator(script_path)
         analyzer.parser.on_command = script_gen.write_command
+        analyzer.on_new_packet = script_gen.on_new_packet
         output.info(f'Generating script: {script_path}')
 
     bokeh_app = None

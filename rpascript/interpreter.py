@@ -7,7 +7,7 @@ supporting comment stripping and command/expected-reply directives.
 
 import re
 
-from protocols.ruida.ruida_protocol import CT, MT, IDXT
+from protocols.ruida.ruida_protocol import CT, MT, IDXT, ACK
 from rpalib.ruida_transcoder import RdEncoder
 
 
@@ -63,10 +63,16 @@ _RDTYPE_ENCODER_MAP: dict[str, str | None] = {
 
 
 def _strip_inline_comment(line: str) -> str:
-    """Remove inline # comments, respecting quoted strings."""
+    """Remove inline # comments, respecting quoted strings and \\# escapes."""
     in_quote = False
     quote_char = None
-    for i, ch in enumerate(line):
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        # Track escaped hash: \# — skip it as a literal hash
+        if ch == '\\' and i + 1 < len(line) and line[i + 1] == '#' and not in_quote:
+            i += 2  # skip both \ and #
+            continue
         if ch in ('"', "'") and not in_quote:
             in_quote = True
             quote_char = ch
@@ -75,6 +81,7 @@ def _strip_inline_comment(line: str) -> str:
             quote_char = None
         elif ch == '#' and not in_quote:
             return line[:i].rstrip()
+        i += 1
     return line
 
 
@@ -168,6 +175,17 @@ class ScriptParser:
 
         raw = line
         idx = 0
+
+        # --- NEW_PACKET directive (per-packet boundary marker) ---
+        if tokens[0] == 'NEW_PACKET':
+            return {
+                'type': 'NEW_PACKET',
+                'mnemonic': 'NEW_PACKET',
+                'params': [],
+                'expected': None,
+                'line_num': line_num,
+                'raw': raw,
+            }
 
         # --- Type / mnemonic detection ---
         type_name = None
@@ -361,11 +379,24 @@ class ScriptInterpreter:
     def interpret(self, commands: list[dict]) -> None:
         """Process a list of parsed commands, writing tshark output.
 
-        Args:
-            commands: List of command dicts as returned by ScriptParser.
+        Recognizes NEW_PACKET directives as per-packet boundaries and
+        emits synthetic ACK reply lines before each command batch
+        that follows a NEW_PACKET marker.
         """
         self._timestamp = 0.0
+        need_ack = False
         for cmd in commands:
+            if cmd.get('type') == 'NEW_PACKET':
+                need_ack = True
+                continue
+
+            if need_ack:
+                # Emit synthetic ACK reply at midpoint between commands
+                ack_ts = self._timestamp - 0.0005
+                ack_line = self._encode_ack(ack_ts)
+                self._out.write(ack_line + '\n')
+                need_ack = False
+
             tshark_line, _ = self._encode_command(cmd)
             self._out.write(tshark_line + '\n')
             self._timestamp += 0.001
@@ -454,6 +485,17 @@ class ScriptInterpreter:
         line = f'{ts}\t{src_dst}\t{pkt_len}\t{hex_data}'
         return line, binary
 
+    def _encode_ack(self, ts: float) -> str:
+        """Generate a tshark-format ACK reply line (controller→host).
+
+        Produces a synthetic 1-byte ACK packet compatible with rpa.py's
+        check_handshake() method. The raw byte is the swizzled form of
+        0xCC (ACK) using magic 0x88.
+        """
+        src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
+        raw_ack = self._swizzle_byte(ACK, magic=0x88)
+        return f'{ts:.6f}\t{src_dst}\t9\t{raw_ack:02x}'
+
     # ------------------------------------------------------------------
     # Parameter encoding
     # ------------------------------------------------------------------
@@ -510,6 +552,11 @@ class ScriptInterpreter:
         if method_name is None:
             return bytearray()
 
+        # Special handling for coord which needs rd_type to select byte count
+        if decoder_fn == 'coord':
+            coord_nbytes = {'int_14': 2, 'uint_14': 2, 'int_35': 5, 'uint_35': 5}.get(rd_type, 5)
+            return self._enc.encode_coord(parsed, coord_nbytes)
+
         # Resolve method on RdEncoder instance
         encoder = getattr(self._enc, method_name, None)
         if encoder is None:
@@ -549,6 +596,9 @@ class ScriptInterpreter:
         booleans, and plain strings.
         """
         raw = token.strip()
+
+        # --- Unescape \# → # (from rds comment escaping) ---
+        raw = raw.replace('\\#', '#')
 
         # --- Strip format-string label prefix ---
         # Parameters from format strings like 'Speed:{:.3f}mm/S' or 'State: {}'
@@ -612,6 +662,20 @@ class ScriptInterpreter:
             return raw
 
         # --- Numeric ---
+        # Handle hex prefixed with # (e.g. Color:#FF00FFFF)
+        if raw.startswith('#'):
+            try:
+                return int(raw[1:], 16)
+            except ValueError:
+                pass
+
+        # Handle 0x/0X prefixed hex (e.g. 0x0000048216 from Sum:0x{...} format strings)
+        if raw.startswith(('0x', '0X')):
+            try:
+                return int(raw, 0)
+            except ValueError:
+                pass
+
         try:
             return int(raw)
         except ValueError:

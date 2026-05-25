@@ -47,6 +47,9 @@ def main() -> None:
     # Dry run: show parsed commands
     if args.dry_run:
         for cmd in commands:
+            if cmd['type'] == 'NEW_PACKET':
+                print('  NEW_PACKET')
+                continue
             params_str = ' '.join(cmd['params'])
             expected_str = f'= {cmd["expected"]}' if cmd['expected'] else ''
             print(f"  {cmd['type']:8s} {cmd['mnemonic']:20s} "

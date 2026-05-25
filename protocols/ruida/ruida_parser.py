@@ -770,9 +770,10 @@ class RdParser():
 
         Parameter:
             datum       The byte to step with.
-            new_packet  When True the datum is the first byte of a new packet.
             is_reply    True when the byte is from a reply whether that be an
                         ACK/NAK or reply data.
+            take        The number of bytes taken from the input stream for the
+                        current packet. This is used for verbose output.
             remaining   The number of bytes remaining in the current packet.
         """
         self.last = self.datum

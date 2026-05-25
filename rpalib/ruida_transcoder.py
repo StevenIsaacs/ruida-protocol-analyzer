@@ -182,7 +182,7 @@ class RdDecoder():
 
     def rd_on_off(self, data: bytearray):
         if data[0]:
-            self.value = ' ON'
+            self.value = 'ON'
         else:
             self.value = 'OFF'
         return self.formatted
@@ -353,9 +353,16 @@ class RdEncoder():
         _i2 = int.from_bytes(_ba[4:], byteorder='big')
         return self.from_uint(_i1, 5) + self.from_uint(_i2, 5)
 
-    def encode_coord(self, value: float) -> bytearray:
-        '''Encode a coordinate (mm) as int35 value * 1000.'''
-        return self.from_int(int(round(value * 1000)), 5)
+    def encode_coord(self, value: float, n_bytes: int = 5) -> bytearray:
+        '''Encode a coordinate (mm) as signed value * 1000.
+
+        Args:
+            value: Coordinate in mm.
+            n_bytes: Number of 7-bit bytes (2 for int14, 5 for int35). Default 5.
+        '''
+        if n_bytes not in (2, 5):
+            n_bytes = 5
+        return self.from_int(int(round(value * 1000)), n_bytes)
 
     def encode_power(self, value: float) -> bytearray:
         '''Encode a power percentage as uint14 scaled by 0x4000/100.'''

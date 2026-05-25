@@ -24,4 +24,4 @@ plotting = ["bokeh"]
 py-modules = ["rpa"]
 
 [tool.setuptools.packages.find]
-include = ["rpalib*", "protocols*", "rpascript*"]
+include = ["rpalib*", "protocols*", "rpascript*", "ruidadriver*"]

@@ -99,8 +99,8 @@ HEX35 = (       '0x{:010X}',        'uint35',   'uint_35')
 CSTRING = (     '{}',               'cstring',  'cstring')
 # Parameter types:
 FNAME = (       'File:{}',          'cstring',  'cstring') # File name.
-STRING8 = (     'String: "{}"',     'string8',  'string8') # 8 char string from 2 uint35s.
-FNUM = (        'FNum: {}',         'uint14',   'uint_14')
+STRING8 = (     'String:"{}"',      'string8',  'string8') # 8 char string from 2 uint35s.
+FNUM = (        'FNum:{}',          'uint14',   'uint_14')
 ENAME = (       'Elem:{}',          'cstring',  'cstring')
 PART = (        'Part:{}',          'int7',     'int_7') # or layer.
 LASER = (       'Laser:{}',         'int7',     'int_7') # For dual head lasers.
@@ -127,33 +127,33 @@ POWER = (       'Power:{:.1f}%',    'power',    'uint_14')
 SPEED = (       'Speed:{:.3f}mm/S', 'speed',    'int_35')
 FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
 TIME = (        '{:.3f}mS',         'time',     'int_35')
-SWITCH = (      'State: {}',        'on_off',   'uint_7')
-CARD_ID = (     'CardID: {}',       'card_id',  'uint_35')
+SWITCH = (      'State:{}',         'on_off',   'uint_7')
+CARD_ID = (     'CardID:{}',        'card_id',  'uint_35')
 
 # A memory access triggers special processing using MT.
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
 # An index into something -- unknown at this time.
 INDEX = (      'Index:{:04X}',      'index',    'index')
 
-FILE_SUM = (    'Sum:0x{0:010X} ({0})',
+FILE_SUM = (    'Sum:0x{0:010X}',
                                     'checksum', 'uint_35')
 
 # For when the format and type of data is not known.
 # Use this for data that needs to be analyzed
-TBD = (         '\nTBD:{0:035b}b: 0x{0:08x}: {0}',
+TBD = (         'TBD:{0:035b}b: 0x{0:08x}: {0}',
                                     'tbd',      'tbd')
 # Use these once the size is known but needs further investigation.
-TBDU7 = (       '\nTBDU7:{0:07b}b: 0x{0:02x}: {0}',
+TBDU7 = (       'TBDU7:{0:07b}b: 0x{0:02x}: {0}',
                                     'uint7',    'uint_7')
-TBDU14 = (      '\nTBDU14:{0:014b}b: 0x{0:04x}: {0}',
+TBDU14 = (      'TBDU14:{0:014b}b: 0x{0:04x}: {0}',
                                     'uint14',   'uint_14')
-TBDU35 = (      '\nTBDU35:{0:035b}b: 0x{0:08x}: {0}',
+TBDU35 = (      'TBDU35:{0:035b}b: 0x{0:08x}: {0}',
                                     'uint35',   'uint_35')
-TBD7 = (        '\nTBD7:{0:07b}b: 0x{0:02x}: {0}',
+TBD7 = (        'TBD7:{0:07b}b: 0x{0:02x}: {0}',
                                     'int7',     'int_7')
-TBD14 = (       '\nTBD14:{0:014b}b: 0x{0:04x}: {0}',
+TBD14 = (       'TBD14:{0:014b}b: 0x{0:04x}: {0}',
                                     'int14',    'int_14')
-TBD35 = (       '\nTBD35:{0:035b}b: 0x{0:08x}: {0}',
+TBD35 = (       'TBD35:{0:035b}b: 0x{0:08x}: {0}',
                                     'int35',    'int_35')
 
 # Reply types.
@@ -496,7 +496,7 @@ CT = {
     0xD0: {  # This was discovered with LightBurn
         0x29: ('Skipping 2 bytes:', SKIP, 2) # Follows with 0x89 0x89 --- wha???
     },
-    0xD7: '\n ---- EOF ----',
+    0xD7: 'EOF',
     0xD8: {
         0x00: 'START_PROCESS',
         0x01: 'STOP_PROCESS',
@@ -577,8 +577,8 @@ CT = {
         0x51: ('DOCUMENT_BOTTOM_RIGHT', XABSCOORD, YABSCOORD),
         0x52: ('PART_TOP_LEFT', PART, XABSCOORD, YABSCOORD),
         0x53: ('PART_BOTTOM_RIGHT', PART, XABSCOORD, YABSCOORD),
-        0x54: ('PEN_OFFSET: Axis=', UINT7, ABSCOORD),
-        0x55: ('LAYER_OFFSET: Axis=', UINT7, ABSCOORD),
+    0x54: ('PEN_OFFSET_Axis', UINT7, ABSCOORD),
+    0x55: ('LAYER_OFFSET_Axis', UINT7, ABSCOORD),
         0x60: ('SET_CURRENT_ELEMENT_INDEX', UINT7),
         0x61: ('PART_EX_TOP_LEFT', PART, XABSCOORD, YABSCOORD),
         0x62: ('PART_EX_BOTTOM_RIGHT', PART, XABSCOORD, YABSCOORD),

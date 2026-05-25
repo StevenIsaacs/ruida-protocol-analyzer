@@ -365,6 +365,7 @@ class RuidaProtocolAnalyzer():
         self._pkt = RdPacket(args, self._reader, output)
         self._pkt.set_magic(args.magic)
         self._line_number = 0
+        self.on_new_packet = None
 
     def check_handshake(self):
         '''Verify the ack/nak handshake.
@@ -413,6 +414,8 @@ class RuidaProtocolAnalyzer():
                 # The end of the input stream.
                 return
             if self._pkt.new_packet:
+                if not self._pkt.reply and self.on_new_packet is not None:
+                    self.on_new_packet()
                 self.check_handshake()
             # Handshake bytes are not passed to the state machine.
             if not self._pkt.handshake:
