@@ -312,10 +312,10 @@ class ScriptParser:
                         # Nested sub-commands (e.g., 0xCA: {0x01: {0x00: ...}})
                         for opcode2, nested in sub_entry.items():
                             if isinstance(nested, str):
-                                _map[nested] = (prefix_byte, opcode2, None)
+                                _map[nested] = (prefix_byte, opcode, opcode2, None)
                             elif isinstance(nested, tuple):
                                 if len(nested) >= 1 and isinstance(nested[0], str):
-                                    _map[nested[0]] = (prefix_byte, opcode2, nested)
+                                    _map[nested[0]] = (prefix_byte, opcode, opcode2, nested)
 
         return _map
 
@@ -380,35 +380,50 @@ class ScriptInterpreter:
         """Process a list of parsed commands, writing tshark output.
 
         Commands between NEW_PACKET markers are combined into single UDP packets.
-        Synthetic ACK replies are emitted before each packet after the first.
+        Synthetic ACK replies are emitted immediately after each command packet.
+        Commands with an ``expected`` value get a synthetic reply packet emitted
+        after the batch packet (and ACK) that carried them.
         """
         self._timestamp = 0.0
         current_batch = bytearray()
-        need_ack = False
-
+        pending_commands: list[dict] = []
         for cmd in commands:
             if cmd.get('type') == 'NEW_PACKET':
-                # Flush current batch as a single combined packet
+                # Flush current batch as a single combined packet,
+                # emit ACK immediately after the command packet,
+                # then emit synthetic replies for any commands with expected values.
                 if current_batch:
                     self._emit_packet(current_batch)
+                    # Emit ACK immediately after the command packet
+                    self._out.write(self._encode_ack(self._timestamp) + '\n')
+                    self._timestamp += 0.0003
+                    # Then emit expected replies
+                    for pending in pending_commands:
+                        reply_line = self._encode_reply(pending)
+                        if reply_line:
+                            self._out.write(reply_line + '\n')
                     current_batch = bytearray()
-                    need_ack = True
+                    pending_commands = []
                 continue
-
-            # Emit ACK before the first command of a new batch
-            if need_ack:
-                ack_ts = self._timestamp - 0.0005
-                ack_line = self._encode_ack(ack_ts)
-                self._out.write(ack_line + '\n')
-                need_ack = False
 
             # Accumulate raw command bytes into the current batch
             raw = self._encode_raw(cmd)
             current_batch.extend(raw)
 
-        # Flush the final batch
+            # Track commands that have an expected reply value
+            if cmd.get('expected'):
+                pending_commands.append(cmd)
+
+        # Flush the final batch and any remaining expected replies
         if current_batch:
             self._emit_packet(current_batch)
+            # Emit ACK for the final packet too
+            self._out.write(self._encode_ack(self._timestamp) + '\n')
+            self._timestamp += 0.0003
+            for pending in pending_commands:
+                reply_line = self._encode_reply(pending)
+                if reply_line:
+                    self._out.write(reply_line + '\n')
 
     # ------------------------------------------------------------------
     # Swizzle helpers
@@ -452,13 +467,18 @@ class ScriptInterpreter:
                 f'{cmd["line_num"]}: Unknown mnemonic "{mnemonic}"'
             )
 
-        prefix_byte, opcode, cmd_entry = info
+        prefix_byte = info[0]
+        raw = bytearray([prefix_byte])
 
-        raw = bytearray()
-        raw.append(prefix_byte)
-        if opcode is not None:
-            raw.append(opcode & 0x7F)
+        if len(info) == 4:
+            # Nested option command: (prefix, middle_opcode, inner_opcode, cmd_entry_or_None)
+            raw.append(info[1] & 0x7F)
+            raw.append(info[2] & 0x7F)
+        elif info[1] is not None:
+            raw.append(info[1] & 0x7F)
 
+        # cmd_entry is at index 2 for 3-tuples, index 3 for 4-tuples
+        cmd_entry = info[3] if len(info) == 4 else (info[2] if len(info) > 2 else None)
         if cmd_entry is not None and len(cmd_entry) > 1 and cmd['params']:
             param_specs = cmd_entry[1:]  # Skip command name at index 0
             param_values = cmd['params']
@@ -512,6 +532,95 @@ class ScriptInterpreter:
         src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
         raw_ack = self._swizzle_byte(ACK, magic=0x88)
         return f'{ts:.6f}\t{src_dst}\t9\t{raw_ack:02x}'
+
+    def _encode_reply(self, cmd: dict) -> str:
+        """Generate a tshark-format reply packet for a command with expected value.
+
+        Controller→host replies do not carry a checksum.  The data bytes are
+        swizzled (same magic 0x88).  Ports are reversed (50200→40200).
+
+        Returns the tshark line string, or an empty string if no reply can be
+        generated (unknown MEM mnemonic, unknown type, TBD types, etc.).
+        """
+        expected = cmd.get('expected', '')
+        if not expected or expected in ('?', '*'):
+            return ''
+
+        params = cmd.get('params', [])
+        if not params:
+            return ''
+
+        mem_mnemonic = params[0]
+        mt_map = self._parser.mt_map
+        if mem_mnemonic not in mt_map:
+            return ''
+
+        msb, lsb = mt_map[mem_mnemonic]
+
+        # Look up the MT entry to get the parameter spec tuple
+        mt_entry = MT.get(msb, {}).get(lsb)
+        if mt_entry is None or len(mt_entry) < 2:
+            return ''
+
+        spec = mt_entry[1]  # Type spec, e.g. CARD_ID, XABSCOORD, TBDU35
+        if not isinstance(spec, tuple) or len(spec) < 2:
+            return ''
+
+        decoder_name = spec[1]
+        rd_type = spec[2] if len(spec) >= 3 else None
+
+        # Skip unknown / TBD types
+        if decoder_name in ('tbd',):
+            return ''
+
+        # Parse the expected value string into a Python value
+        parsed = self._parse_value(expected, decoder_name, rd_type)
+
+        # Choose and call the appropriate encoder
+        raw: bytearray
+        if decoder_name == 'card_id':
+            raw = self._enc.encode_card_id(parsed)
+        elif decoder_name == 'coord':
+            coord_nbytes = {'int_14': 2, 'uint_14': 2,
+                            'int_35': 5, 'uint_35': 5}.get(rd_type, 5)
+            raw = self._enc.encode_coord(parsed, coord_nbytes)
+        else:
+            method_name = _ENCODER_MAP.get(decoder_name)
+            if method_name is None and rd_type is not None:
+                method_name = _RDTYPE_ENCODER_MAP.get(rd_type)
+            if method_name is None:
+                return ''
+            encoder = getattr(self._enc, method_name, None)
+            if encoder is None:
+                return ''
+            raw = encoder(parsed)
+
+        if not raw:
+            return ''
+
+        # Build reply framing + data bytes.
+        # The parser's state machine expects:
+        #   _st_mt_command → _st_mt_sub_command → _st_mt_address_msb
+        #   → _st_mt_address_lsb → _st_mt_decode_reply
+        #   Reply command byte: 0xDA (SETTING, bit 7 set → _h_is_command)
+        #   Reply sub-command: 0x01 (GET_SETTING in RT, not 0x00 in CT)
+        #   Address MSB/LSB: from the MT entry being queried
+        framing = bytearray([0xDA, 0x01, msb & 0xFF, lsb & 0xFF])
+        full_reply = framing + raw
+
+        # Swizzle all reply bytes (replies use the same magic 0x88)
+        swizzled = bytearray(self._swizzle_byte(b) for b in full_reply)
+
+        # Controller→host: no checksum, ports reversed
+        ts = f'{self._timestamp:.6f}'
+        src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
+        pkt_len = len(swizzled) + 8
+        hex_data = swizzled.hex()
+
+        # Advance timestamp for the reply
+        self._timestamp += 0.0002
+
+        return f'{ts}\t{src_dst}\t{pkt_len}\t{hex_data}'
 
     # ------------------------------------------------------------------
     # Parameter encoding
@@ -637,6 +746,8 @@ class ScriptInterpreter:
         # --- Typed suffix parsing ---
         if decoder_fn == 'coord':
             clean = raw
+            if '=' in clean:
+                clean = clean.split('=', 1)[1].strip()
             for suffix in ('mm', 'MM'):
                 if clean.lower().endswith(suffix):
                     clean = clean[:-len(suffix)]

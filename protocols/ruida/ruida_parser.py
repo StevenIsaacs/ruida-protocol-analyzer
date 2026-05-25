@@ -577,9 +577,13 @@ class RdParser():
         if datum in self._options_lut:
             self.decoded = (
                 f'0x{self.command:02X}{self.sub_command:02X}:{self._options_lut[datum]}')
+            self.label = self._options_lut[datum]
         else:
             self.out.error(f'Option 0x{datum:02X} is unknown.')
             self.decoded = f'Unknown option: {datum:02X}'
+            self.label = f'OPT_{datum:02X}'
+        self.param_list = None
+        self.cmd_values = []
         self._enter_state('expect_command')
         return self.decoded
 

@@ -379,3 +379,12 @@ class RdEncoder():
     def encode_time(self, value: float) -> bytearray:
         '''Encode a time (mS) as int35 value * 1000.'''
         return self.from_int(int(round(value * 1000)), 5)
+
+    def encode_card_id(self, value: str) -> bytearray:
+        '''Encode a card ID string (e.g. "RDC6442S") to uint35 bytes.
+
+        Looks up the string in CARD_IDS_BY_NAME to find the numeric ID,
+        then encodes as uint35. If the name is not found, encodes 0.
+        '''
+        numeric_id = rdap.CARD_IDS_BY_NAME.get(value, 0)
+        return self.from_uint(numeric_id, 5)
