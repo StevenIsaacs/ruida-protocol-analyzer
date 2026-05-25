@@ -164,6 +164,13 @@ Examples:
         help='Enter an interactive mode on the console after decode completes.'
     )
 
+    # Generate .rds script file
+    parser.add_argument(
+        '--generate-script',
+        action='store_true',
+        help='Generate a .rds script file alongside the standard output for round-trip verification.'
+    )
+
     # Version
     parser.add_argument(
         '-v', '--version',
@@ -247,6 +254,18 @@ def main():
     # Initialize analyzer with magic number if provided
     analyzer = rpa.RuidaProtocolAnalyzer(args, input_stream, output)
 
+    # Set up script generator if --generate-script is active
+    script_gen = None
+    if getattr(args, 'generate_script', False):
+        from pathlib import Path
+        from rpascript.generator import ScriptGenerator
+        # Derive .rds path from output file or input file
+        base = args.output_file or args.input_file or 'capture'
+        script_path = str(Path(base).with_suffix('.rds'))
+        script_gen = ScriptGenerator(script_path)
+        analyzer.parser.on_command = script_gen.write_command
+        output.info(f'Generating script: {script_path}')
+
     bokeh_app = None
 
     if args.plot_moves:
@@ -279,6 +298,9 @@ def main():
 
         output.info('Decode complete.\n')
         output.close()
+
+        if script_gen is not None:
+            script_gen.close()
 
         if args.plot_moves and not args.on_the_fly and BokehApp is not None:
             # File mode: start Bokeh server after output file is written.

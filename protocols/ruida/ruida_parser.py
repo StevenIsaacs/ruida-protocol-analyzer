@@ -5,336 +5,10 @@ byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
 '''
+from rpalib.ruida_transcoder import RdDecoder
 from rpalib.rpa_emitter import RpaEmitter
 import protocols.ruida.ruida_protocol as rdap
 import protocols.ruida.rpa_plotter as rpa_plotter
-
-class RdDecoder():
-    '''A parameter or reply decoder.
-
-    Data representing a command parameter or reply. This also includes a
-    state machine for accumulating and decoding a parameter. The step machine
-    is a single state and is intended to run as a sub-state machine from the
-    command parser state machine.
-
-    NOTE: All incoming data bytes are expected to be 7 bit.
-
-    To use prime the decoder with a parameter spec then step with incoming
-    bytes until a value is returned or an error occurs.
-
-    Attributes:
-        format  The format string used to output the parameter data.
-        rd_type The Ruida basic type for the parameter.
-        decoder The decoder to call to convert the parameter bytes to
-                a Python variable.
-        accumulating
-                True when accumulating parameter data.
-        datum   The latest data byte.
-        cstring True when accumulating a C formatted string (null terminated)
-        data    The parameter data byte array to be converted.
-        value   The resulting parameter value after conversion.
-        checksum
-                The result of the rd_checksum decoder. This is reset by the
-                parser.
-            '''
-    def __init__(self, output: RpaEmitter):
-        self.out = output
-        self.accumulating = False
-        self.format: str = ''
-        self.decoder: str = ''
-        self.rd_type:str = ''
-        self.datum = None
-        self.data: bytearray = bytearray([])
-        self.value = None   # The actual type is not known until after decode.
-        self.cstring = False # True when accumulating a cstring.
-        self.checksum = 0
-        self.file_checksum = 0
-        self._rd_decoder = None
-        self._length = 0
-        self._remaining = 0
-
-    @property
-    def formatted(self) -> str:
-        return self.format.format(self.value)
-
-    @property
-    def raw(self) -> bytearray:
-        return self.data
-
-    #++++++++++++++
-    # Decoders
-    # Basic Types
-    def rd_int7(self, data: bytearray):
-        self.value = data[0]
-        if self.value & 0x40:
-            self.value = -self.value
-        return self.formatted
-
-    def rd_uint7(self, data: bytearray):
-        self.value = data[0]
-        return self.formatted
-
-    def rd_bool(self, data: bytearray):
-        self.value = data[0] != 0
-        return self.formatted
-
-    def to_int(self, data: bytearray, n_bytes=0) -> int:
-        if not n_bytes:
-            _n = self._length
-        else:
-            _n = n_bytes
-        _v = 0
-        _m = 0 # For 2's complement later.
-
-        # TODO: This is a workaround and masks a problem with LightBurn.
-        if _n == 5 and not data[0] & 0x40 and data[0] & 0x08:
-            self.out.warn('LightBurn 35 bit signed integer WORKAROUND.')
-            data[0] |= 0x70
-
-        for _i in range(_n):
-            _b = data[_i]
-            if _i == 0:
-                _b &= 0x3F
-            _v = (_v << 7) + _b
-            _m = (_m << 7) + 0x7F
-        if data[0] & 0x40:
-            # Two's complement -- sorta.
-            _v = ((~_v & (_m >> 1)) + 1) * -1
-
-        return _v
-
-    def to_uint(self, data: bytearray, n_bytes=0) -> int:
-        if not n_bytes:
-            _n = self._length
-        else:
-            _n = n_bytes
-        _v = 0
-        for _i in range(_n):
-            _v = (_v << 7) + data[_i]
-        return _v
-
-    def rd_int14(self, data: bytearray) -> int:
-        self.value = self.to_int(data)
-        return self.formatted
-
-    def rd_uint14(self, data: bytearray) -> int:
-        self.value = self.to_uint(data)
-        return self.formatted
-
-    def rd_int35(self, data: bytearray) -> int:
-        self.value = self.to_int(data)
-        return self.formatted
-
-    def rd_uint35(self, data: bytearray) -> int:
-        self.value = self.to_uint(data)
-        return self.formatted
-
-    def rd_cstring(self, data: bytearray):
-        _i = 0
-        _s = ''
-        _na = False
-        while True:
-            if _i >= len(data):
-                self.out.error('End of string not found.')
-                break
-            _c = data[_i]
-            if _c == 0:
-                break
-            _s += chr(_c)
-            if not _s.isprintable():
-                _na = True
-            _i += 1
-        if _na:
-            self.out.error(
-                f'Non-printable characters in string: {data}')
-        self.value = _s
-        return self.formatted
-
-    def rd_string8(self, data: bytearray):
-        '''Unpack a 10 byte array of 7 bit values into an 8 character string.'''
-        _i1 = self.to_uint(data[:5], n_bytes=5)
-        _i2 = self.to_uint(data[5:], n_bytes=5)
-        _ba1 = _i1.to_bytes(4, byteorder='big')
-        _ba2 = _i2.to_bytes(4, byteorder='big')
-        _s1 = _ba1.decode('utf-8')
-        _s2 = _ba2.decode('utf-8')
-        self.value = _s1 + _s2
-        return self.formatted
-
-    # Ruida Parameter Types
-    def rd_coord(self, data: bytearray):
-        self.value = self.to_int(data) / 1000.0
-        return self.formatted
-
-    def rd_power(self, data: bytearray):
-        self.value = self.to_uint(data) / (0x4000 / 100)
-        return self.formatted
-
-    def rd_frequency(self, data: bytearray):
-        self.value = self.to_int(data) / 1000
-        return self.formatted
-
-    def rd_speed(self, data: bytearray):
-        self.value = self.to_int(data) / 1000.0
-        return self.formatted
-
-    def rd_time(self, data: bytearray):
-        self.value = self.to_int(data) / 1000.0
-        return self.formatted
-
-    def rd_rapid(self, data: bytearray):
-        self.value = self.to_int(data)
-        return rdap.ROT[data[0]]
-
-    def rd_on_off(self, data: bytearray):
-        if data[0]:
-            self.value = ' ON'
-        else:
-            self.value = 'OFF'
-        return self.formatted
-
-    def rd_card_id(self, data: bytearray):
-        _id = self.to_uint(data)
-        if _id in rdap.CARD_IDS:
-            self.value = rdap.CARD_IDS[_id]
-        else:
-            self.value = f'Unknown: 0x{_id:08X}'
-        # TODO: It appears the Card ID can be used as a point where the file
-        # checksum can be reset. There may be a correct way that hasn't been
-        # discovered yet.
-        self.file_checksum = 0
-        return self.formatted
-
-    def rd_mt(self, data: bytearray):
-        # This is a special case where the data is a reference to an entry
-        # in the memory table (self._it). This is used to setup the reply or
-        # setting spec.
-        _msb = data[0]
-        _lsb = data[1]
-        if _msb in rdap.MT:
-            if _lsb in rdap.MT[_msb]:
-                _lbl = rdap.MT[_msb][_lsb][0]
-            else:
-                _lbl = rdap.UNKNOWN_LSB
-        else:
-            _lbl = rdap.UNKNOWN_MSB
-        self.value = (_msb << 8) + _lsb
-        return self.formatted + ':' + _lbl
-
-    def rd_index(self, data: bytearray):
-        # This is a special case where the data is a reference to an entry
-        # in a table (rdap.IDXT). This is used to setup the reply or
-        # setting spec.
-        _msb = data[0]
-        _lsb = data[1]
-        if _msb in rdap.IDXT:
-            if _lsb in rdap.IDXT[_msb]:
-                _lbl = rdap.IDXT[_msb][_lsb][0]
-            else:
-                _lbl = rdap.UNKNOWN_LSB
-        else:
-            _lbl = rdap.UNKNOWN_MSB
-        self.value = (_msb << 8) + _lsb
-        return self.formatted + ':' + _lbl
-
-    def rd_checksum(self, data: bytearray):
-        '''Return the checksum calculated by the host.'''
-        self.value = self.to_uint(data)
-        self.checksum = self.value
-        return self.formatted
-
-    # Ruida Reply Types
-    def rd_tbd(self, data: bytearray):
-        '''Convert all data to a hex string.
-
-        This is intended to be used for data discovery.
-        '''
-        self.value = self.to_int(data)
-        return self.formatted
-
-    #--------------
-
-    def prime(self, spec: tuple, length=None):
-        '''Setup to start a data decode using a data spec.
-
-        A data spec must be a tuple having the following elements:
-            0   The format to use when printing the decoded value.
-            1   The decoder to use to decode the value.
-            2   The Ruida defined type for the incoming data.
-
-        Parameters:
-            spec    The data format specification.
-            length  Optional length parameter. This overrides the length
-                    in the spec.
-        '''
-        self.out.verbose(f'Priming: {spec}')
-        self.format: str = spec[rdap.DFMT]
-        self.decoder: str = spec[rdap.DDEC]
-        self.rd_type:str = spec[rdap.DTYP]
-        self.data: bytearray = bytearray([])
-        self.value = None   # The actual type is not known until after decode.
-        self.datum = None
-        self.cstring = self.rd_type == 'cstring'
-        # An error with getattr indicates a problem with the type table -- not
-        # the incoming data.
-        self._rd_decoder = getattr(self, f'rd_{spec[1]}')
-        if length is not None:
-            self._length = length
-        else:
-            self._length = rdap.RD_TYPES[self.rd_type][rdap.RDT_BYTES]
-        self._remaining = self._length
-
-    @property
-    def is_tbd(self):
-        return self.rd_type == 'tbd'
-
-    def step(self, datum, remaining=None):
-        '''Step the decoder.
-
-        This is a single state state machine. The transition from this state
-        produces the decoded and formatted string which can be part of the
-        command or reply decode message.
-
-        Parameters:
-            datum       A single byte to accumulate for the decoder.
-                        NOTE: It is an error if the most significant bit is set.
-                        Only command bytes can have the most significant bit set.
-            remaining   Optional number of bytes remaining in the packet. If
-                        this is not None then this is used to determine when
-                        capture is complete rather than use self._remaining.
-
-        Returns:
-            A formatted string containing the decoded data or None if still
-            accumulating.
-        '''
-        if datum == 0 and self.cstring:
-            self.accumulating = False
-            self.cstring = False
-            return self._rd_decoder(self.data)
-        if datum & rdap.CMD_MASK:
-            # A possible error in the input stream. Not enough data for the
-            # indicated type. Instead, a command byte has been detected. Or,
-            # the parameter is incorrectly defined in the tuple passed to
-            # prime. UNLESS the data is TBD in which case accumulate until
-            # a command byte is detected.
-            if self.is_tbd:
-                self.accumulating = False
-                return self._rd_decoder(self.data)
-            self.out.protocol(
-                f'datum={datum:02X}: Should not have bit 7 set.')
-        if not self.accumulating:
-            self.accumulating = True
-        self.datum = datum
-        self.data.append(datum)
-        if remaining is not None:
-            self._remaining = remaining
-        else:
-            self._remaining -= 1
-        if self._remaining > 0 or self.is_tbd:
-            return None
-        else:
-            self.accumulating = False
-            return self._rd_decoder(self.data)
 
 class RdParser():
     '''This is a state machine for parsing and decoding an Ruida protocol
@@ -414,6 +88,7 @@ class RdParser():
         self.decoder = RdDecoder(output)
         self.label = ''
         self.decoded = ''
+        self.on_command = None  # Optional callback for script generation
         self.checksum_enabled = False
 
         self._ct = rdap.CT  # The command table to use for parsing. This changes
@@ -1077,6 +752,18 @@ class RdParser():
             f' SUM={sum(self.controller_bytes)}')
         self.controller_bytes = bytearray([])
         self.host_bytes = bytearray([])
+
+        # Fire the optional on_command callback for script generation.
+        if self.on_command is not None:
+            self.on_command(
+                label=self.label,
+                cmd_values=list(self.cmd_values),
+                param_list=self.param_list,
+                command=self.command,
+                sub_command=self.sub_command,
+                decoded=self.decoded,
+                cmd_n=self.command_number,
+            )
 
     def step(self, datum: int, is_reply=False, take: int=0, remaining=0):
         """Step the state machine for the latest byte.

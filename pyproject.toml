@@ -15,6 +15,7 @@ authors = [
 
 [project.scripts]
 rpa = "rpa:main"
+rpa-script = "rpascript.cli:main"
 
 [project.optional-dependencies]
 plotting = ["bokeh"]
@@ -23,4 +24,4 @@ plotting = ["bokeh"]
 py-modules = ["rpa"]
 
 [tool.setuptools.packages.find]
-include = ["rpalib*", "protocols*"]
+include = ["rpalib*", "protocols*", "rpascript*"]
