@@ -8,6 +8,7 @@ Output can be piped directly to rpa.py for decoding.
 import argparse
 import sys
 
+from rpa import __version__
 from rpascript.interpreter import ScriptParser, ScriptInterpreter
 
 
@@ -31,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
         '-n', '--dry-run',
         help='Parse only, show parsed commands without generating output',
         action='store_true',
+    )
+    parser.add_argument(
+        '-v', '--version',
+        action='version',
+        version=f'%(prog)s {__version__}',
     )
     return parser
 
