@@ -379,27 +379,36 @@ class ScriptInterpreter:
     def interpret(self, commands: list[dict]) -> None:
         """Process a list of parsed commands, writing tshark output.
 
-        Recognizes NEW_PACKET directives as per-packet boundaries and
-        emits synthetic ACK reply lines before each command batch
-        that follows a NEW_PACKET marker.
+        Commands between NEW_PACKET markers are combined into single UDP packets.
+        Synthetic ACK replies are emitted before each packet after the first.
         """
         self._timestamp = 0.0
+        current_batch = bytearray()
         need_ack = False
+
         for cmd in commands:
             if cmd.get('type') == 'NEW_PACKET':
-                need_ack = True
+                # Flush current batch as a single combined packet
+                if current_batch:
+                    self._emit_packet(current_batch)
+                    current_batch = bytearray()
+                    need_ack = True
                 continue
 
+            # Emit ACK before the first command of a new batch
             if need_ack:
-                # Emit synthetic ACK reply at midpoint between commands
                 ack_ts = self._timestamp - 0.0005
                 ack_line = self._encode_ack(ack_ts)
                 self._out.write(ack_line + '\n')
                 need_ack = False
 
-            tshark_line, _ = self._encode_command(cmd)
-            self._out.write(tshark_line + '\n')
-            self._timestamp += 0.001
+            # Accumulate raw command bytes into the current batch
+            raw = self._encode_raw(cmd)
+            current_batch.extend(raw)
+
+        # Flush the final batch
+        if current_batch:
+            self._emit_packet(current_batch)
 
     # ------------------------------------------------------------------
     # Swizzle helpers
@@ -430,17 +439,13 @@ class ScriptInterpreter:
     # Command encoding
     # ------------------------------------------------------------------
 
-    def _encode_command(self, cmd: dict) -> tuple[str, bytearray]:
-        """Encode a single parsed command into a tshark-format line.
+    def _encode_raw(self, cmd: dict) -> bytearray:
+        """Encode a single command to raw bytes (unswizzled, no checksum).
 
-        Produces fully swizzled+checksummed packets compatible with rpa.py.
-
-        Returns:
-            (tshark_line, binary_data)
+        Builds the prefix byte, optional opcode, and encoded parameters
+        without performing per-packet swizzling or checksumming.
         """
         mnemonic = cmd['mnemonic']
-
-        # Look up command encoding info
         info = self._parser.mnemonic_map.get(mnemonic)
         if info is None:
             raise ValueError(
@@ -449,19 +454,29 @@ class ScriptInterpreter:
 
         prefix_byte, opcode, cmd_entry = info
 
-        # Build raw command bytes (unswizzled, no checksum)
         raw = bytearray()
         raw.append(prefix_byte)
         if opcode is not None:
             raw.append(opcode & 0x7F)
 
-        # Encode parameters
         if cmd_entry is not None and len(cmd_entry) > 1 and cmd['params']:
             param_specs = cmd_entry[1:]  # Skip command name at index 0
             param_values = cmd['params']
             raw.extend(self._encode_params(param_specs, param_values, cmd))
 
-        # Swizzle the raw bytes
+        return raw
+
+    def _emit_packet(self, raw: bytearray) -> None:
+        """Swizzle, checksum, and emit a single packet as a tshark line.
+
+        Takes combined raw command bytes (unswizzled, no checksum),
+        applies the forward swizzle, prepends a 2-byte big-endian checksum,
+        and writes a single tshark-format line.
+        """
+        if not raw:
+            return
+
+        # Swizzle all raw bytes
         swizzled = bytearray(
             self._swizzle_byte(b, magic=0x88) for b in raw
         )
@@ -469,7 +484,7 @@ class ScriptInterpreter:
         # Calculate checksum = sum of swizzled bytes
         chk = sum(swizzled) & 0xFFFF
 
-        # Build final packet: checksum (2 bytes big-endian) + swizzled data
+        # Build final binary: checksum (2 bytes big-endian) + swizzled data
         binary = bytearray([
             (chk >> 8) & 0xFF,
             chk & 0xFF,
@@ -483,7 +498,9 @@ class ScriptInterpreter:
         hex_data = binary.hex()
 
         line = f'{ts}\t{src_dst}\t{pkt_len}\t{hex_data}'
-        return line, binary
+        self._out.write(line + '\n')
+
+        self._timestamp += 0.001
 
     def _encode_ack(self, ts: float) -> str:
         """Generate a tshark-format ACK reply line (controller→host).
