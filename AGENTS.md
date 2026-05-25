@@ -11,7 +11,7 @@ python rpa.py capture.log              # Decode a tshark log file
 python rpa.py --on-the-fly --ip <IP>   # Live capture via tshark
 ./capture <ip> <file>                  # Capture tshark log (bash)
 ./capture.ps1 -if Ethernet -ip <IP> -out <file>  # Capture (PowerShell)
-./decode <file>                        # Produces <file>.txt + <file>-vrb.txt
+./decode <file>                        # Produces <file>.tshark + <file>-vrb.tshark
 ./link <type> <case> <app>             # Symlink a test case into discovery/
 ```
 
@@ -32,10 +32,10 @@ Only the Ruida UDP protocol is currently implemented. Adding a new protocol mean
 ## Workflow
 
 1. **Capture** traffic with `./capture` (or `--on-the-fly` mode) → produces `.log`
-2. **Decode** with `./decode` → produces `.txt` (summary) and `-vrb.txt` (verbose)
+2. **Decode** with `./decode` → produces `.tshark` (summary) and `-vrb.tshark` (verbose)
 3. **Investigate** unknown commands/parameters marked `TBD` in output
 
-The `./link` script creates symlinks (`discovery/selected.log`, `selected.txt`, `selected-vrb.txt`) pointing to a specific test case. Apps are identified as `mk` (MeerK40t), `lb` (LightBurn), `rdw` (RDWorks).
+The `./link` script creates symlinks (`discovery/selected.log`, `selected.tshark`, `selected-vrb.tshark`) pointing to a specific test case. Apps are identified as `mk` (MeerK40t), `lb` (LightBurn), `rdw` (RDWorks).
 
 ## Key conventions
 
@@ -54,3 +54,19 @@ There are no unit tests, no formatter, no linter, no type checker, and no CI pip
 - `.vscode/launch.json` exists for debugging.
 - `--plot-moves` opens a Bokeh server application in browser showing interactive head moves with power/speed popups, context menus, and filtering.
 - Ignored dirs: `discovery/`, `testing/`, `tmp/`, `build/`, `dist/`, `__pycache__`, `.png` files.
+- Test output files are to be placed in `tmp/`.
+- Test output file names have the form `<base>-<run>.<ext>` where:
+	- `<base>` is the base name of the input file.
+	- `<run>` is a sequential two digit run number. New runs with the same input file will increment this number.
+	- `<ext>` is the extension corresponding to the output file type where:
+		- `.txt` is a decode text file.
+		- `.rds` is a Ruida Script file.
+		- `.tshark` is a generated `tshark` log file. NOTE: When doing round trip testing packet sequence and content should be identical to the input file. The timestamps can vary.
+	  For example, if the input file is `discovery/selected.log` then first test run using this input file will generate the following files:
+		- `tmp/selected-01.txt` for the decode file.
+		- `tmp/selected-01.rds` for the generated Ruida Script file.
+		- When performing round trip testing using `ruidascript`, additional files will be generated:
+			- `tmp/selected-01.tshark` for the `tshark` log using `tmp/selected-01.rds` as the input to `ruidascript`.
+			- `tmp/selected-01-rt.txt` for the decode file generated using `tmp/selected-01.tshark` as the input file.
+		A second run will have the number `02` instead of `01`.
+
