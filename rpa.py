@@ -262,7 +262,7 @@ def main():
         # Derive .rds path from output file or input file
         base = args.output_file or args.input_file or 'capture'
         script_path = str(Path(base).with_suffix('.rds'))
-        script_gen = ScriptGenerator(script_path)
+        script_gen = ScriptGenerator(script_path, source_file=args.input_file)
         analyzer.parser.on_command = script_gen.write_command
         analyzer.on_new_packet = script_gen.on_new_packet
         output.info(f'Generating script: {script_path}')
