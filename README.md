@@ -64,6 +64,11 @@ After installation, the `rpa` command is available globally (when the venv is ac
 ```bash
 rpa --help
 ```
+The `rpa-script` command (script interpreter/playback) is also installed:
+
+```bash
+rpa-script --help
+```
 
 ### Requirements
 
@@ -143,6 +148,83 @@ python rpa.py --quiet --stop-on-error -o results.txt capture.log
 | `--stop-on-error` | Stop processing on first decode error. |
 | `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
 | `--interactive` | (Future) Enter an interactive mode on the console. |
+| `--generate-script` | Generate a `.rds` Ruida Script file from the decoded commands. Combined with `-o <file>` to control the output path. |
+
+## Script Generation & Round-Trip Testing
+
+`rpa-script` is a script interpreter that plays back Ruida Script (`.rds`) files and
+generates tshark-format binary output. Combined with `rpa --generate-script`, this
+enables round-trip testing: capture → decode → script → tshark → re-decode.
+
+### Generating Scripts from Captures
+
+Use `--generate-script` to produce both a `.txt` decode file and a `.rds` script file:
+
+```bash
+python rpa.py --generate-script -o output.txt capture.log
+```
+
+This produces `output.txt` (human-readable decode) and `output.rds` (script file).
+If `-o` is omitted, the script file is named after the input file (e.g. `capture.rds`).
+
+The generated `.rds` includes:
+- A `# Source:` header tracking the original capture filename
+- `# Packet N` comments at each packet boundary
+- Reply values captured from controller responses (e.g. `CardID:RDC6442S`)
+
+### Playing Back Scripts
+
+Convert a `.rds` script to tshark-format binary output:
+
+```bash
+# Output to stdout (pipe directly to rpa for decoding)
+rpa-script script.rds | python rpa.py -
+
+# Output to file
+rpa-script script.rds -o output.tshark
+```
+
+### Full Round-Trip Workflow
+
+Use the `.rds` file as input to `rpa-script` to regenerate tshark packets,
+then re-decode them to verify round-trip fidelity:
+
+```bash
+# Step 1: Decode and generate script
+python rpa.py --generate-script capture.log
+
+# Step 2: Play back the script to regenerate packets
+rpa-script capture.rds -o capture-rt.tshark
+
+# Step 3: Re-decode the generated packets
+python rpa.py -o capture-rt.txt capture-rt.tshark
+
+# Step 4: Compare the original and round-trip decode files
+diff <(grep '^[0-9]' capture.txt) <(grep '^[0-9]' capture-rt.txt)
+```
+
+### `.rds` Script Format
+
+Ruida Script (`.rds`) files are line-oriented text files. Each line contains
+a command mnemonic followed by optional parameters and an optional expected reply:
+
+```rds
+# Source: capture.log
+
+# Packet 1
+GET_SETTING MEM_CARD_ID  = CardID:RDC6442S
+
+# Packet 2
+NEW_PACKET
+REF_POINT_2
+SET_ABSOLUTE
+MOVE_ABS_XY X=10000mm Y=20000mm
+```
+
+- Lines starting with `#` are comments
+- `NEW_PACKET` marks a boundary between packets
+- `= value` after a command captures the controller's reply
+- Packet numbering comments (`# Packet N`) provide human-readable guidance
 
 ## Output Format
 
