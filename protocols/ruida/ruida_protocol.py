@@ -132,6 +132,7 @@ FREQUENCY = (   'Freq:{:.3f}KHz',   'frequency','int_35')
 TIME = (        '{:.3f}mS',         'time',     'int_35')
 SWITCH = (      'State:{}',         'on_off',   'uint_7')
 CARD_ID = (     'CardID:{}',        'card_id',  'uint_35')
+M_STAT = (      'MStat:{}',         'm_stat',   'uint_35')
 
 # A memory access triggers special processing using MT.
 MEMORY = (      'Addr:{:04X}',      'mt',       'mt')
@@ -223,6 +224,17 @@ CHK_DISABLES = (KEYPRESS, SETTING)
 
 SETTING_READ = 0x00
 SETTING_WRITE = 0x01
+
+# Bits in a MEM_MACHINE_STATUS value.
+MACHINE_STATUS_MOVING = (0x01000000, 'Moving')
+MACHINE_STATUS_PART_END = (0x00000002, 'Part End')
+MACHINE_STATUS_JOB_RUNNING = (0x00000001, 'Job Running')
+
+MST = {
+    MACHINE_STATUS_MOVING,
+    MACHINE_STATUS_PART_END,
+    MACHINE_STATUS_JOB_RUNNING,
+}
 
 MT = {
     0x00: {
@@ -346,7 +358,7 @@ MT = {
         0x11: ('MEM_TOTAL_LASER_WORK_TIME', TBD), # 0x211
     },
     0x04: {
-        0x00: ('MEM_MACHINE_STATUS_(0B00110111_RELEVANT_BITS).', TBDU35), # 0x200
+        0x00: ('MEM_MACHINE_STATUS', M_STAT), # 0x200
         0x01: ('MEM_TOTAL_OPEN_TIME', TBD), # 0x201
         0x02: ('MEM_TOTAL_WORK_TIME', TBD), # 0x202
         0x03: ('MEM_TOTAL_WORK_NUMBER', TBD), # 0x203

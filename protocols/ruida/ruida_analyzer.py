@@ -10,6 +10,7 @@ for more information.
 import protocols.ruida.ruida_parser as rp
 import protocols.ruida.ruida_protocol as rdap
 from rpalib.rpa_emitter import RpaEmitter
+from rpalib.rpa_swizzler import RpaSwizzler
 
 class UdpDumpReader():
     '''Parse lines from the dump file or a live stream.
@@ -159,6 +160,7 @@ class RdPacket():
         self.reader = reader
         self.out = output
         self.magic = None
+        self._swizzler = RpaSwizzler()
         self.new_packet = False
         self.reply = False
         self.handshake = False
@@ -174,17 +176,6 @@ class RdPacket():
     def remaining(self):
         '''Return the number of unread bytes in the packet data buffer.'''
         return self.length - self.take
-
-    def un_swizzle_byte(self, b):
-        '''Un-swizzle a byte using the magic number.
-
-        '''
-        b = (b - 1) & 0xFF
-        b ^= self.magic
-        b ^= (b >> 7) & 0xFF
-        b ^= (b << 7) & 0xFF
-        b ^= (b >> 7) & 0xFF
-        return b
 
     def _next_packet(self):
         '''Read and un-swizzle the next packet.
@@ -218,9 +209,7 @@ class RdPacket():
                     f'Checksum mismatch. pkt:0x{_chk:04X} sum:0x{_chk_sum:04X}')
 
         if self.swizzled:
-            self.data = bytearray(b'')
-            for b in _data:
-                self.data.append(self.un_swizzle_byte(b))
+            self.data = self._swizzler.unswizzle(bytearray(_data))
         else:
             self.data = _data
         self.out.raw(self.reader.line)
@@ -263,6 +252,7 @@ class RdPacket():
                     _r = self.reader.data[0]
                     if _r in self.MAGIC_LUT:
                         self.magic = self.MAGIC_LUT[_r]
+                        self._swizzler.set_magic(self.magic)
                         self.out.verbose(
                             f'Detected magic: 0x{self.magic:02X}')
                         break
@@ -275,6 +265,7 @@ class RdPacket():
             self.reader.reset()
         else:
             self.magic = magic
+            self._swizzler.set_magic(self.magic)
             self.out.verbose(f'Using magic: 0x{self.magic:02X}')
 
     def next_byte(self) -> int:
