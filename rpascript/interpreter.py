@@ -7,8 +7,20 @@ supporting comment stripping and command/expected-reply directives.
 
 import re
 
+from rpascript.encoding import (
+    encode_command,
+    encode_params,
+    encode_single_param,
+    encode_mt_param,
+    is_set_file_sum,
+    should_include_in_checksum,
+    parse_value,
+    _ENCODER_MAP,
+    _RDTYPE_ENCODER_MAP,
+)
 from protocols.ruida.ruida_protocol import CT, MT, IDXT, ACK
 from rpalib.ruida_transcoder import RdEncoder
+from rpalib.rpa_swizzler import RpaSwizzler
 
 
 # Type group names recognized in .rds script files.
@@ -19,47 +31,50 @@ TYPE_NAMES = frozenset({
     'FILE', 'SYSTEM',
 })
 
-# Decoder function name (DDEC from param spec) → RdEncoder method name.
-# When a param spec has decoder 'coord', the encoder method is 'encode_coord'.
-_ENCODER_MAP: dict[str, str | None] = {
-    'int7':       'encode_int7',
-    'uint7':      'encode_uint7',
-    'int14':      'encode_int14',
-    'uint14':     'encode_uint14',
-    'int35':      'encode_int35',
-    'uint35':     'encode_uint35',
-    'coord':      'encode_coord',
-    'cstring':    'encode_cstring',
-    'string8':    'encode_string8',
-    'power':      'encode_power',
-    'frequency':  'encode_frequency',
-    'speed':      'encode_speed',
-    'time':       'encode_time',
-    'bool':       'encode_bool',
-    'on_off':     'encode_bool',
-    'rapid':      'encode_uint7',
-    'mt':         'encode_mt',
-    'index':      'encode_index',
-    'checksum':   'encode_uint35',
-    'card_id':    'encode_uint35',
-    'tbd':        None,
-}
 
-# Fallback: ruida type name (DTYP from param spec) → encoder method.
-_RDTYPE_ENCODER_MAP: dict[str, str | None] = {
-    'int_7':    'encode_int7',
-    'uint_7':   'encode_uint7',
-    'int_14':   'encode_int14',
-    'uint_14':  'encode_uint14',
-    'int_35':   'encode_int35',
-    'uint_35':  'encode_uint35',
-    'cstring':  'encode_cstring',
-    'string8':  'encode_string8',
-    'on_off':   'encode_bool',
-    'bool_7':   'encode_bool',
-    'mt':       'encode_mt',
-    'index':    'encode_index',
-}
+def reconstruct_script_line(cmd: dict) -> str:
+    """Convert a parsed command dict back to an rpascript text line.
+
+    Reconstructs the original rpascript line from a parsed command dict,
+    handling session meta-commands, NEW_PACKET directives, and regular commands
+    with their parameters and expected values.
+
+    Args:
+        cmd: Parsed command dict from ScriptParser.
+
+    Returns:
+        rpascript-formatted command line string suitable for driver.run().
+    """
+    cmd_type = cmd.get('type')
+
+    # Session commands
+    if cmd_type == 'SESSION_START':
+        params = cmd.get('params', {})
+        tokens = ['session', 'start']
+        for k, v in params.items():
+            tokens.append(f'{k}={v}' if v is not None else f'{k}=none')
+        return ' '.join(tokens)
+
+    if cmd_type == 'SESSION_END':
+        return 'session end'
+
+    # NEW_PACKET directive
+    if cmd_type == 'NEW_PACKET':
+        return 'NEW_PACKET'
+
+    # Regular command: [TYPE] MNEMONIC param1 param2 [= expected]
+    tokens = []
+    if cmd_type:
+        tokens.append(cmd_type)
+    mnemonic = cmd.get('mnemonic')
+    if mnemonic and mnemonic != cmd_type:
+        tokens.append(mnemonic)
+    tokens.extend(cmd.get('params', []))
+    expected = cmd.get('expected')
+    if expected is not None:
+        tokens.append('=')
+        tokens.append(str(expected))
+    return ' '.join(tokens)
 
 
 def _strip_inline_comment(line: str) -> str:
@@ -175,6 +190,45 @@ class ScriptParser:
 
         raw = line
         idx = 0
+
+        # --- Session meta-commands (live controller testing) ---
+        if tokens[0].lower() == 'session':
+            if len(tokens) < 2:
+                raise ValueError(
+                    f'{line_num}: "session" requires an action: start or end'
+                )
+            action = tokens[1].lower()
+            if action == 'start':
+                kwargs = {}
+                for token in tokens[2:]:
+                    key, _, val = token.partition('=')
+                    kwargs[key.lower()] = None if val.lower() == 'none' else val
+                # Validate: at least one of udp= or usb= must be provided
+                if 'udp' not in kwargs and 'usb' not in kwargs:
+                    raise ValueError(
+                        f'{line_num}: session start requires at least one of udp= or usb='
+                    )
+                return {
+                    'type': 'SESSION_START',
+                    'mnemonic': 'SESSION_START',
+                    'params': kwargs,
+                    'expected': None,
+                    'line_num': line_num,
+                    'raw': raw,
+                }
+            elif action == 'end':
+                return {
+                    'type': 'SESSION_END',
+                    'mnemonic': 'SESSION_END',
+                    'params': [],
+                    'expected': None,
+                    'line_num': line_num,
+                    'raw': raw,
+                }
+            else:
+                raise ValueError(
+                    f'{line_num}: Unknown session action "{action}". Use "start" or "end".'
+                )
 
         # --- NEW_PACKET directive (per-packet boundary marker) ---
         if tokens[0] == 'NEW_PACKET':
@@ -370,6 +424,7 @@ class ScriptInterpreter:
         self._out = output_stream
         self._parser = ScriptParser()
         self._enc = RdEncoder()
+        self._swizzler = RpaSwizzler(magic=0x88)
         self._timestamp = 0.0
 
     # ------------------------------------------------------------------
@@ -383,10 +438,31 @@ class ScriptInterpreter:
         Synthetic ACK replies are emitted immediately after each command packet.
         Commands with an ``expected`` value get a synthetic reply packet emitted
         after the batch packet (and ACK) that carried them.
+
+        File checksum: accumulates sum(raw) for eligible commands, then either
+        verifies SET_FILE_SUM or fills a placeholder at EOF.
+
+        If any command has type SESSION_START or SESSION_END, switches to session
+        mode: creates RdSession/RdDriver, connects, and routes commands through
+        the live session instead of generating tshark output.
         """
+        # Check for session commands
+        session_active = any(
+            cmd.get('type') in ('SESSION_START', 'SESSION_END')
+            for cmd in commands
+        )
+
+        if session_active:
+            self._interpret_session(commands)
+            return
+
         self._timestamp = 0.0
         current_batch = bytearray()
         pending_commands: list[dict] = []
+        file_checksum = 0
+        set_file_sum_value = None
+        set_file_sum_offset = None
+        set_file_sum_batch = bytearray()   # reference to batch containing placeholder
         for cmd in commands:
             if cmd.get('type') == 'NEW_PACKET':
                 # Flush current batch as a single combined packet,
@@ -408,13 +484,44 @@ class ScriptInterpreter:
 
             # Accumulate raw command bytes into the current batch
             raw = self._encode_raw(cmd)
+
+            # === File Checksum Logic ===
+            if is_set_file_sum(cmd, self._parser.mnemonic_map):
+                if set_file_sum_value is not None:
+                    raise ValueError("Duplicate SET_FILE_SUM — at most one per file")
+                if cmd['params']:
+                    set_file_sum_value = parse_value(cmd['params'][0], 'checksum', 'uint_35')
+                else:
+                    raw.extend(b'\x00' * 5)  # placeholder; filled after EOF
+                    set_file_sum_offset = len(current_batch) + len(raw) - 5
+                    set_file_sum_batch = current_batch   # track which batch has the placeholder
+                # raw is added to current_batch below regardless
+            elif should_include_in_checksum(cmd, self._parser.mnemonic_map):
+                file_checksum += sum(raw)
+            # EOF (0xD7) is handled implicitly: should_include_in_checksum returns True
+            # since 0xD7 is not in CHK_DISABLES and is not SET_FILE_SUM.
+            # sum(raw) naturally includes 0xD7.
+            # =========================
+
             current_batch.extend(raw)
 
             # Track commands that have an expected reply value
             if cmd.get('expected'):
                 pending_commands.append(cmd)
 
-        # Flush the final batch and any remaining expected replies
+        # === Patch placeholder BEFORE final emit ===
+        if set_file_sum_offset is not None and set_file_sum_value is None:
+            encoded_sum = self._enc.encode_uint35(file_checksum)
+            if set_file_sum_batch is not current_batch:
+                # The batch containing the SET_FILE_SUM placeholder was already flushed
+                # by a NEW_PACKET directive. This is a script structure error.
+                raise ValueError(
+                    "SET_FILE_SUM without value must appear in the final batch "
+                    "(cannot be before a NEW_PACKET directive)"
+                )
+            current_batch[set_file_sum_offset:set_file_sum_offset + 5] = encoded_sum
+
+        # Flush the final batch (now with correct checksum bytes)
         if current_batch:
             self._emit_packet(current_batch)
             # Emit ACK for the final packet too
@@ -425,30 +532,69 @@ class ScriptInterpreter:
                 if reply_line:
                     self._out.write(reply_line + '\n')
 
+        # === Post-loop: verify SET_FILE_SUM ===
+        if set_file_sum_value is not None:
+            if file_checksum != set_file_sum_value:
+                raise ValueError(
+                    f"SET_FILE_SUM value {set_file_sum_value} does not match "
+                    f"accumulated file checksum {file_checksum}"
+                )
+
     # ------------------------------------------------------------------
-    # Swizzle helpers
+    # Session execution
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _swizzle_byte(b: int, magic: int = 0x88) -> int:
-        """Swizzle a byte using the magic number (inverse of RdPacket.un_swizzle_byte).
+    def _interpret_session(self, commands: list[dict]) -> None:
+        """Execute parsed commands through a live Ruida session.
 
-        The un-swizzle operation (from ruida_analyzer.py) is:
-            b = (b - 1) & 0xFF
-            b ^= magic
-            b ^= (b >> 7) & 0xFF
-            b ^= (b << 7) & 0xFF
-            b ^= (b >> 7) & 0xFF
-
-        The forward swizzle reverses the order and replaces (b - 1) with (b + 1).
-        All XOR operations are self-inverse, so they remain the same.
+        Handles SESSION_START → create/connect/driver, SESSION_END → stop/cleanup,
+        and routes intermediate commands through driver.run() via reconstruct_script_line().
         """
-        b ^= (b >> 7) & 0xFF
-        b ^= (b << 7) & 0xFF
-        b ^= (b >> 7) & 0xFF
-        b ^= magic
-        b = (b + 1) & 0xFF
-        return b
+        session = None
+        driver = None
+
+        for cmd in commands:
+            if cmd['type'] == 'SESSION_START':
+                from ruidadriver.rd_session import RdSession
+                from ruidadriver.ruida_driver import RdDriver
+
+                session = RdSession()
+                params = cmd.get('params', {})
+                session.transport.configure(
+                    udp_host=params.get('udp', ''),
+                    usb_device=params.get('usb', ''),
+                )
+                if not session.connect(timeout=5000):
+                    self._out.write(
+                        f"# ERROR: Failed to connect to Ruida controller "
+                        f"(udp={params.get('udp', '')}, usb={params.get('usb', '')})\n"
+                    )
+                    return
+                driver = RdDriver(session)
+                driver.start_script_runner()
+
+            elif cmd['type'] == 'SESSION_END':
+                if driver is not None:
+                    driver.stop_script_runner()
+                    driver = None
+                if session is not None:
+                    session.disconnect()
+                    session = None
+
+            else:
+                if driver is None:
+                    raise RuntimeError(
+                        "Cannot execute command without active session. "
+                        "Use 'session start' first."
+                    )
+                line = reconstruct_script_line(cmd)
+                driver.run([line])
+
+        # Clean up if session wasn't explicitly ended
+        if driver is not None:
+            driver.stop_script_runner()
+        if session is not None:
+            session.disconnect()
 
     # ------------------------------------------------------------------
     # Command encoding
@@ -457,34 +603,11 @@ class ScriptInterpreter:
     def _encode_raw(self, cmd: dict) -> bytearray:
         """Encode a single command to raw bytes (unswizzled, no checksum).
 
-        Builds the prefix byte, optional opcode, and encoded parameters
-        without performing per-packet swizzling or checksumming.
+        Delegates to the standalone encode_command function.
         """
-        mnemonic = cmd['mnemonic']
-        info = self._parser.mnemonic_map.get(mnemonic)
-        if info is None:
-            raise ValueError(
-                f'{cmd["line_num"]}: Unknown mnemonic "{mnemonic}"'
-            )
-
-        prefix_byte = info[0]
-        raw = bytearray([prefix_byte])
-
-        if len(info) == 4:
-            # Nested option command: (prefix, middle_opcode, inner_opcode, cmd_entry_or_None)
-            raw.append(info[1] & 0x7F)
-            raw.append(info[2] & 0x7F)
-        elif info[1] is not None:
-            raw.append(info[1] & 0x7F)
-
-        # cmd_entry is at index 2 for 3-tuples, index 3 for 4-tuples
-        cmd_entry = info[3] if len(info) == 4 else (info[2] if len(info) > 2 else None)
-        if cmd_entry is not None and len(cmd_entry) > 1 and cmd['params']:
-            param_specs = cmd_entry[1:]  # Skip command name at index 0
-            param_values = cmd['params']
-            raw.extend(self._encode_params(param_specs, param_values, cmd))
-
-        return raw
+        return encode_command(
+            cmd, self._parser.mnemonic_map, self._parser.mt_map, self._enc
+        )
 
     def _emit_packet(self, raw: bytearray) -> None:
         """Swizzle, checksum, and emit a single packet as a tshark line.
@@ -497,9 +620,7 @@ class ScriptInterpreter:
             return
 
         # Swizzle all raw bytes
-        swizzled = bytearray(
-            self._swizzle_byte(b, magic=0x88) for b in raw
-        )
+        swizzled = self._swizzler.swizzle(raw)
 
         # Calculate checksum = sum of swizzled bytes
         chk = sum(swizzled) & 0xFFFF
@@ -530,7 +651,7 @@ class ScriptInterpreter:
         0xCC (ACK) using magic 0x88.
         """
         src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
-        raw_ack = self._swizzle_byte(ACK, magic=0x88)
+        raw_ack = RpaSwizzler.swizzle_byte(ACK, 0x88)
         return f'{ts:.6f}\t{src_dst}\t9\t{raw_ack:02x}'
 
     def _encode_reply(self, cmd: dict) -> str:
@@ -609,7 +730,7 @@ class ScriptInterpreter:
         full_reply = framing + raw
 
         # Swizzle all reply bytes (replies use the same magic 0x88)
-        swizzled = bytearray(self._swizzle_byte(b) for b in full_reply)
+        swizzled = self._swizzler.swizzle(full_reply)
 
         # Controller→host: no checksum, ports reversed
         ts = f'{self._timestamp:.6f}'
@@ -634,22 +755,12 @@ class ScriptInterpreter:
     ) -> bytearray:
         """Encode script parameter values into binary using CT param specs.
 
-        Each param spec is a tuple (format_str, decoder_fn, rd_type).
-        The decoder function name determines which encoder to use.
+        Delegates to the standalone encode_params function.
         """
-        result = bytearray()
-
-        for i, (spec, value_token) in enumerate(zip(param_specs, param_values)):
-            if not isinstance(spec, tuple) or len(spec) < 2:
-                continue
-
-            decoder_fn = spec[1]  # DDEC — e.g. 'coord', 'mt', 'int35'
-            rd_type = spec[2] if len(spec) >= 3 else None
-
-            encoded = self._encode_single_param(decoder_fn, rd_type, value_token, cmd)
-            result.extend(encoded)
-
-        return result
+        return encode_params(
+            param_specs, param_values, cmd,
+            self._parser.mnemonic_map, self._parser.mt_map, self._enc
+        )
 
     def _encode_single_param(
         self,
@@ -658,53 +769,21 @@ class ScriptInterpreter:
         value_token: str,
         cmd: dict,
     ) -> bytearray:
-        """Encode a single parameter value to binary."""
-        # --- MT / Index special handling ---
-        if decoder_fn in ('mt', 'index'):
-            return self._encode_mt_param(value_token, cmd)
+        """Encode a single parameter value to binary.
 
-        # --- Named-param split: 'X=200.000mm' → '200.000mm' ---
-        if '=' in value_token:
-            _, value_token = value_token.split('=', 1)
-
-        # --- Parse the value token to a Python value ---
-        parsed = self._parse_value(value_token, decoder_fn, rd_type)
-
-        # --- Determine the encoder method ---
-        method_name = _ENCODER_MAP.get(decoder_fn)
-        if method_name is None and rd_type is not None:
-            method_name = _RDTYPE_ENCODER_MAP.get(rd_type)
-
-        if method_name is None:
-            return bytearray()
-
-        # Special handling for coord which needs rd_type to select byte count
-        if decoder_fn == 'coord':
-            coord_nbytes = {'int_14': 2, 'uint_14': 2, 'int_35': 5, 'uint_35': 5}.get(rd_type, 5)
-            return self._enc.encode_coord(parsed, coord_nbytes)
-
-        # Resolve method on RdEncoder instance
-        encoder = getattr(self._enc, method_name, None)
-        if encoder is None:
-            return bytearray()
-
-        return encoder(parsed)
+        Delegates to the standalone encode_single_param function.
+        """
+        return encode_single_param(
+            decoder_fn, rd_type, value_token, cmd,
+            self._parser.mnemonic_map, self._parser.mt_map, self._enc
+        )
 
     def _encode_mt_param(self, value_token: str, cmd: dict) -> bytearray:
         """Encode a memory/index parameter.
 
-        Looks up the token in the MT (or IDXT) mnemonic table and encodes
-        its MSB/LSB address pair.
+        Delegates to the standalone encode_mt_param function.
         """
-        mt_map = self._parser.mt_map
-        lookup = mt_map if cmd['type'] != 'index' else {}
-
-        if value_token in lookup:
-            msb, lsb = lookup[value_token]
-        else:
-            return bytearray()
-
-        return bytearray([msb & 0x7F, lsb & 0x7F])
+        return encode_mt_param(value_token, self._parser.mt_map)
 
     # ------------------------------------------------------------------
     # Value parsing
@@ -718,101 +797,6 @@ class ScriptInterpreter:
     ):
         """Parse a script parameter token into a Python value.
 
-        Handles numeric values, typed suffixes (mm, %, KHz, etc.),
-        booleans, and plain strings.
+        Delegates to the standalone parse_value function.
         """
-        raw = token.strip()
-
-        # --- Unescape \# → # (from rds comment escaping) ---
-        raw = raw.replace('\\#', '#')
-
-        # --- Strip format-string label prefix ---
-        # Parameters from format strings like 'Speed:{:.3f}mm/S' or 'State: {}'
-        # include labels (e.g. 'Speed:', 'Power:', 'Freq:', 'CardID:') that must
-        # be removed before parsing.  Skip strings with '=' which are already
-        # split by _encode_single_param, and skip strings where the part before
-        # ':' is not a plain label.
-        if ':' in raw and '=' not in raw:
-            maybe_label, after = raw.split(':', 1)
-            if maybe_label.isalpha():
-                raw = after.strip()
-
-        # --- Boolean ---
-        if raw.upper() in ('ON', 'TRUE', '1'):
-            return True
-        if raw.upper() in ('OFF', 'FALSE', '0'):
-            return False
-
-        # --- Typed suffix parsing ---
-        if decoder_fn == 'coord':
-            clean = raw
-            if '=' in clean:
-                clean = clean.split('=', 1)[1].strip()
-            for suffix in ('mm', 'MM'):
-                if clean.lower().endswith(suffix):
-                    clean = clean[:-len(suffix)]
-                    break
-            return float(clean)
-
-        if decoder_fn == 'power':
-            if raw.endswith('%'):
-                return float(raw[:-1])
-            return float(raw)
-
-        if decoder_fn == 'frequency':
-            clean = raw
-            for suffix in ('KHz', 'khz', 'KHz', 'kHz'):
-                if clean.endswith(suffix):
-                    clean = clean[:-len(suffix)]
-                    break
-            return float(clean)
-
-        if decoder_fn == 'speed':
-            clean = raw
-            for suffix in ('mm/S', 'mm/s', 'MM/S'):
-                if clean.endswith(suffix):
-                    clean = clean[:-len(suffix)]
-                    break
-            return float(clean)
-
-        if decoder_fn == 'time':
-            clean = raw
-            for suffix in ('mS', 'ms', 'MS'):
-                if clean.endswith(suffix):
-                    clean = clean[:-len(suffix)]
-                    break
-            return float(clean)
-
-        if decoder_fn == 'cstring':
-            if (raw.startswith('"') and raw.endswith('"')) or \
-               (raw.startswith("'") and raw.endswith("'")):
-                return raw[1:-1]
-            return raw
-
-        # --- Numeric ---
-        # Handle hex prefixed with # (e.g. Color:#FF00FFFF)
-        if raw.startswith('#'):
-            try:
-                return int(raw[1:], 16)
-            except ValueError:
-                pass
-
-        # Handle 0x/0X prefixed hex (e.g. 0x0000048216 from Sum:0x{...} format strings)
-        if raw.startswith(('0x', '0X')):
-            try:
-                return int(raw, 0)
-            except ValueError:
-                pass
-
-        try:
-            return int(raw)
-        except ValueError:
-            pass
-
-        try:
-            return float(raw)
-        except ValueError:
-            pass
-
-        # --- Fallback: return as string ---
-        return raw
+        return parse_value(token, decoder_fn, rd_type)

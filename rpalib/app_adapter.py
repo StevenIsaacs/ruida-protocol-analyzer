@@ -1,0 +1,73 @@
+"""Application adapter abstract base class for Ruida protocol adapters.
+
+AppAdapter defines the interface that application-layer adapters must implement
+to interact with the Ruida session/driver stack. Subclasses include RdsAdapter
+(TUI) and future adapters for MeerK40t, Rayforge, etc.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any
+
+
+class AppAdapter(ABC):
+    """Abstract base class for Ruida application adapters.
+
+    Provides the lifecycle and event interface for upper-layer adapters.
+    Subclasses must implement the abstract methods; non-abstract methods
+    provide sensible defaults and may be overridden.
+    """
+
+    @abstractmethod
+    def create_driver_and_session(self) -> None:
+        """Create and configure RdSession and RdDriver instances.
+
+        This is the initialization boundary — after this method returns,
+        the adapter must be ready to establish a connection.
+        """
+        ...
+
+    @abstractmethod
+    def on_status_event(self, event: Any) -> None:
+        """Handle a status event from the driver's RdStatus monitor.
+
+        Args:
+            event: An RdStatusEvent enum member (CONNECTED, DISCONNECTED, etc.).
+        """
+        ...
+
+    @abstractmethod
+    def on_reply_data(self, replies: list[bytearray]) -> None:
+        """Handle raw reply data from the driver.
+
+        Args:
+            replies: List of raw reply bytearrays received from the controller.
+        """
+        ...
+
+    @abstractmethod
+    def on_error(self, message: str) -> None:
+        """Handle an error condition.
+
+        Args:
+            message: Human-readable error description.
+        """
+        ...
+
+    def run_script(self, script: list[str]) -> None:
+        """Queue a script for execution through the active driver.
+
+        Raises:
+            RuntimeError: If no driver has been created (call create_driver_and_session first).
+
+        Args:
+            script: List of rpascript-formatted command lines.
+        """
+        raise RuntimeError("Adapter not initialized. Call create_driver_and_session() first.")
+
+    def start(self) -> None:
+        """Start the adapter. Default implementation is a no-op."""
+
+    def stop(self) -> None:
+        """Stop the adapter. Default implementation is a no-op."""

@@ -16,12 +16,14 @@ def build_parser() -> argparse.ArgumentParser:
     """Construct the argument parser for rpa-script."""
     parser = argparse.ArgumentParser(
         prog='rpa-script',
-        description='Generate tshark-format Ruida protocol output from .rds scripts.',
-        epilog='Example: rpa-script myscript.rds | python rpa.py -',
+        description='Generate Ruida protocol output from .rds scripts or launch interactive TUI.',
+        epilog='Examples: rpa-script myscript.rds | python rpa.py -   |   rpa-script --tui',
     )
     parser.add_argument(
         'script',
-        help='.rds script file to process',
+        nargs='?',
+        default=None,
+        help='.rds script file to process (optional with --tui)',
     )
     parser.add_argument(
         '-o', '--output',
@@ -31,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '-n', '--dry-run',
         help='Parse only, show parsed commands without generating output',
+        action='store_true',
+    )
+    parser.add_argument(
+        '-t', '--tui',
+        help='Launch interactive TUI (Textual-based terminal interface)',
         action='store_true',
     )
     parser.add_argument(
@@ -45,6 +52,20 @@ def main() -> None:
     """Main entry point for rpa-script CLI."""
     parser = build_parser()
     args = parser.parse_args()
+
+    # TUI mode: launch interactive terminal interface
+    if args.tui:
+        from rpascript.rds_adapter import run_tui
+        if args.script:
+            print(f'Note: script argument "{args.script}" ignored in TUI mode. '
+                  'Use Ctrl+L to load scripts within the TUI.')
+        run_tui()
+        return
+
+    # Script argument is required when not in TUI mode
+    if args.script is None:
+        parser.print_help()
+        sys.exit(1)
 
     # Parse script
     script_parser = ScriptParser()

@@ -150,6 +150,13 @@ class ScriptGenerator:
             if i < len(cmd_values):
                 fmt_str = spec[0]
                 val = cmd_values[i]
+
+                # Power values need ≥3 decimal places for lossless round-trip through the
+                # format→parse→re-encode pipeline.  {:.1f} loses ~39% of uint14 values.
+                # (see docs/plans/RuidaDriver-checksum-plan.md)
+                if spec[1] == 'power':
+                    fmt_str = fmt_str.replace('{:.1f}', '{:.3f}')
+
                 # TBD-style debug formats (contain 'TBD' and '{' placeholders)
                 # produce complex display text that can't be decoded back.
                 # Emit the raw value as a plain integer instead.

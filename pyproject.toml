@@ -19,6 +19,7 @@ rpa-script = "rpascript.cli:main"
 
 [project.optional-dependencies]
 plotting = ["bokeh"]
+serial = ["pyserial"]
 
 [tool.setuptools]
 py-modules = ["rpa"]

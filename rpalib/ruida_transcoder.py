@@ -287,6 +287,23 @@ class RdDecoder():
             self.accumulating = False
             return self._rd_decoder(self.data)
 
+    def decode_address(self, reply: bytearray) -> int:
+        """Extract the memory address from a 9-byte GET_SETTING reply.
+
+        Reply format: [0xDA, 0x01, msb, lsb, d0..d4]
+        Returns address using (msb << 8) | lsb, matching rd_mt() convention.
+        """
+        return (reply[2] << 8) | reply[3]
+
+    def decode_value(self, reply: bytearray) -> int:
+        """Extract the unsigned data value from a 9-byte GET_SETTING reply.
+
+        Reply format: [0xDA, 0x01, msb, lsb, d0..d4]
+        Extracts bytes 4..8 and decodes as 5-byte unsigned 35-bit integer
+        using the same convention as RdDecoder.to_uint().
+        """
+        return self.to_uint(reply[4:9], n_bytes=5)
+
 
 class RdEncoder():
     '''Encode Python values into Ruida protocol binary data.
