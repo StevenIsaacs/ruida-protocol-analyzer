@@ -35,7 +35,7 @@ class RdDecoder():
                 The result of the rd_checksum decoder. This is reset by the
                 parser.
     '''
-    def __init__(self, output: RpaEmitter):
+    def __init__(self, output: RpaEmitter | None = None):
         self.out = output
         self.accumulating = False
         self.format: str = ''

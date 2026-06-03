@@ -8,7 +8,11 @@ in real-time via the AppAdapter → RdDriver → RdSession stack.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
+
+import ast
+import functools
+import inspect
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -39,11 +43,7 @@ class RdsAdapter(App):
     SUB_TITLE = "Interactive Ruida Controller Interface"
 
     BINDINGS = [
-        ("ctrl+q", "quit", "Quit"),
-        ("ctrl+l", "load_script", "Load"),
-        ("ctrl+e", "execute_script", "Exec"),
-        ("f1", "show_help", "Help"),
-        ("ctrl+c", "clear_log", "Clear"),
+        ("ctrl+c", "quit", "Quit"),
     ]
 
     CSS = """
@@ -94,7 +94,14 @@ class RdsAdapter(App):
         self._event_count = 0
         self._reply_count = 0
         self._script_count = 0
-        self._loaded_script: list[str] | None = None
+        self._introspect_map: dict[str, Callable[[], Any]] = {
+            'session':   lambda: self._session,
+            'transport': lambda: self._session.transport if self._session else None,
+            'driver':    lambda: self._driver,
+            'status':    lambda: self._session.status if self._session else None,
+            'parser':    lambda: self._parser,
+            'decoder':   lambda: self._decoder,
+        }
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -124,6 +131,7 @@ class RdsAdapter(App):
         self._log_widget.write("Type 'session start udp=<IP>' to connect to a controller.")
         self._log_widget.write("Type 'session end' to disconnect.")
         self._log_widget.write("Type any rpascript command between session start/end.")
+        self._log_widget.write("Type !<object> to inspect objects (e.g., !session, !transport._package)")
         self._log_widget.write("")
         self._update_counters()
 
@@ -137,6 +145,12 @@ class RdsAdapter(App):
         line = event.input.value.strip()
         event.input.clear()
         if not line:
+            return
+
+        # Introspection mode: !<path> [args...]
+        if line.startswith('!'):
+            result = self._handle_introspect(line[1:].strip())
+            self._log_info(result)
             return
 
         self._log_script(line)
@@ -303,47 +317,158 @@ class RdsAdapter(App):
         self.call_from_thread(_run)
 
     # ------------------------------------------------------------------
-    # Actions (key bindings)
+    # Introspection (!) subsystem
     # ------------------------------------------------------------------
 
-    def action_load_script(self) -> None:
-        """Load a .rds script file (stub — full FilePicker in future version)."""
-        self._log_info("Load script: not implemented in this version (planned for enhancement)")
+    def _resolve_path(self, path: str) -> tuple[Any, str | None]:
+        """Resolve a dotted path against the introspection object map.
 
-    def action_execute_script(self) -> None:
-        """Execute the loaded script against the active session."""
-        if self._loaded_script is None:
-            self._log_error("No script loaded. Use Ctrl+L to load one first.")
-            return
-        if self._driver is None:
-            self._log_error("No active session. Use 'session start udp=...' first.")
-            return
-        self._log_info(f"Executing script ({len(self._loaded_script)} lines)...")
+        Returns (resolved_object, error_message).
+        On success, error_message is None.
+        On failure, resolved_object is None and error_message describes the issue.
+        """
+        # Handle 'self.' prefix for RdsAdapter itself
+        if path.startswith('self.'):
+            obj = self
+            remaining = path[5:]
+        elif path == 'self':
+            return (self, None)
+        else:
+            # Split off the root object name
+            parts = path.split('.', 1)
+            root_name = parts[0]
+            try:
+                obj = self._introspect_map[root_name]()
+            except KeyError:
+                known = ', '.join(sorted(self._introspect_map.keys()))
+                return (None, f"Unknown object: {root_name}. Known: {known}")
+            remaining = parts[1] if len(parts) > 1 else ''
+
+        # Walk the attribute chain
+        if remaining:
+            try:
+                obj = functools.reduce(getattr, remaining.split('.'), obj)
+            except AttributeError as e:
+                return (None, f"No such attribute: {path} ({e})")
+
+        return (obj, None)
+
+    def _handle_introspect(self, expr: str) -> str:
+        """Handle a !-prefixed introspection expression.
+
+        No parentheses → variable view (repr).
+        With parentheses → method call with args, or signature display if no args.
+        """
+        expr = expr.strip()
+        if not expr:
+            return "Usage: !<object>[.<attribute>] [args...]"
+
+        # Split on first '(' to detect method call
+        paren_idx = expr.find('(')
+        if paren_idx == -1:
+            # No parens: split on space for potential args
+            parts = expr.split(None, 1)
+            path = parts[0]
+            args_raw = parts[1] if len(parts) > 1 else ''
+
+            obj, err = self._resolve_path(path)
+            if err:
+                return err
+
+            if args_raw:
+                # Space-separated args → call the method
+                args = self._parse_introspect_args(args_raw)
+                try:
+                    result = obj(*args)
+                    return repr(result)
+                except TypeError as e:
+                    return f"TypeError: {e}"
+                except Exception as e:
+                    return f"Error calling {path}: {type(e).__name__}: {e}"
+
+            # No args → show signature for callables, repr for variables
+            if callable(obj):
+                return self._format_signature(obj)
+            return repr(obj)
+
+        # Method call with parens
+        path = expr[:paren_idx].strip()
+        args_part = expr[paren_idx+1:]
+
+        # Find matching close paren
+        if not args_part.endswith(')'):
+            return "Syntax error: unclosed parenthesis"
+        args_str = args_part[:-1].strip()
+
+        obj, err = self._resolve_path(path)
+        if err:
+            return err
+
+        if not callable(obj):
+            return f"{path} is not callable (type: {type(obj).__name__})"
+
+        if not args_str:
+            # No arguments — show signature
+            return self._format_signature(obj)
+
+        # Parse arguments
+        args = self._parse_introspect_args(args_str)
+
         try:
-            self._driver.run(self._loaded_script)
-            self._script_count += len(self._loaded_script)
-            self._update_counters()
-        except RuntimeError as e:
-            self._log_error(str(e))
+            result = obj(*args)
+            return repr(result)
+        except TypeError as e:
+            return f"TypeError: {e}"
+        except Exception as e:
+            return f"Error calling {path}: {type(e).__name__}: {e}"
 
-    def action_show_help(self) -> None:
-        """Show help information in the log area."""
-        self._log_widget.write("")
-        self._log_widget.write("[bold]Ruida Script TUI Help[/bold]")
-        self._log_widget.write("  session start udp=<IP>  — Connect to controller via UDP")
-        self._log_widget.write("  session start usb=<dev> — Connect via USB")
-        self._log_widget.write("  session end             — Disconnect from controller")
-        self._log_widget.write("  <rpascript command>     — Execute any rpascript command")
-        self._log_widget.write("  Ctrl+Q  Quit the application")
-        self._log_widget.write("  Ctrl+L  Load a .rds script file")
-        self._log_widget.write("  Ctrl+E  Execute the loaded script")
-        self._log_widget.write("  F1      Show this help information")
-        self._log_widget.write("  Ctrl+C  Clear the log area")
-        self._log_widget.write("")
+    def _format_signature(self, obj: Any) -> str:
+        """Format an object's signature for display."""
+        try:
+            sig = inspect.signature(obj)
+            return f"{getattr(obj, '__name__', type(obj).__name__)}{sig}"
+        except (ValueError, TypeError):
+            return repr(obj)
 
-    def action_clear_log(self) -> None:
-        """Clear the main log area."""
-        self._log_widget.clear()
+    def _parse_introspect_args(self, args_str: str) -> list[Any]:
+        """Parse a comma-separated argument string into Python values.
+
+        Tries ast.literal_eval first. Falls back to hex→bytearray conversion
+        for hex-formatted strings starting with 0x.
+        """
+        if not args_str:
+            return []
+
+        result = []
+        for arg in args_str.split(','):
+            arg = arg.strip()
+            if not arg:
+                continue
+
+            # Try ast.literal_eval first
+            try:
+                val = ast.literal_eval(arg)
+                result.append(val)
+                continue
+            except (ValueError, SyntaxError):
+                pass
+
+            # Try hex→bytearray conversion (starts with 0x, contains only hex chars)
+            clean = arg[2:] if arg.startswith('0x') else arg
+            if not clean:
+                continue
+            try:
+                if all(c in '0123456789abcdefABCDEF' for c in clean) and len(clean) % 2 == 0:
+                    val = bytearray.fromhex(clean)
+                    result.append(val)
+                    continue
+            except ValueError:
+                pass
+
+            # Fallback: treat as string
+            result.append(arg)
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -391,7 +516,7 @@ class RdsAdapter(App):
         """Clean up active session when TUI exits.
 
         Ensures the driver runner is stopped and the session is disconnected
-        when the user quits (Ctrl+Q) without explicitly running 'session end'.
+        when the user quits (Ctrl+C) without explicitly running 'session end'.
         """
         if self._driver is not None:
             self._driver.stop_script_runner()
@@ -409,7 +534,7 @@ def run_tui() -> None:
     """Run the RdsAdapter TUI application.
 
     Creates an RdsAdapter instance and enters the Textual event loop.
-    Blocks until the user quits (Ctrl+Q).
+    Blocks until the user quits (Ctrl+C).
     """
     app = RdsAdapter()
     app.run()
