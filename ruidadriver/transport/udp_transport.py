@@ -13,8 +13,23 @@ class UdpTransport(Transport):
         self._port: Optional[int] = None
 
     def open(self, host: str, port: int = 50200, **kwargs) -> bool:
+        # Determine local IP that routes to the controller
+        # (UDP connect() sets the route without sending data)
+        temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            temp_sock.connect((host, port))
+            local_ip = temp_sock.getsockname()[0]
+        finally:
+            temp_sock.close()
+
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.setblocking(False)
+        try:
+            self._socket.bind((local_ip, 40200))
+        except OSError:
+            self._socket.close()
+            self._socket = None
+            return False
         self._host = host
         self._port = port
         return True

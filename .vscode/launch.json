@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "Python Debugger: rpa.py",
             "type": "debugpy",
             "request": "launch",
             "program": "rpa.py",
@@ -20,6 +20,17 @@
                 "-o",
                 "discovery/selected.txt",
                 "discovery/selected.log"
+            ]
+        },
+        {
+            "name": "Python Debugger: rpa-script (TUI)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": ".venv/bin/rpa-script",
+            "console": "externalTerminal",
+            // "args": "${command:pickArgs}"
+            "args": [
+                "--tui"
             ]
         }
     ]

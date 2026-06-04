@@ -8,10 +8,9 @@ RdSession provides the top-level session API for upper layers:
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 from ruidadriver.rd_transport import RdTransport
-from ruidadriver.rd_status import RdStatus, RdStatusEvent
+from ruidadriver.rd_status import RdStatus
 
 
 class RdSession:
@@ -34,52 +33,35 @@ class RdSession:
 
         # Synchronization
         self._lock = threading.Lock()
-        self._connected_event = threading.Event()
 
     def connect(self, timeout: int = 1000) -> bool:
         """Open transport and start status monitoring.
 
-        Opens the transport, starts RdStatus, then waits for CONNECTED event
-        within the given timeout. If already connected, returns True (idempotent).
+        Opens the transport, starts RdStatus (async — CONNECTED event
+        fires asynchronously when the controller confirms). Returns True
+        if the transport was opened and status monitor started.
+
+        The timeout parameter is accepted for API compatibility but not used
+        for blocking — the status monitor handles connection health checking
+        asynchronously via its ping mechanism.
 
         Args:
-            timeout: ms to wait for CONNECTED event (default 1000).
+            timeout: ms (accepted for API compatibility, no longer blocking).
 
         Returns:
-            True if connected successfully, False on timeout/failure.
+            True if transport opened and status monitor started.
         """
         if self.is_connected:
             return True
 
-        self._connected_event.clear()
+        # Open transport
+        if not self.transport.open():
+            return False
 
-        # Register temporary listener to catch CONNECTED
-        def _on_status(event: RdStatusEvent) -> None:
-            if event is RdStatusEvent.CONNECTED:
-                self._connected_event.set()
-            elif event is RdStatusEvent.TERMINATED:
-                self._connected_event.set()  # Unblock on termination too
+        # Start status monitor (fires CONNECTED asynchronously)
+        self.status.start()
 
-        self.status.register_status_listener(_on_status)
-
-        try:
-            # Open transport
-            if not self.transport.open():
-                return False
-
-            # Start status monitor
-            self.status.start()
-
-            # Wait for CONNECTED event
-            if not self._connected_event.wait(timeout / 1000.0):
-                # Timeout — clean up and return False
-                self.disconnect()
-                return False
-
-            return True
-        finally:
-            # Remove the temporary listener using public API
-            self.status.unregister_status_listener(_on_status)
+        return True
 
     def disconnect(self) -> None:
         """Stop status monitoring and close transport. Idempotent."""

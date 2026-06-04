@@ -60,7 +60,7 @@ class RdStatus:
         self,
         transport: RdTransport,
         ping_cmd: Optional[bytearray] = None,
-        ping_interval: int = 5000,
+        ping_interval: int = 1000,
         query_cmds: Optional[list[bytearray]] = None,
         connect_interval: int = 1000,
         query_interval: int = 1000,
@@ -87,6 +87,9 @@ class RdStatus:
         self._shutdown: threading.Event = threading.Event()
         self._block: threading.Event = threading.Event()  # set()=unblocked, clear()=blocked
         self._block.set()  # Start unblocked
+
+        # First ping optimization — send immediately on fresh connection
+        self._first_ping = True
 
         # Transport event mechanism
         self._transport_event: threading.Event = threading.Event()
@@ -362,7 +365,15 @@ class RdStatus:
         Checks _shutdown before and after _wait_for_event.
         On DROPPED/CLOSED → CONNECTING.
         On timeout (full interval) → SEND_PING.
+
+        First ping optimization: send immediately on fresh connection
+        instead of waiting for the full interval.
         """
+        # Send first ping immediately for fast initial connection
+        if self._first_ping:
+            self._first_ping = False
+            return 'SEND_PING'
+
         if self._shutdown.is_set():
             return 'WAIT_TO_PING'
         event = self._wait_for_event(

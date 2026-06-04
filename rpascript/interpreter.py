@@ -564,13 +564,17 @@ class ScriptInterpreter:
                     udp_host=params.get('udp', ''),
                     usb_device=params.get('usb', ''),
                 )
-                if not session.connect(timeout=5000):
+                # Open transport (fast, non-blocking for UDP)
+                if not session.transport.open():
                     self._out.write(
-                        f"# ERROR: Failed to connect to Ruida controller "
+                        f"# ERROR: Failed to open transport to Ruida controller "
                         f"(udp={params.get('udp', '')}, usb={params.get('usb', '')})\n"
                     )
                     return
                 driver = RdDriver(session)
+                # start_script_runner configures ping/query, starts the runner thread,
+                # registers reply listeners, and starts the status monitor — in that
+                # order — so replies arrive to a fully-initialized driver.
                 driver.start_script_runner()
 
             elif cmd['type'] == 'SESSION_END':

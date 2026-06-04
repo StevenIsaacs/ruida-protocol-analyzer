@@ -147,36 +147,42 @@ class RdDriver:
 
         Configures RdStatus with ping/query commands, then starts the status monitor.
         Idempotent — no-op if runner is already alive.
+
+        Order is critical:
+        1. Configure ping/query commands (harmless before status starts)
+        2. Start the runner thread (so self.run() is safe when listeners fire)
+        3. Register session listeners (runner is already running)
+        4. Start the status monitor LAST (replies arrive to a fully-initialized driver)
         """
         if self._runner_thread and self._runner_thread.is_alive():
             return
 
         self._shutdown.clear()
 
-        # Register session listeners
-        self._session.status.register_status_listener(self._on_status_event)
-        self._session.transport.register_reply_listener(self._on_reply)
-
-        # Configure RdStatus with ping/query commands
+        # 1. Configure RdStatus with ping/query commands (before starting anything)
         parser = ScriptParser()
 
-        # Interpret and configure ping command
         ping_parsed = parser.parse_lines(self._PING_SCRIPT)
         ping_binary = encode_command(ping_parsed[0], parser.mnemonic_map, parser.mt_map, RdEncoder())
         self._session.status.set_ping_command(ping_binary)
 
-        # Interpret and configure query commands
         query_parsed = parser.parse_lines(self._QUERY_SCRIPT)
         query_binary = [encode_command(cmd, parser.mnemonic_map, parser.mt_map, RdEncoder())
                         for cmd in query_parsed]
         self._session.status.set_query_commands(query_binary)
 
-        # Start the status monitor
-        self._session.status.start()
-
-        # Create and start runner thread
+        # 2. Start the runner thread BEFORE registering listeners,
+        #    so self.run() is safe as soon as any listener fires.
         self._runner_thread = threading.Thread(target=self._run_loop, daemon=True)
         self._runner_thread.start()
+
+        # 3. Register session listeners (runner is ready)
+        self._session.status.register_status_listener(self._on_status_event)
+        self._session.transport.register_reply_listener(self._on_reply)
+
+        # 4. Start the status monitor LAST — from this point, replies can arrive
+        #    and will be handled by a fully-initialized driver
+        self._session.status.start()
 
     def stop_script_runner(self) -> None:
         """Stop the background script runner thread and unregister session listeners.

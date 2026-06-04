@@ -13,10 +13,12 @@ from typing import Any, Callable
 import ast
 import functools
 import inspect
+import os
 
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.events import Key
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from rpascript.interpreter import ScriptParser, reconstruct_script_line
@@ -24,6 +26,10 @@ from rpalib.ruida_transcoder import RdDecoder
 from ruidadriver.ruida_driver import RdDriver
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
+
+from protocols.ruida.ruida_protocol import MT
+
+import asyncio
 
 
 class RdsAdapter(App):
@@ -45,6 +51,9 @@ class RdsAdapter(App):
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
     ]
+
+    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log')
+    _NORMAL_COMMANDS: tuple[str, ...] = ('session',)
 
     CSS = """
     #main-container {
@@ -69,6 +78,10 @@ class RdsAdapter(App):
         width: 1fr;
     }
 
+    #status-log, #reply-log {
+        text-style: dim;
+    }
+
     #status-log {
         height: 1fr;
         border-bottom: solid $surface;
@@ -79,29 +92,57 @@ class RdsAdapter(App):
         border-bottom: solid $surface;
     }
 
-    #counter-display {
-        height: 3;
+    #status-bar {
+        dock: bottom;
+        height: 1;
         padding: 0 1;
+        background: $surface;
+        text-style: dim;
+    }
+
+    #suggest-popup {
+        height: auto;
+        max-height: 10;
+        border-top: solid $primary;
+        background: $panel;
+        overflow-y: auto;
     }
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._session: RdSession | None = None
-        self._driver: RdDriver | None = None
+        self._ruida_driver: RdDriver | None = None
         self._parser = ScriptParser()
         self._decoder = RdDecoder()
         self._event_count = 0
         self._reply_count = 0
         self._script_count = 0
+        self._logging_enabled: bool = True
         self._introspect_map: dict[str, Callable[[], Any]] = {
             'session':   lambda: self._session,
             'transport': lambda: self._session.transport if self._session else None,
-            'driver':    lambda: self._driver,
+            'driver':    lambda: self._ruida_driver,
             'status':    lambda: self._session.status if self._session else None,
             'parser':    lambda: self._parser,
             'decoder':   lambda: self._decoder,
         }
+        self._loaded_script: list[str] = []
+        self._suggest_popup = RichLog(
+            id="suggest-popup", highlight=True, markup=True, max_lines=10
+        )
+        self._cmd_descriptions: dict[str, str] = {
+            'help': 'Show help text',
+            'load': 'Load a script file from disk',
+            'exec': 'Execute the loaded script',
+            'clear': 'Clear all log panels and loaded script',
+            'quit': 'Exit the TUI',
+            'log': 'Toggle display of status/reply messages (on|off|status)',
+            'session': 'Start or end a controller session (start udp=<IP> usb=<device> / end)',
+        }
+        self._command_history: list[str] = []
+        self._history_index: int | None = None
+        self._position: dict[str, float | None] = {'X': None, 'Y': None, 'Z': None, 'U': None}
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -117,23 +158,15 @@ class RdsAdapter(App):
             with Vertical(id="side-panel"):
                 yield RichLog(id="status-log", highlight=True, markup=True, max_lines=50)
                 yield RichLog(id="reply-log", highlight=True, markup=True, max_lines=50)
-                yield Static(id="counter-display")
-        yield Footer()
+        yield Static(id="status-bar")
 
     def on_mount(self) -> None:
         """Widgets are ready — cache references and log startup message."""
         self._log_widget = self.query_one("#log-area", RichLog)
         self._status_log = self.query_one("#status-log", RichLog)
         self._reply_log = self.query_one("#reply-log", RichLog)
-        self._counter_widget = self.query_one("#counter-display", Static)
-
-        self._log_widget.write("[bold green]Ruida Script TUI[/bold green]")
-        self._log_widget.write("Type 'session start udp=<IP>' to connect to a controller.")
-        self._log_widget.write("Type 'session end' to disconnect.")
-        self._log_widget.write("Type any rpascript command between session start/end.")
-        self._log_widget.write("Type !<object> to inspect objects (e.g., !session, !transport._package)")
-        self._log_widget.write("")
-        self._update_counters()
+        self._status_bar = self.query_one("#status-bar", Static)
+        self._update_status_bar()
 
     # ------------------------------------------------------------------
     # Command input handling
@@ -147,35 +180,263 @@ class RdsAdapter(App):
         if not line:
             return
 
+        # Add to command history (skip consecutive duplicates)
+        if self._command_history and self._command_history[-1] == line:
+            pass  # consecutive duplicate, skip
+        else:
+            self._command_history.append(line)
+            if len(self._command_history) > 500:
+                self._command_history.pop(0)
+        self._history_index = None  # reset browsing position
+
+        if self._suggest_popup.is_attached:
+            self._suggest_popup.remove()
+
         # Introspection mode: !<path> [args...]
         if line.startswith('!'):
             result = self._handle_introspect(line[1:].strip())
             self._log_info(result)
             return
-
+        # Help shortcut: ? as first character
+        if line == '?':
+            self._log_info(self._handle_help())
+            return
+        # Slash-prefixed TUI commands
+        if line.startswith('/'):
+            self._handle_slash_command(line)
+            return
         self._log_script(line)
 
-        # Parse the line as a single rpascript command
-        parsed = self._parser.parse_lines([line])
-        if not parsed:
+        try:
+            # Parse the line as a single rpascript command
+            parsed = self._parser.parse_lines([line])
+            if not parsed:
+                return
+
+            cmd = parsed[0]
+            self._script_count += 1
+
+            if cmd['type'] == 'SESSION_START':
+                await self._start_session(**cmd['params'])
+            elif cmd['type'] == 'SESSION_END':
+                await self._stop_session()
+            else:
+                if self._ruida_driver is None:
+                    self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
+                    return
+                try:
+                    reconstructed = reconstruct_script_line(cmd)
+                    self._ruida_driver.run([reconstructed])
+                except RuntimeError as e:
+                    self._log_error(str(e))
+        except Exception as e:
+            self._log_error(f"{type(e).__name__}: {e}")
+
+    @on(Input.Changed, "#command-input")
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Show/filter command popup as user types."""
+        value = event.value
+
+        # Slash commands
+        if value.startswith('/'):
+            prefix = value[1:].strip()
+            if not prefix:
+                matches = list(self._SLASH_COMMANDS)
+            else:
+                matches = [c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())]
+
+            if not self._suggest_popup.is_attached:
+                self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+            self._suggest_popup.clear()
+            if matches:
+                self._suggest_popup.write("[bold]Commands:[/bold]")
+                for cmd in matches:
+                    self._suggest_popup.write(f"  /{cmd:<12} {self._cmd_descriptions[cmd]}")
+            else:
+                self._suggest_popup.write("[dim]No matching commands[/dim]")
             return
 
-        cmd = parsed[0]
-        self._script_count += 1
+        # Normal commands (not introspection, not help query)
+        if value and not value.startswith(('!', '?')):
+            clean = value.strip().lower()
 
-        if cmd['type'] == 'SESSION_START':
-            await self._start_session(**cmd['params'])
-        elif cmd['type'] == 'SESSION_END':
-            await self._stop_session()
-        else:
-            if self._driver is None:
-                self._log_error("No active session. Use 'session start udp=...' first.")
+            if ' ' in clean:
+                # Space detected — lock to the matched command root, no more filtering
+                root_cmd = clean.split(' ', 1)[0]
+                if root_cmd in self._NORMAL_COMMANDS:
+                    matches = [root_cmd]
+                else:
+                    matches = []
+            else:
+                # No space — filter by prefix match on the first word
+                matches = [c for c in self._NORMAL_COMMANDS if c.startswith(clean)]
+
+            if matches:
+                if not self._suggest_popup.is_attached:
+                    self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+                self._suggest_popup.clear()
+                self._suggest_popup.write("[bold]Commands:[/bold]")
+                for cmd in matches:
+                    self._suggest_popup.write(f"  {cmd:<12} {self._cmd_descriptions[cmd]}")
                 return
-            try:
-                reconstructed = reconstruct_script_line(cmd)
-                self._driver.run([reconstructed])
-            except RuntimeError as e:
-                self._log_error(str(e))
+
+        # No popup needed — remove if attached
+        if self._suggest_popup.is_attached:
+            self._suggest_popup.remove()
+
+    # ------------------------------------------------------------------
+    # Command history (Up/Down navigation)
+    # ------------------------------------------------------------------
+
+    @on(Key)
+    def on_command_key(self, event: Key) -> None:
+        """Navigate command history with Up/Down arrow keys.
+
+        Only responds when the command-input widget is focused.
+        """
+        inp = self.query_one("#command-input", Input)
+        if not inp.has_focus:
+            return
+
+        if event.key == "up":
+            event.stop()
+            if not self._command_history:
+                return
+            if self._history_index is None:
+                self._history_index = len(self._command_history) - 1
+            elif self._history_index > 0:
+                self._history_index -= 1
+            else:
+                return  # already at oldest
+            cmd = self._command_history[self._history_index]
+            inp.value = cmd
+            inp.cursor_position = len(cmd)
+
+        elif event.key == "down":
+            event.stop()
+            if self._history_index is None:
+                return  # not browsing history
+            if self._history_index < len(self._command_history) - 1:
+                self._history_index += 1
+                cmd = self._command_history[self._history_index]
+            else:
+                # At newest entry -> clear input
+                self._history_index = None
+                cmd = ""
+            inp.value = cmd
+            inp.cursor_position = len(cmd)
+
+    # ------------------------------------------------------------------
+    # Slash-command handlers
+    # ------------------------------------------------------------------
+
+    def _handle_help(self) -> str:
+        """Return formatted help text covering all command categories."""
+        cmd_list = "\n".join(f"  /{cmd:<12} {self._cmd_descriptions[cmd]}" for cmd in self._SLASH_COMMANDS)
+        return (
+            "[bold]TUI Commands[/bold] (prefix with /):\n"
+            f"{cmd_list}\n"
+            "  ?                 Alias for /help\n"
+            "\n"
+            "[bold]Introspection[/bold] (prefix with !):\n"
+            "  !<object>[.<attr>] [args...]  Inspect or call objects\n"
+            "  Available: session, transport, driver, status, parser, decoder\n"
+            "\n"
+            "[bold]Ruida Commands[/bold] (no prefix):\n"
+            "  session start udp=<IP> usb=<device>    Connect to a controller\n"
+            "  session end               Disconnect\n"
+            "  <rpascript command>       Send command to controller"
+        )
+
+    def _handle_slash_command(self, raw: str) -> None:
+        """Dispatch a /-prefixed TUI command to its handler."""
+        parts = raw[1:].split(None, 1)  # strip leading /
+        if not parts:
+            self._log_error("Empty command. Type /help or ? for available commands.")
+            return
+        cmd = parts[0].lower()
+        if cmd not in self._SLASH_COMMANDS:
+            self._log_error(f"Unknown TUI command: /{cmd}. Type /help or ? for available commands.")
+            return
+        args = parts[1] if len(parts) > 1 else ''
+        if cmd == 'help':
+            self._log_info(self._handle_help())
+        elif cmd == 'load':
+            self._cmd_load(args)
+        elif cmd == 'exec':
+            self._cmd_exec()
+        elif cmd == 'clear':
+            self._cmd_clear()
+        elif cmd == 'quit':
+            self._cmd_quit()
+        elif cmd == 'log':
+            self._cmd_log(args)
+
+    def _cmd_load(self, path: str) -> None:
+        """Load a script file into memory."""
+        if not path:
+            self._log_error("Usage: /load <path>")
+            return
+        path = os.path.expanduser(path)
+        try:
+            with open(path, 'r') as f:
+                content = f.read()
+            lines = [l for l in content.splitlines() if l.strip()]
+            if not lines:
+                self._log_error(f"File is empty or contains only blank lines: {path}")
+                return
+            self._loaded_script = lines
+            self._log_info(f"Loaded {len(lines)} lines from {path}")
+        except FileNotFoundError:
+            self._log_error(f"File not found: {path}")
+        except PermissionError:
+            self._log_error(f"Permission denied: {path}")
+        except UnicodeDecodeError:
+            self._log_error(f"File is not a valid text file: {path}")
+        except Exception as e:
+            self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
+
+    def _cmd_exec(self) -> None:
+        """Execute the loaded script."""
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load <path> first.")
+            return
+        if self._ruida_driver is None:
+            self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
+            return
+        self._log_info(f"Executing {len(self._loaded_script)} lines...")
+        self.run_script(self._loaded_script)
+
+    def _cmd_clear(self) -> None:
+        """Clear all log panels and loaded script."""
+        self._log_widget.clear()
+        self._status_log.clear()
+        self._reply_log.clear()
+        self._loaded_script = []
+        self._log_info("Logs cleared")
+
+    def _cmd_quit(self) -> None:
+        """Exit the TUI."""
+        self.exit()
+
+    def _cmd_log(self, args: str) -> None:
+        """Handle /log subcommands: on, off, status, or toggle."""
+        action = args.strip().lower()
+        if action in ('', 'toggle'):
+            self._logging_enabled = not self._logging_enabled
+            state = "ON" if self._logging_enabled else "OFF"
+            self._log_info(f"Logging is {state}")
+        elif action == 'on':
+            self._logging_enabled = True
+            self._log_info("Logging enabled")
+        elif action == 'off':
+            self._logging_enabled = False
+            self._log_info("Logging disabled (status/reply suppressed)")
+        elif action == 'status':
+            state = "ON" if self._logging_enabled else "OFF"
+            self._log_info(f"Logging is {state}")
+        else:
+            self._log_error("Usage: /log [on|off|status]")
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -184,14 +445,25 @@ class RdsAdapter(App):
     async def _start_session(self, udp: str = '', usb: str | None = None) -> None:
         """Connect to a Ruida controller and start the script runner.
 
-        Executes the blocking connect() call in a thread executor to avoid
-        freezing the TUI event loop.
+        Opens the transport, creates the driver, then starts the script runner
+        (which registers listeners, starts the runner thread, and starts the
+        status monitor). The status monitor is started LAST so that reply events
+        arrive to a fully-initialized driver with a running script runner.
         """
         if self._session is not None:
             self._log_error("Session already active. Use 'session end' first.")
             return
 
         usb_device = usb if usb else ''
+
+        loop = asyncio.get_running_loop()
+
+        if udp:
+            resolved = await loop.run_in_executor(None, _resolve_hostname, udp, 50200)
+            if resolved is None:
+                self._log_error(f"Unable to resolve '{udp}'. Check the address and try again.")
+                return
+            udp = resolved
 
         try:
             session = RdSession()
@@ -202,60 +474,61 @@ class RdsAdapter(App):
 
             self._log_info(f"Connecting (udp={udp}, usb={usb_device})...")
 
-            # connect() blocks — run in executor to avoid freezing TUI
-            success = await self.run_in_executor(
-                lambda: session.connect(timeout=5000)
-            )
-
-            if not success:
-                self._log_error("Connection failed: timeout (5s)")
-                session.disconnect()
+            # Open transport (fast, non-blocking for UDP)
+            if not session.transport.open():
+                self._log_error("Failed to open transport")
                 return
 
-            self._session = session
+            # Create driver and register TUI listeners
             driver = RdDriver(session)
-
-            # Register self as listeners for status events and reply data
             driver.register_status_listener(self.on_status_event)
             driver.register_reply_listener(self.on_reply_data)
 
+            # Start the script runner:
+            # 1. Configures ping/query commands on status monitor
+            # 2. Starts the runner thread (so self.run() is safe)
+            # 3. Registers internal reply listener on transport
+            # 4. Starts the status monitor LAST — replies arrive to a ready driver
             driver.start_script_runner()
-            self._driver = driver
+
+            self._session = session
+            self._ruida_driver = driver
 
             self._log_info("Session started successfully")
-            self._update_counters()
+            self._update_status_bar()
 
         except Exception as e:
             self._log_error(f"Failed to start session: {e}")
-            # Clean up on failure
+            if self._ruida_driver is not None:
+                self._ruida_driver.stop_script_runner()
+                self._ruida_driver = None
             if self._session is not None:
                 self._session.disconnect()
                 self._session = None
-            if self._driver is not None:
-                self._driver = None
 
     async def _stop_session(self) -> None:
         """Disconnect from the controller and clean up resources."""
-        if self._driver is None and self._session is None:
+        if self._ruida_driver is None and self._session is None:
             self._log_info("No active session.")
             return
 
         try:
-            if self._driver is not None:
-                self._driver.stop_script_runner()
-                self._driver = None
+            if self._ruida_driver is not None:
+                self._ruida_driver.stop_script_runner()
+                self._ruida_driver = None
 
             if self._session is not None:
-                await self.run_in_executor(lambda: self._session.disconnect())
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, lambda: self._session.disconnect())
                 self._session = None
 
             self._log_info("Session ended")
-            self._update_counters()
+            self._update_status_bar()
 
         except Exception as e:
             self._log_error(f"Error stopping session: {e}")
             self._session = None
-            self._driver = None
+            self._ruida_driver = None
 
     # ------------------------------------------------------------------
     # AppAdapter-compatible interface (called from driver background thread)
@@ -268,9 +541,10 @@ class RdsAdapter(App):
         event loop thread via call_from_thread for safe widget updates.
         """
         def _update() -> None:
-            self._status_log.write(f"[STATUS] {event.value}")
+            if self._logging_enabled:
+                self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
-            self._update_counters()
+            self._update_status_bar()
         self.call_from_thread(_update)
 
     def on_reply_data(self, replies: list[bytearray]) -> None:
@@ -278,15 +552,16 @@ class RdsAdapter(App):
 
         Called from the driver's background thread. Bridges to the asyncio
         event loop thread via call_from_thread for safe widget updates.
-        Decodes raw reply bytearrays to human-readable address:value format.
+        Decodes raw reply bytearrays to MEM_ mnemonics with decoded values.
         """
         def _update() -> None:
+            decoder = RdDecoder()
             for raw in replies:
-                addr = self._decoder.decode_address(raw)
-                val = self._decoder.decode_value(raw)
-                self._reply_log.write(f"[REPLY]  0x{addr:04X}: {val}")
-                self._reply_count += 1
-            self._update_counters()
+                formatted = self._format_reply(raw, decoder)
+                if self._logging_enabled:
+                    self._reply_log.write(formatted)
+            self._reply_count += len(replies)
+            self._update_status_bar()
         self.call_from_thread(_update)
 
     def on_error(self, message: str) -> None:
@@ -301,7 +576,7 @@ class RdsAdapter(App):
         Thread-safe: bridges to the asyncio thread via call_from_thread
         so this method can be called from any thread.
         """
-        if self._driver is None:
+        if self._ruida_driver is None:
             def _error() -> None:
                 self._log_error("No active session to run script.")
             self.call_from_thread(_error)
@@ -309,9 +584,9 @@ class RdsAdapter(App):
 
         def _run() -> None:
             try:
-                self._driver.run(script)
+                self._ruida_driver.run(script)
                 self._script_count += len(script)
-                self._update_counters()
+                self._update_status_bar()
             except RuntimeError as e:
                 self._log_error(str(e))
         self.call_from_thread(_run)
@@ -486,11 +761,106 @@ class RdsAdapter(App):
         """Log an error message in bold red."""
         self._log_widget.write(f"[bold red]ERROR: {message}[/bold red]")
 
-    def _update_counters(self) -> None:
-        """Update the counter display in the side panel."""
-        self._counter_widget.update(
-            f"Events: {self._event_count}  |  Replies: {self._reply_count}  |  Scripts: {self._script_count}"
-        )
+    def _format_reply(self, reply: bytearray, decoder: RdDecoder | None = None) -> str:
+        """Format a GET_SETTING reply bytearray as MEM_ mnemonic with decoded value.
+
+        Uses the MT memory table from ruida_protocol to look up the address
+        and decode the value using the appropriate type decoder.
+        Avoids the prime method of RdDecoder which requires a non-None output emitter.
+        """
+        addr = (reply[2] << 8) | reply[3]
+        msb = (addr >> 8) & 0xFF
+        lsb = addr & 0xFF
+
+        mt_entry = MT.get(msb, {}).get(lsb)
+        if mt_entry is not None:
+            mnemonic, spec = mt_entry[0], mt_entry[1]
+            if decoder is None:
+                d = RdDecoder()
+            else:
+                d = decoder
+
+            # Set up decoder fields manually (avoid prime() which calls self.out.verbose())
+            d.format = spec[0]
+            d.rd_type = spec[2]
+            d.data = bytearray([])
+            d.value = None
+            d.cstring = d.rd_type == 'cstring'
+
+            # Set _length for to_int/to_uint
+            from protocols.ruida.ruida_protocol import RD_TYPES, RDT_BYTES
+            d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
+
+            # Call the decoder method directly by name
+            decoder_method = getattr(d, f'rd_{spec[1]}')
+            data_bytes = reply[4:9]
+
+            try:
+                decoded = decoder_method(data_bytes)
+            except Exception:
+                decoded = None
+
+            # Track position values for the status bar
+            # Addresses follow rd_mt convention: (MT_msb << 8) | MT_lsb
+            # MEM_CURRENT_POSITION_X at MT[0x04][0x21] → 0x0421
+            # MEM_CURRENT_POSITION_Y at MT[0x04][0x31] → 0x0431
+            # MEM_CURRENT_POSITION_Z at MT[0x04][0x41] → 0x0441
+            # MEM_CURRENT_POSITION_U at MT[0x04][0x51] → 0x0451
+            if addr == 0x0421:
+                self._position['X'] = d.value
+            elif addr == 0x0431:
+                self._position['Y'] = d.value
+            elif addr == 0x0441:
+                self._position['Z'] = d.value
+            elif addr == 0x0451:
+                self._position['U'] = d.value
+
+            if decoded:
+                return f"{mnemonic}: {decoded}"
+
+        # Fallback: raw hex format
+        if decoder is None:
+            val = RdDecoder().decode_value(reply)
+        else:
+            val = decoder.decode_value(reply)
+        return f"0x{addr:04X}: {val}"
+
+    def _update_status_bar(self) -> None:
+        """Update the bottom status bar with connection info, counters, and position."""
+        # Connection info
+        if self._ruida_driver is not None and self._session is not None and self._session.is_connected:
+            conn = "[green]Connected[/green]"
+        elif self._session is not None:
+            conn = "[yellow]Connecting[/yellow]"
+        else:
+            conn = "[red]Disconnected[/red]"
+
+        # Transport info
+        if self._session is not None:
+            transport = self._session.transport
+            if transport.is_udp:
+                transport_info = transport._udp_host
+            elif transport.is_usb:
+                transport_info = transport._usb_device
+            else:
+                transport_info = ""
+        else:
+            transport_info = ""
+
+        # Counters
+        counters = f"Events: {self._event_count}  Replies: {self._reply_count}  Scripts: {self._script_count}"
+
+        # Position
+        pos_parts = []
+        for axis in ('X', 'Y', 'Z', 'U'):
+            v = self._position[axis]
+            if v is not None:
+                pos_parts.append(f"{axis}: [bold]{v:.3f}[/bold]")
+            else:
+                pos_parts.append(f"{axis}: —")
+        pos = "  ".join(pos_parts)
+
+        self._status_bar.update(f"{conn}  {transport_info}  |  {counters}  |  {pos}")
 
     # ------------------------------------------------------------------
     # AppAdapter-compatible no-ops (TUI creates sessions on demand)
@@ -518,9 +888,9 @@ class RdsAdapter(App):
         Ensures the driver runner is stopped and the session is disconnected
         when the user quits (Ctrl+C) without explicitly running 'session end'.
         """
-        if self._driver is not None:
-            self._driver.stop_script_runner()
-            self._driver = None
+        if self._ruida_driver is not None:
+            self._ruida_driver.stop_script_runner()
+            self._ruida_driver = None
         if self._session is not None:
             self._session.disconnect()
             self._session = None
@@ -529,6 +899,45 @@ class RdsAdapter(App):
 # ------------------------------------------------------------------
 # Module-level entry point
 # ------------------------------------------------------------------
+
+def _resolve_hostname(host: str, port: int = 50200) -> str | None:
+    """Resolve a hostname to an IP address. Returns IP string or None on failure.
+
+    Performs DNS resolution via socket.getaddrinfo in a thread pool with
+    a 5-second timeout. For valid IP addresses, returns the host unchanged.
+    """
+    import concurrent.futures
+    import ipaddress
+    import socket
+
+    if not host:
+        return ''  # Empty is OK (USB mode)
+
+    # Already an IP? No DNS needed.
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+
+    # Has spaces? Can't be a valid hostname.
+    if ' ' in host:
+        return None
+
+    # Resolve hostname via DNS with timeout
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(socket.getaddrinfo, host, port)
+        try:
+            result = future.result(timeout=5.0)
+            # Extract IP from getaddrinfo result
+            # Result format: [(family, type, proto, canonname, sockaddr), ...]
+            ip = result[0][4][0]
+            return ip
+        except concurrent.futures.TimeoutError:
+            return None
+        except socket.gaierror:
+            return None
+
 
 def run_tui() -> None:
     """Run the RdsAdapter TUI application.

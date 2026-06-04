@@ -202,7 +202,8 @@ class RdTransport:
                 if replies:
                     self._notify_reply_listeners(replies)
                     self._notify_status(TransportEvent.REPLY_FORWARDED)
-                state = 'IDLE'
+                    state = 'IDLE'
+                # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
 
     def _wait_for_data(self, timeout_ms: int) -> Optional[bytes]:
         """Poll transport read with per-call timeout. Returns None on timeout."""
@@ -219,11 +220,15 @@ class RdTransport:
         return None
 
     def _has_get_setting(self, packet: bytearray) -> bool:
-        """Check if packet contains a GET_SETTING command (0xDA 0x01 two-byte marker)."""
-        for i in range(len(packet) - 1):
-            if packet[i] == 0xDA and packet[i+1] == 0x01:
-                return True
-        return False
+        """Check if packet contains a GET_SETTING/memory command.
+
+        Unswizzles the payload (skipping the 2-byte UDP checksum if present)
+        and looks for the 0xDA memory command prefix byte.
+        """
+        offset = 2 if self._transport and self._transport.is_udp else 0
+        payload = packet[offset:]
+        unswizzled = self._swizzler.unswizzle(bytearray(payload))
+        return 0xDA in unswizzled
 
     def _notify_status(self, event: TransportEvent) -> None:
         for listener in list(self._status_listeners):
