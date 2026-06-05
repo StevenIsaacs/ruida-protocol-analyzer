@@ -46,7 +46,7 @@ Verify the complete L4–L7 stack of the Ruida Driver implementation, covering:
 These tests require no controller. They verify the core wire-format logic using known byte sequences.
 
 #### Test 2.1.1: `_package()` — Swizzle Output
-- [ ] Test 2.1.1
+- [x] Test 2.1.1
 
 | Field | Value |
 |-------|-------|
@@ -56,7 +56,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | The output matches the expected swizzled sequence. |
 
 #### Test 2.1.2: `_package()` — Checksum Computation (UDP)
-- [ ] Test 2.1.2
+- [x] Test 2.1.2
 
 | Field | Value |
 |-------|-------|
@@ -66,7 +66,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | The extracted checksum matches the expected value. |
 
 #### Test 2.1.3: `_package()` — No Checksum for USB
-- [ ] Test 2.1.3
+- [x] Test 2.1.3
 
 | Field | Value |
 |-------|-------|
@@ -76,7 +76,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Output length equals `len(swizzled(data))`. |
 
 #### Test 2.1.4: `_unpack_replies()` — 9-Byte Splitting and 0xDA Validation
-- [ ] Test 2.1.4
+- [x] Test 2.1.4
 
 | Field | Value |
 |-------|-------|
@@ -86,7 +86,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Two valid 9-byte replies returned. First byte of each is `0xDA`. |
 
 #### Test 2.1.5: `_unpack_replies()` — Invalid Header Truncation
-- [ ] Test 2.1.5
+- [x] Test 2.1.5
 
 | Field | Value |
 |-------|-------|
@@ -96,7 +96,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Error event fired. No valid replies returned (or only those before the corrupt chunk). |
 
 #### Test 2.1.6: `_unpack_replies()` — Unexpected Second Byte
-- [ ] Test 2.1.6
+- [x] Test 2.1.6
 
 | Field | Value |
 |-------|-------|
@@ -106,7 +106,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | `UNEXPECTED_REPLY` fired. Invalid chunk excluded. |
 
 #### Test 2.1.7: `_has_get_setting()` — GET_SETTING Detection
-- [ ] Test 2.1.7
+- [x] Test 2.1.7
 
 | Field | Value |
 |-------|-------|
@@ -120,7 +120,7 @@ These tests require no controller. They verify the core wire-format logic using 
 ### 2.2 Manual (With Controller) — Handshake Thread State Machine [ ]
 
 #### Test 2.2.1: Session Start → Handshake State Transitions
-- [ ] Test 2.2.1
+- [x] Test 2.2.1
 
 | Field | Value |
 |-------|-------|
@@ -130,7 +130,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Status log shows `PING_SENT` followed by `PING_REPLIED` within ~1s. No timeout errors. |
 
 #### Test 2.2.2: Ping Failure → DISCONNECTED → RECONNECTED
-- [ ] Test 2.2.2
+- [x] Test 2.2.2
 
 | Field | Value |
 |-------|-------|
@@ -140,7 +140,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Within ~5–15s of disconnection, `DISCONNECTED` appears in the log. Within ~5s of reconnection, `RECONNECTED` appears, followed by `PING_SENT` / `PING_REPLIED`. |
 
 #### Test 2.2.3: Transport Open → Capture Swizzled Packets
-- [ ] Test 2.2.3
+- [x] Test 2.2.3
 
 | Field | Value |
 |-------|-------|
@@ -156,7 +156,7 @@ These tests require no controller. They verify the core wire-format logic using 
 ### 3.1 Automated (Offline) — RdSession Lifecycle [ ]
 
 #### Test 3.1.1: `RdSession.connect()` with Mock Transport (Not Connected)
-- [ ] Test 3.1.1
+- [x] Test 3.1.1
 
 | Field | Value |
 |-------|-------|
@@ -166,7 +166,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Returns `False`. |
 
 #### Test 3.1.2: `RdSession.disconnect()` Idempotency
-- [ ] Test 3.1.2
+- [x] Test 3.1.2
 
 | Field | Value |
 |-------|-------|
@@ -176,7 +176,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | All calls return without error. No exceptions raised. |
 
 #### Test 3.1.3: `RdSession.is_connected` Property Logic
-- [ ] Test 3.1.3
+- [x] Test 3.1.3
 
 | Field | Value |
 |-------|-------|
@@ -190,7 +190,7 @@ These tests require no controller. They verify the core wire-format logic using 
 ### 3.2 Manual (With Controller) — Status Monitor State Machine [ ]
 
 #### Test 3.2.1: Status Monitor CONNECTED → PING Cycle
-- [ ] Test 3.2.1
+- [x] Test 3.2.1
 
 | Field | Value |
 |-------|-------|
@@ -200,7 +200,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Within seconds: `CONNECTED`, then periodic `PING_SENT` / `PING_REPLIED` pairs cycling every ~5s. No `DISCONNECTED` or timeout events. |
 
 #### Test 3.2.2: Query Cycle — QUERY_SENT / QUERY_RECEIVED
-- [ ] Test 3.2.2
+- [x] Test 3.2.2
 
 | Field | Value |
 |-------|-------|
@@ -210,7 +210,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | `QUERY_SENT` followed by `QUERY_RECEIVED` appears periodically (every ~1s by default). Within each cycle, `PING_SENT`/`PING_REPLIED` and `QUERY_SENT`/`QUERY_RECEIVED` alternate. |
 
 #### Test 3.2.3: Cable Disconnect → DISCONNECTED → RECONNECTED
-- [ ] Test 3.2.3
+- [x] Test 3.2.3
 
 | Field | Value |
 |-------|-------|
@@ -220,7 +220,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | `DISCONNECTED` emitted on transport drop; `RECONNECTED` emitted once session is re-established. |
 
 #### Test 3.2.4: Block / Unblock Mechanism
-- [ ] Test 3.2.4
+- [x] Test 3.2.4
 
 | Field | Value |
 |-------|-------|
@@ -230,7 +230,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | No status queries during block; queries resume after unblock. |
 
 #### Test 3.2.5: Status Panel — Address:Value Display
-- [ ] Test 3.2.5
+- [x] Test 3.2.5
 
 | Field | Value |
 |-------|-------|
@@ -246,7 +246,7 @@ These tests require no controller. They verify the core wire-format logic using 
 ### 4.1 Automated (Offline) — Script Parsing and Encoding [ ]
 
 #### Test 4.1.1: `ScriptParser.parse_lines()` — Known Good Input
-- [ ] Test 4.1.1
+- [x] Test 4.1.1
 
 | Field | Value |
 |-------|-------|
@@ -256,7 +256,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Each line is correctly parsed into a dict with keys: `type`, `mnemonic`, `params`, etc. Values match input. |
 
 #### Test 4.1.2: `encode_command()` — Expected Byte Sequences
-- [ ] Test 4.1.2
+- [x] Test 4.1.2
 
 | Field | Value |
 |-------|-------|
@@ -266,7 +266,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Encoded bytearray matches the expected sequence (e.g., `NOP` → known opcode bytes). |
 
 #### Test 4.1.3: File Checksum — Helper Functions
-- [ ] Test 4.1.3
+- [x] Test 4.1.3
 
 | Field | Value |
 |-------|-------|
@@ -276,7 +276,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | All helper functions return correct boolean values. |
 
 #### Test 4.1.4: `reconstruct_script_line()` — Round-Trip
-- [ ] Test 4.1.4
+- [x] Test 4.1.4
 
 | Field | Value |
 |-------|-------|
@@ -286,7 +286,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | The reconstructed line matches the original (modulo whitespace normalization). |
 
 #### Test 4.1.5: Duplicate `SET_FILE_SUM` Raises `ValueError`
-- [ ] Test 4.1.5
+- [x] Test 4.1.5
 
 | Field | Value |
 |-------|-------|
@@ -296,7 +296,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | `ValueError("Duplicate SET_FILE_SUM — at most one per file")`. |
 
 #### Test 4.1.6: Checksum Mismatch Raises `ValueError`
-- [ ] Test 4.1.6
+- [x] Test 4.1.6
 
 | Field | Value |
 |-------|-------|
@@ -310,7 +310,7 @@ These tests require no controller. They verify the core wire-format logic using 
 ### 4.2 Manual (With Controller) — Command Execution [ ]
 
 #### Test 4.2.1: `GET_SETTING MEM_CARD_ID` — Reply in TUI
-- [ ] Test 4.2.1
+- [x] Test 4.2.1
 
 | Field | Value |
 |-------|-------|
@@ -320,7 +320,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Reply panel shows an entry for address `0x057E` with a decoded integer value (the card ID). |
 
 #### Test 4.2.2: `GET_SETTING MEM_MACHINE_STATUS` — Status Bits
-- [ ] Test 4.2.2
+- [x] Test 4.2.2
 
 | Field | Value |
 |-------|-------|
@@ -330,7 +330,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Status log shows events for `MACHINE_STATUS_MOVING`, `MACHINE_STATUS_PART_END`, and/or `MACHINE_STATUS_JOB_RUNNING` reflecting the current machine state. Reply panel shows `0x0400: <decoded_value>`. |
 
 #### Test 4.2.3: Simple Move (Jog) Command
-- [ ] Test 4.2.3
+- [x] Test 4.2.3
 
 | Field | Value |
 |-------|-------|
@@ -340,7 +340,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | The machine moves to (10, 10) or as close as mechanically possible. No timeout or error events in the log. |
 
 #### Test 4.2.4: Queue Multiple Commands
-- [ ] Test 4.2.4
+- [x] Test 4.2.4
 
 | Field | Value |
 |-------|-------|

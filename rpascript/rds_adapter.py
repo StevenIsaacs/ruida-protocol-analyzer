@@ -392,7 +392,7 @@ class RdsAdapter(App):
         elif cmd == 'load':
             self._cmd_load(args)
         elif cmd == 'exec':
-            self._cmd_exec()
+            self._cmd_exec(args)
         elif cmd == 'clear':
             self._cmd_clear()
         elif cmd == 'quit':
@@ -424,16 +424,44 @@ class RdsAdapter(App):
         except Exception as e:
             self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
 
-    def _cmd_exec(self) -> None:
-        """Execute the loaded script."""
+    def _cmd_exec(self, args: str = '') -> None:
+        """Execute the loaded script.
+
+        If args is 'job', execute only commands from START_PROCESS to EOF.
+        Otherwise execute all loaded commands.
+        """
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
             return
         if self._ruida_driver is None:
             self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
             return
-        self._log_info(f"Executing {len(self._loaded_script)} lines...")
-        self.run_script(self._loaded_script)
+        action = args.strip().lower()
+        if action == 'job':
+            script = self._filter_job_commands(self._loaded_script)
+            if not script:
+                self._log_error("No job commands found (no START_PROCESS/EOF markers).")
+                return
+            self._log_info(f"Executing {len(script)} job commands...")
+            self.run_script(script)
+        else:
+            self._log_info(f"Executing {len(self._loaded_script)} lines...")
+            self.run_script(self._loaded_script)
+
+    @staticmethod
+    def _filter_job_commands(lines: list[str]) -> list[str]:
+        """Filter lines to only include commands between START_PROCESS and EOF (inclusive)."""
+        in_job = False
+        result: list[str] = []
+        for line in lines:
+            stripped = line.strip().upper()
+            if 'START_PROCESS' in stripped:
+                in_job = True
+            if in_job:
+                result.append(line)
+            if stripped == 'EOF' or stripped.startswith('EOF '):
+                break
+        return result
 
     def _cmd_clear(self) -> None:
         """Clear all log panels and loaded script."""
