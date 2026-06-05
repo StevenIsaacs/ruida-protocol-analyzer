@@ -473,10 +473,10 @@ class RdsAdapter(App):
     async def _start_session(self, udp: str = '', usb: str | None = None) -> None:
         """Connect to a Ruida controller and start the script runner.
 
-        Opens the transport, creates the driver, then starts the script runner
-        (which registers listeners, starts the runner thread, and starts the
-        status monitor). The status monitor is started LAST so that reply events
-        arrive to a fully-initialized driver with a running script runner.
+        Opens the transport (non-fatal if it fails — the status monitor retries
+        in background), creates the driver, then starts the script runner.
+        The status monitor is started LAST so that reply events arrive to a
+        fully-initialized driver with a running script runner.
         """
         if self._session is not None:
             self._log_error("Session already active. Use 'session end' first.")
@@ -513,10 +513,11 @@ class RdsAdapter(App):
 
             self._log_info(f"Connecting (udp={udp}, usb={usb_device})...")
 
-            # Open transport (fast, non-blocking for UDP)
+            # Open transport (fast, non-blocking for UDP).
+            # If it fails (e.g., USB cable disconnected), the status monitor's
+            # CONNECTING state will retry automatically.
             if not session.transport.open():
-                self._log_error("Failed to open transport")
-                return
+                self._log_info("Transport not available yet (retrying in background)")
 
             # Create driver and register TUI listeners
             driver = RdDriver(session)

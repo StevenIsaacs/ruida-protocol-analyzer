@@ -434,6 +434,7 @@ class RdStatus:
             if retries > 0:
                 continue  # Self-loop (re-enter PING_REPLY)
             else:
+                self._notify_listeners(RdStatusEvent.DISCONNECTED)
                 return ('RESYNC', retries)
         return ('CONNECTING', retries)
 
@@ -442,11 +443,11 @@ class RdStatus:
 
         Call transport.drain() to clear stale data.
         No notification — ping failed silently.
-        Transition to WAIT_TO_PING to restart ping cycle.
+        Transition to CONNECTING to enter reconnect cycle.
         """
         if not self._shutdown.is_set():
             self.transport.drain()
-        return 'WAIT_TO_PING'
+        return 'CONNECTING'
 
     def _run_wait_to_poll(self) -> str:
         """WAIT_TO_POLL state: wait for query interval and unblock before sending queries.
