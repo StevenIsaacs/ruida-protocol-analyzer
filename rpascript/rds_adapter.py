@@ -484,6 +484,17 @@ class RdsAdapter(App):
 
         usb_device = usb if usb else ''
 
+        # Check pyserial availability before attempting USB connection
+        if usb_device:
+            try:
+                import serial  # noqa: F401
+            except ImportError:
+                self._log_error(
+                    "pyserial is not installed. "
+                    "Install it with: pip install ruida-protocol-analyzer[serial]"
+                )
+                return
+
         loop = asyncio.get_running_loop()
 
         if udp:

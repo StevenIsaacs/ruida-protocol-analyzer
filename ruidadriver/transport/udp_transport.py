@@ -13,6 +13,9 @@ class UdpTransport(Transport):
         self._port: Optional[int] = None
 
     def open(self, host: str, port: int = 50200, **kwargs) -> bool:
+        # Close any stale socket before reopening
+        self.close()
+
         # Determine local IP that routes to the controller
         # (UDP connect() sets the route without sending data)
         temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

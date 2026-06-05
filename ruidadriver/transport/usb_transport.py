@@ -19,6 +19,9 @@ class UsbTransport(Transport):
         if serial is None:
             return False
 
+        # Close any stale connection before reopening
+        self.close()
+
         resolved = device
 
         # If vid:pid format, resolve via port enumeration

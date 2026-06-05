@@ -78,6 +78,8 @@ class RdTransport:
             self._transport = self._udp
         else:
             return False
+        # Clear stale send queue from any previous connection
+        self._send_queue = queue.Queue()
         self._start_handshake_thread()
         self._notify_status(TransportEvent.OPENED)
         return True
@@ -148,6 +150,10 @@ class RdTransport:
     # ---- Handshake Thread ----
 
     def _start_handshake_thread(self) -> None:
+        # Shut down existing thread before starting a new one
+        if self._handshake_thread is not None and self._handshake_thread.is_alive():
+            self._shutdown_event.set()
+            self._handshake_thread.join(timeout=2.0)
         self._shutdown_event.clear()
         self._handshake_thread = threading.Thread(
             target=self._handshake_loop, daemon=True
@@ -169,7 +175,12 @@ class RdTransport:
                     continue
 
             elif state == 'SEND':
-                self._transport.write(packet)
+                try:
+                    self._transport.write(packet)
+                except OSError:
+                    self._notify_status(TransportEvent.DROPPED)
+                    state = 'IDLE'
+                    continue
                 if self._transport.is_udp:
                     state = 'ACK_PENDING'
                 else:
@@ -206,14 +217,17 @@ class RdTransport:
                 # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
 
     def _wait_for_data(self, timeout_ms: int) -> Optional[bytes]:
-        """Poll transport read with per-call timeout. Returns None on timeout."""
+        """Poll transport read with per-call timeout. Returns None on timeout or read error."""
         if self._use_gross_timeout:
             timeout_ms = self._gross_timeout
         deadline = time.monotonic() + timeout_ms / 1000.0
         while time.monotonic() < deadline:
             if self._shutdown_event.is_set():
                 return None
-            data = self._transport.read(65536)
+            try:
+                data = self._transport.read(65536)
+            except OSError:
+                return None
             if data:
                 return data
             time.sleep(0.005)  # 5ms polling interval

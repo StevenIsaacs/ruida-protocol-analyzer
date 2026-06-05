@@ -338,23 +338,26 @@ class RdStatus:
                 state = 'CONNECTING'
 
     def _run_connecting(self) -> str:
-        """CONNECTING state: attempt to establish transport connection.
+        """CONNECTING state: establish transport connection.
 
-        If transport is already open → WAIT_TO_PING.
-        Otherwise call transport.open() then wait for OPENED event.
+        Always closes any stale connection and reopens fresh.
+        On success → WAIT_TO_PING with first_ping flag for immediate send.
         On timeout → retry (re-enter CONNECTING).
         """
         while not self._shutdown.is_set():
+            # If we had a previous connection, notify DISCONNECTED
             if self.transport.is_open:
-                return 'WAIT_TO_PING'
+                self._notify_listeners(RdStatusEvent.DISCONNECTED)
+            # Close stale connection and open fresh (RdTransport.open() calls close() internally)
             self.transport.open()
             event = self._wait_for_event(
                 self._connect_interval / 1000.0,
                 [TransportEvent.OPENED],
             )
             if self._shutdown.is_set():
-                return 'CONNECTING'  # Will exit at top of _monitor_loop
+                return 'CONNECTING'
             if event is TransportEvent.OPENED:
+                self._first_ping = True
                 return 'WAIT_TO_PING'
             # Timeout — retry
         return 'CONNECTING'
