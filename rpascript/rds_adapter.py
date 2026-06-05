@@ -142,7 +142,9 @@ class RdsAdapter(App):
         }
         self._command_history: list[str] = []
         self._history_index: int | None = None
-        self._position: dict[str, float | None] = {'X': None, 'Y': None, 'Z': None, 'U': None}
+        self._position: dict[str, float | str | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
+        self._session_disconnected: bool = False
+        self._last_cmd_was_get_setting: bool = False
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -207,6 +209,9 @@ class RdsAdapter(App):
             return
         self._log_script(line)
 
+        # Clear stale flag to prevent misattribution of QUERY replies
+        self._last_cmd_was_get_setting = False
+
         try:
             # Parse the line as a single rpascript command
             parsed = self._parser.parse_lines([line])
@@ -215,6 +220,19 @@ class RdsAdapter(App):
 
             cmd = parsed[0]
             self._script_count += 1
+
+            # Only track GET_SETTING commands with valid, resolvable addresses
+            # to prevent stale flag from showing QUERY replies as GET_SETTING results
+            if cmd.get('mnemonic', '') == 'GET_SETTING':
+                params = cmd.get('params', [])
+                if params and self._is_resolvable_address(params[0]):
+                    self._last_cmd_was_get_setting = True
+                else:
+                    reason = f"unknown address: {params[0]}" if params else "missing address"
+                    self._log_error(f"Invalid GET_SETTING: {reason}")
+                    return
+            else:
+                self._last_cmd_was_get_setting = False
 
             if cmd['type'] == 'SESSION_START':
                 await self._start_session(**cmd['params'])
@@ -544,6 +562,10 @@ class RdsAdapter(App):
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
+            if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
+                self._session_disconnected = True
+            elif event is RdStatusEvent.CONNECTED:
+                self._session_disconnected = False
             self._update_status_bar()
         self.call_from_thread(_update)
 
@@ -560,6 +582,11 @@ class RdsAdapter(App):
                 formatted = self._format_reply(raw, decoder)
                 if self._logging_enabled:
                     self._reply_log.write(formatted)
+                    # If the last command was a GET_SETTING, also show the
+                    # decoded reply in the main log pane
+                    if self._last_cmd_was_get_setting:
+                        self._log_widget.write(f"  ← {formatted}")
+                        self._last_cmd_was_get_setting = False  # reset — only log the first reply
             self._reply_count += len(replies)
             self._update_status_bar()
         self.call_from_thread(_update)
@@ -814,6 +841,15 @@ class RdsAdapter(App):
                 self._position['Z'] = d.value
             elif addr == 0x0451:
                 self._position['U'] = d.value
+            # MEM_CARD_ID at MT[0x05][0x7E] → 0x057E
+            elif addr == 0x057E:
+                self._position['Card'] = d.value
+            # MEM_BED_SIZE_X at MT[0x00][0x26] → 0x0026
+            elif addr == 0x0026:
+                self._position['BedX'] = d.value
+            # MEM_BED_SIZE_Y at MT[0x00][0x36] → 0x0036
+            elif addr == 0x0036:
+                self._position['BedY'] = d.value
 
             if decoded:
                 return f"{mnemonic}: {decoded}"
@@ -828,7 +864,9 @@ class RdsAdapter(App):
     def _update_status_bar(self) -> None:
         """Update the bottom status bar with connection info, counters, and position."""
         # Connection info
-        if self._ruida_driver is not None and self._session is not None and self._session.is_connected:
+        if self._session_disconnected:
+            conn = "[red]Disconnected[/red]"
+        elif self._ruida_driver is not None and self._session is not None and self._session.is_connected:
             conn = "[green]Connected[/green]"
         elif self._session is not None:
             conn = "[yellow]Connecting[/yellow]"
@@ -850,6 +888,25 @@ class RdsAdapter(App):
         # Counters
         counters = f"Events: {self._event_count}  Replies: {self._reply_count}  Scripts: {self._script_count}"
 
+        # Machine info (Card, BedX, BedY)
+        machine_parts = []
+        card = self._position.get('Card')
+        if card is not None:
+            machine_parts.append(f"Card: {card}")
+        else:
+            machine_parts.append("Card: —")
+        bedx = self._position.get('BedX')
+        if bedx is not None:
+            machine_parts.append(f"BedX: [bold]{bedx:.3f}[/bold]")
+        else:
+            machine_parts.append("BedX: —")
+        bedy = self._position.get('BedY')
+        if bedy is not None:
+            machine_parts.append(f"BedY: [bold]{bedy:.3f}[/bold]")
+        else:
+            machine_parts.append("BedY: —")
+        machine = "  ".join(machine_parts)
+
         # Position
         pos_parts = []
         for axis in ('X', 'Y', 'Z', 'U'):
@@ -860,7 +917,7 @@ class RdsAdapter(App):
                 pos_parts.append(f"{axis}: —")
         pos = "  ".join(pos_parts)
 
-        self._status_bar.update(f"{conn}  {transport_info}  |  {counters}  |  {pos}")
+        self._status_bar.update(f"{conn}  {transport_info}  |  {machine}  |  {counters}  |  {pos}")
 
     # ------------------------------------------------------------------
     # AppAdapter-compatible no-ops (TUI creates sessions on demand)
@@ -894,6 +951,20 @@ class RdsAdapter(App):
         if self._session is not None:
             self._session.disconnect()
             self._session = None
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _is_resolvable_address(self, token: str) -> bool:
+        """Check if a GET_SETTING address token can be resolved (MT mnemonic or numeric)."""
+        if token in self._parser._mt_map:
+            return True
+        try:
+            int(token, 0)
+            return True
+        except ValueError:
+            return False
 
 
 # ------------------------------------------------------------------

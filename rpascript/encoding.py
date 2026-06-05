@@ -249,7 +249,7 @@ def encode_mt_param(
     if value_token in mt_map:
         msb, lsb = mt_map[value_token]
     else:
-        return bytearray()
+        raise ValueError(f"Unknown memory address mnemonic: {value_token}")
 
     return bytearray([msb & 0x7F, lsb & 0x7F])
 

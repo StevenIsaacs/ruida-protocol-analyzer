@@ -199,7 +199,7 @@ class RdDecoder():
     def rd_m_stat(self, data: bytearray):
         _v = self.to_uint(data)
         _s = []
-        for _bit, _lbl in rdap.MST.values():
+        for _bit, _lbl in rdap.MST:
             if _v & _bit:
                 _s.append(_lbl)
         self.value = ', '.join(_s) if _s else f'0x{_v:08X}'
