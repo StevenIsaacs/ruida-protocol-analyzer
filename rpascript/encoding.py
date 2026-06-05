@@ -357,5 +357,11 @@ def parse_value(
     except ValueError:
         pass
 
+    # --- Rapid option table (ROT) resolution ---
+    if decoder_fn == 'rapid':
+        rev_rot = {v: k for k, v in rdap.ROT.items()}
+        if raw in rev_rot:
+            return rev_rot[raw]
+
     # --- Fallback: return as string ---
     return raw

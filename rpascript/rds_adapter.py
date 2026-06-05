@@ -22,7 +22,8 @@ from textual.events import Key
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from rpascript.interpreter import ScriptParser, reconstruct_script_line
-from rpalib.ruida_transcoder import RdDecoder
+from rpalib.ruida_transcoder import RdDecoder, RdEncoder
+from rpascript.encoding import encode_command
 from ruidadriver.ruida_driver import RdDriver
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
@@ -220,6 +221,15 @@ class RdsAdapter(App):
 
             cmd = parsed[0]
             self._script_count += 1
+
+            # Pre-encode regular commands to show wire-format bytes in the log
+            if cmd['type'] not in ('SESSION_START', 'SESSION_END'):
+                try:
+                    encoded = encode_command(cmd, self._parser.mnemonic_map, self._parser._mt_map, RdEncoder())
+                    hex_str = ' '.join(f'{b:02X}' for b in encoded)
+                    self._log_widget.write(f"[dim]         ⇒ {hex_str} ({len(encoded)} bytes)[/dim]")
+                except Exception as e:
+                    self._log_error(f"Encoding failed: {e}")
 
             # Only track GET_SETTING commands with valid, resolvable addresses
             # to prevent stale flag from showing QUERY replies as GET_SETTING results
