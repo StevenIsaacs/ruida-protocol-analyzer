@@ -31,6 +31,22 @@ from ruidadriver.rd_status import RdStatusEvent
 from protocols.ruida.ruida_protocol import MT
 
 import asyncio
+import re
+
+
+def _parse_timeout_spec(to_str: str) -> float:
+    """Parse a timeout spec like '5s' or '5000ms' into seconds (float).
+
+    Raises ValueError on invalid format.
+    """
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(ms|s)', to_str.strip())
+    if not match:
+        raise ValueError(f"Invalid timeout format: '{to_str}'. Use e.g., 5s, 500ms")
+    value = float(match.group(1))
+    unit = match.group(2)
+    if unit == 'ms':
+        return value / 1000.0
+    return value
 
 
 class RdsAdapter(App):
@@ -51,9 +67,10 @@ class RdsAdapter(App):
 
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
+        ("escape", "stop", "Stop"),
     ]
 
-    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log', 'head', 'tail', 'list', 'save')
+    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log', 'head', 'tail', 'list', 'save', 'stop')
     _NORMAL_COMMANDS: tuple[str, ...] = ('session',)
 
     CSS = """
@@ -131,6 +148,8 @@ class RdsAdapter(App):
         self._loaded_script: list[str] = []
         self._head_script: list[str] = []
         self._tail_script: list[str] = []
+        self._session_connected = asyncio.Event()
+        self._session_start_cancel = asyncio.Event()
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
         )
@@ -141,11 +160,12 @@ class RdsAdapter(App):
             'clear': 'Clear all log panels, loaded script, head, and tail',
             'quit': 'Exit the TUI',
             'log': 'Toggle display of status/reply messages (on|off|status)',
-            'session': 'Start or end a controller session (start udp=<IP> usb=<device> / end)',
+            'session': 'Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)',
             'head': 'Load a script file to prepend to job on execution',
             'tail': 'Load a script file to append to job on execution',
             'list': 'Display loaded script (/list script) or composed job (/list job)',
             'save': 'Save composed job to a file (/save job <path>)',
+            'stop': 'Stop the current operation (session connection or script execution). Also bound to Escape.',
         }
         self._command_history: list[str] = []
         self._history_index: int | None = None
@@ -231,7 +251,7 @@ class RdsAdapter(App):
             self._script_count += 1
 
             # Pre-encode regular commands to show wire-format bytes in the log
-            if cmd['type'] not in ('SESSION_START', 'SESSION_END'):
+            if cmd['type'] not in ('SESSION_START', 'SESSION_END', 'DELAY', 'WAIT'):
                 try:
                     encoded = encode_command(cmd, self._parser.mnemonic_map, self._parser._mt_map, RdEncoder())
                     hex_str = ' '.join(f'{b:02X}' for b in encoded)
@@ -379,9 +399,17 @@ class RdsAdapter(App):
             "  Available: session, transport, driver, status, parser, decoder\n"
             "\n"
             "[bold]Ruida Commands[/bold] (no prefix):\n"
-            "  session start udp=<IP> usb=<device>    Connect to a controller\n"
+            "  session start udp=<IP> usb=<device> to=<timeout>  Connect to a controller (to: optional, e.g. 5s or 5000ms)\n"
             "  session end               Disconnect\n"
-            "  <rpascript command>       Send command to controller"
+            "  <rpascript command>       Send command to controller\n"
+            "\n"
+            "[bold]Flow Control[/bold] (for loaded scripts):\n"
+            "  delay <time>              Pause execution (e.g. 5s, 100ms)\n"
+            "  wait <status> [to=...]    Wait for MACHINE_STATUS_* bit\n"
+            "  wait !<status> [to=...]   Wait for lifecycle (active then inactive)\n"
+            "  Statuses: MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END,\n"
+            "            MACHINE_STATUS_JOB_RUNNING\n"
+            "  to=   Optional timeout (e.g. to=30s). Default: forever\n"
         )
 
     def _handle_slash_command(self, raw: str) -> None:
@@ -415,6 +443,8 @@ class RdsAdapter(App):
             self._cmd_list(args)
         elif cmd == 'save':
             self._cmd_save(args)
+        elif cmd == 'stop':
+            self._cmd_stop(args)
 
     def _cmd_load(self, path: str) -> None:
         """Load a script file into memory."""
@@ -554,6 +584,10 @@ class RdsAdapter(App):
         """Exit the TUI."""
         self.exit()
 
+    def action_stop(self) -> None:
+        """Handle Escape key: stop current operation."""
+        self._cmd_stop('')
+
     def _cmd_log(self, args: str) -> None:
         """Handle /log subcommands: on, off, status, or toggle."""
         action = args.strip().lower()
@@ -621,11 +655,33 @@ class RdsAdapter(App):
         except OSError as e:
             self._log_error(f"Error writing {path}: {type(e).__name__}: {e}")
 
+    def _cmd_stop(self, args: str) -> None:
+        """Stop current operation (session connection wait or script execution)."""
+        driver_stopped = False
+        if self._ruida_driver is not None:
+            driver_stopped = True
+            self._ruida_driver.cancel_script()
+
+        session_stopped = False
+        if self._session is not None and not self._session_connected.is_set():
+            session_stopped = True
+
+        if session_stopped and driver_stopped:
+            self._session_start_cancel.set()
+            self._log_info("Session start cancelled (pending scripts dropped)")
+        elif session_stopped:
+            self._session_start_cancel.set()
+            self._log_info("Session start cancelled")
+        elif driver_stopped:
+            self._log_info("Script execution stopped")
+        else:
+            self._log_info("Nothing to stop")
+
     # ------------------------------------------------------------------
     # Session lifecycle
     # ------------------------------------------------------------------
 
-    async def _start_session(self, udp: str = '', usb: str | None = None) -> None:
+    async def _start_session(self, udp: str = '', usb: str | None = None, to: str | None = None) -> None:
         """Connect to a Ruida controller and start the script runner.
 
         Opens the transport (non-fatal if it fails — the status monitor retries
@@ -638,6 +694,14 @@ class RdsAdapter(App):
             return
 
         usb_device = usb if usb else ''
+
+        timeout: float | None = None
+        if to is not None:
+            try:
+                timeout = _parse_timeout_spec(to)
+            except ValueError as e:
+                self._log_error(str(e))
+                return
 
         # Check pyserial availability before attempting USB connection
         if usb_device:
@@ -677,19 +741,43 @@ class RdsAdapter(App):
             # Create driver and register TUI listeners
             driver = RdDriver(session)
             driver.register_status_listener(self.on_status_event)
+            driver.register_error_listener(self.on_error)
             driver.register_reply_listener(self.on_reply_data)
 
             # Start the script runner:
-            # 1. Configures ping/query commands on status monitor
-            # 2. Starts the runner thread (so self.run() is safe)
-            # 3. Registers internal reply listener on transport
-            # 4. Starts the status monitor LAST — replies arrive to a ready driver
             driver.start_script_runner()
 
             self._session = session
             self._ruida_driver = driver
 
-            self._log_info("Session started successfully")
+            # Wait for connection with optional timeout + cancel support
+            self._session_connected.clear()
+            self._session_start_cancel.clear()
+
+            connect_task = asyncio.create_task(self._session_connected.wait())
+            cancel_task = asyncio.create_task(self._session_start_cancel.wait())
+
+            done, pending = await asyncio.wait(
+                [connect_task, cancel_task],
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Cancel unfinished tasks
+            for task in pending:
+                task.cancel()
+
+            if connect_task in done:
+                self._log_info("Session started successfully")
+            elif cancel_task in done:
+                self._log_error("Session start cancelled by user")
+                await self._teardown_session()
+                return
+            else:
+                self._log_error("Session connection timeout")
+                await self._teardown_session()
+                return
+
             self._update_status_bar()
 
         except Exception as e:
@@ -698,7 +786,11 @@ class RdsAdapter(App):
                 self._ruida_driver.stop_script_runner()
                 self._ruida_driver = None
             if self._session is not None:
-                self._session.disconnect()
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, lambda: self._session.disconnect())
+                except Exception:
+                    pass  # Don't mask the original error
                 self._session = None
 
     async def _stop_session(self) -> None:
@@ -725,6 +817,23 @@ class RdsAdapter(App):
             self._session = None
             self._ruida_driver = None
 
+    async def _teardown_session(self) -> None:
+        """Tear down the current session (stop driver, disconnect).
+
+        Used by timeout/cancel paths in _start_session.
+        """
+        if self._ruida_driver is not None:
+            self._ruida_driver.stop_script_runner()
+            self._ruida_driver = None
+
+        if self._session is not None:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: self._session.disconnect())
+            self._session = None
+
+        self._session_connected.clear()
+        self._update_status_bar()
+
     # ------------------------------------------------------------------
     # AppAdapter-compatible interface (called from driver background thread)
     # ------------------------------------------------------------------
@@ -741,8 +850,10 @@ class RdsAdapter(App):
             self._event_count += 1
             if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
                 self._session_disconnected = True
+                self._session_connected.clear()
             elif event is RdStatusEvent.CONNECTED:
                 self._session_disconnected = False
+                self._session_connected.set()
             self._update_status_bar()
         self.call_from_thread(_update)
 

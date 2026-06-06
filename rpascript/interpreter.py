@@ -58,6 +58,20 @@ def reconstruct_script_line(cmd: dict) -> str:
     if cmd_type == 'SESSION_END':
         return 'session end'
 
+    if cmd_type == 'DELAY':
+        params = cmd.get('params', [])
+        return f"delay {params[0]}" if params else "delay 0s"
+
+    if cmd_type == 'WAIT':
+        parts = ['wait']
+        params = cmd.get('params', [])
+        if params:
+            parts.append(params[0])
+        to_val = cmd.get('to')
+        if to_val is not None:
+            parts.append(f'to={to_val}')
+        return ' '.join(parts)
+
     # NEW_PACKET directive
     if cmd_type == 'NEW_PACKET':
         return 'NEW_PACKET'
@@ -236,6 +250,52 @@ class ScriptParser:
                 'type': 'NEW_PACKET',
                 'mnemonic': 'NEW_PACKET',
                 'params': [],
+                'expected': None,
+                'line_num': line_num,
+                'raw': raw,
+            }
+
+        # --- Flow-control: delay ---
+        if tokens[0].lower() == 'delay':
+            if len(tokens) < 2:
+                raise ValueError(
+                    f'{line_num}: "delay" requires a time argument (e.g. 5s, 500ms)'
+                )
+            return {
+                'type': 'DELAY',
+                'mnemonic': 'DELAY',
+                'params': tokens[1:],
+                'expected': None,
+                'line_num': line_num,
+                'raw': raw,
+            }
+
+        # --- Flow-control: wait ---
+        if tokens[0].lower() == 'wait':
+            if len(tokens) < 2:
+                raise ValueError(
+                    f'{line_num}: "wait" requires a status argument '
+                    f'(e.g. MACHINE_STATUS_JOB_RUNNING)'
+                )
+            status = tokens[1]
+            kwargs = {}
+            for token in tokens[2:]:
+                key, _, val = token.partition('=')
+                kwargs[key.lower()] = None if val.lower() == 'none' else val
+            # Validate recognized keyword parameters
+            valid_wait_keys = frozenset({'to'})
+            unknown = kwargs.keys() - valid_wait_keys
+            if unknown:
+                raise ValueError(
+                    f'{line_num}: Unknown wait parameter(s): '
+                    f'{", ".join(sorted(unknown))}. '
+                    f'Valid parameters: to=<timeout>'
+                )
+            return {
+                'type': 'WAIT',
+                'mnemonic': 'WAIT',
+                'params': [status],
+                'to': kwargs.get('to'),
                 'expected': None,
                 'line_num': line_num,
                 'raw': raw,

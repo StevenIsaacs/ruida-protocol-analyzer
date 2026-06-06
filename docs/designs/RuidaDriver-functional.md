@@ -735,10 +735,11 @@ A Textual-based terminal user interface that implements (duck-types) the `AppAda
 #### 6.2.2 Key Bindings
 
 | Binding | Action | Description |
-|---|---|---|
+|---|---|---|---|
 | Ctrl+C | `quit` | Quit the TUI app |
+| Escape | `stop` | Stop current operation (session connection or script execution) |
 
-> All other TUI functions (help, load script, execute script, clear log) are accessed via slash-prefixed commands (`/help`, `/load`, `/exec`, `/clear`) typed into the command input. See §6.2.5.
+> All other TUI functions (help, load script, execute script, clear log, stop) are accessed via slash-prefixed commands (`/help`, `/load`, `/exec`, `/clear`, `/stop`) typed into the command input. See §6.2.5.
 
 #### 6.2.3 Command Input Processing
 
@@ -748,10 +749,11 @@ On `Input.Submitted`, the input is dispatched in this order:
 2. **`!` prefix** (e.g., `!session`, `!transport._package 0xAA`) → introspection mode. The rest of the line is parsed as an introspection expression: dotted path resolution against a named object map, optional space-separated arguments, optional parenthesized method call syntax. See §6.2.4.
 3. **`?`** (exactly `?` as the entire input) → alias for `/help`. Shows help text.
 4. **`/` prefix** (e.g., `/help`, `/load path/to/file.rds`) → slash-command dispatch. The command name (case-insensitive) is routed to its handler. Unknown commands produce an error message. See §6.2.5.
-5. **Session start** (`session start udp=... usb=...`):
+5. **Session start** (`session start udp=<IP> usb=<device> to=<timeout>`):
    - Guard: if session already active → log error, return.
+   - `to` is an optional timeout parameter (e.g. `5s`, `5000ms`). Defaults to 5000ms if omitted. Invalid formats produce an error.
    - Create `RdSession`, call `transport.configure()`.
-   - Call `session.connect(timeout=5000)` in `run_in_executor` (to avoid blocking the TUI asyncio event loop).
+   - Call `session.connect(timeout=...)` in `run_in_executor` (to avoid blocking the TUI asyncio event loop), using the parsed timeout value.
    - On success: create `RdDriver`, register `self` as status and reply listeners, call `driver.start_script_runner()`.
    - On failure: log error, clean up session.
 6. **Session end** (`session end`):
@@ -811,6 +813,7 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 | `/list [job\|script]` | `_cmd_list(args)` | Display composed job (head+job+tail) or loaded script in the main log |
 | `/save job <path>` | `_cmd_save(args)` | Write composed job (head+job+tail) to a file |
 | `/clear` | `_cmd_clear()` | Clear all log panels, loaded script, head, and tail |
+| `/stop` | `_cmd_stop()` | Stop current operation (session connection or script execution). Also bound to Escape. |
 | `/quit` | `_cmd_quit()` | Exit the TUI (`self.exit()`) |
 
 **Error handling:**
@@ -914,10 +917,13 @@ rpascript files are line-oriented plain text files with the following line types
 session start udp=192.168.1.100 usb=none
 session start usb=ttyUSB0
 session start udp=192.168.1.100 usb=ttyUSB0   # Both valid, USB preferred
+session start udp=192.168.1.100 to=10s         # With optional connection timeout
+session start udp=192.168.1.100 to=5000ms      # Same, specified in milliseconds
 session end
 ```
 
 - `session start` requires at least one of `udp=` or `usb=`. Parameters set to `none` are treated as absent.
+- `to=<timeout>` is an optional parameter specifying the connection timeout (e.g. `5s`, `5000ms`). Default is 5000ms.
 - `session end` terminates the active session.
 
 #### 7.1.3 NEW_PACKET Directive
@@ -1162,7 +1168,16 @@ When the runner thread detects that the session is not connected, it:
 
 This prevents script loss during transient disconnections.
 
-### 10.7 Gross Timeout for Long Operations
+### 10.7 Session Start / Stop Error Cases
+
+| Scenario | Error/Info Message |
+|---|---|
+| `_start_session` with invalid `to=` format | `"Invalid timeout format: '...'"` |
+| `_start_session` with `to=` timeout | `"Session connection timeout"` + teardown |
+| Session start cancelled by user (`/stop` or Escape during connect) | `"Session start cancelled by user"` + teardown |
+| `/stop` with nothing to stop | `"Nothing to stop"` |
+
+### 10.8 Gross Timeout for Long Operations
 
 When the controller executes long operations (home sequences, power-on self-tests), it may be unresponsive for several seconds. The `gross_timeout` mode replaces the normal per-call timeout with a longer value (default 15s) at both `RdTransport` and `RdStatus` levels:
 

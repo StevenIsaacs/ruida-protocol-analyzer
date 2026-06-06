@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from typing import Any, Callable
 
 from rpascript.encoding import (
@@ -61,6 +62,13 @@ class RdDriver:
         'GET_SETTING MEM_BED_SIZE_Y',
     ]
 
+    # Machine status bit name → mask mapping (used by _handle_wait)
+    _STATUS_NAME_TO_BIT = {
+        'MACHINE_STATUS_MOVING': rdap.MACHINE_STATUS_MOVING[0],
+        'MACHINE_STATUS_PART_END': rdap.MACHINE_STATUS_PART_END[0],
+        'MACHINE_STATUS_JOB_RUNNING': rdap.MACHINE_STATUS_JOB_RUNNING[0],
+    }
+
     def __init__(self, session: RdSession) -> None:
         """Initialize RdDriver.
 
@@ -71,9 +79,11 @@ class RdDriver:
         self._script_queue: queue.Queue = queue.Queue()
         self._runner_thread: threading.Thread | None = None
         self._status_listeners: list[Callable] = []
+        self._error_listeners: list[Callable[[str], None]] = []
         self._reply_listeners: list[Callable] = []
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
+        self._cancel_flag: bool = False
         self._machine_status: dict[int, Any] = {}
 
     # ---- Listener Registration ----
@@ -82,6 +92,11 @@ class RdDriver:
         """Register a listener for RdStatusEvent notifications. Thread-safe."""
         with self._lock:
             self._status_listeners.append(listener)
+
+    def register_error_listener(self, listener: Callable[[str], None]) -> None:
+        """Register a listener for error message notifications. Thread-safe."""
+        with self._lock:
+            self._error_listeners.append(listener)
 
     def register_reply_listener(self, listener: Callable[[list[bytearray]], None]) -> None:
         """Register a listener for raw reply data notifications. Thread-safe."""
@@ -158,6 +173,7 @@ class RdDriver:
             return
 
         self._shutdown.clear()
+        self._cancel_flag = False
 
         # 1. Configure RdStatus with ping/query commands (before starting anything)
         parser = ScriptParser()
@@ -230,6 +246,12 @@ class RdDriver:
                 for cmd in parsed:
                     if cmd.get('type') == 'NEW_PACKET':
                         continue
+                    if cmd.get('type') == 'DELAY':
+                        self._handle_delay(cmd)
+                        continue
+                    if cmd.get('type') == 'WAIT':
+                        self._handle_wait(cmd)
+                        continue
                     raw = encode_command(cmd, parser.mnemonic_map, parser.mt_map, encoder)
                     if not raw:
                         continue
@@ -265,8 +287,15 @@ class RdDriver:
                     raw_sfs[-5:] = encoded_sum  # last 5 bytes are the uint35 placeholder
 
                 if encoded and self._session.is_connected:
+                    with self._lock:
+                        if self._cancel_flag:
+                            self._cancel_flag = False  # Consume even on success
                     self._session.transport.write(encoded)
                 elif encoded and not self._session.is_connected:
+                    with self._lock:
+                        if self._cancel_flag:
+                            self._cancel_flag = False
+                            continue  # Drop script, don't requeue
                     # Not connected: requeue script for retry, notify via status listener
                     self._script_queue.put(script)
                     self._notify_script_skipped()
@@ -292,18 +321,39 @@ class RdDriver:
                 return  # Empty script is a no-op
             self._script_queue.put(script)
 
+    def cancel_script(self) -> None:
+        """Cancel all queued scripts and prevent current script from requeuing.
+
+        Clears the script queue and sets a flag so the current _run_loop
+        iteration skips requeuing the script on disconnect.
+        """
+        with self._lock:
+            while not self._script_queue.empty():
+                try:
+                    self._script_queue.get_nowait()
+                except queue.Empty:
+                    break
+            self._cancel_flag = True
+
     # ---- Error / Skip Notification ----
 
     def _notify_script_error(self, message: str) -> None:
         """Notify listeners that a script encountered an encoding/parsing error.
 
         Iterates snapshot of _status_listeners with try/except per callback.
+        Also forwards the error message to registered error listeners.
         """
         with self._lock:
             listeners = list(self._status_listeners)
+            error_listeners = list(self._error_listeners)
         for listener in listeners:
             try:
                 listener(RdStatusEvent.SCRIPT_ERROR)
+            except Exception:
+                pass
+        for listener in error_listeners:
+            try:
+                listener(message)
             except Exception:
                 pass
 
@@ -319,6 +369,135 @@ class RdDriver:
                 listener(RdStatusEvent.DISCONNECTED)
             except Exception:
                 pass
+
+    # ---- Flow-Control Handlers ----
+
+    @staticmethod
+    def _parse_timeout(to_str: str) -> float:
+        """Parse time spec like '5s' or '5000ms' into seconds (float)."""
+        s = to_str.strip()
+        # Remove internal whitespace between number and unit
+        s = ''.join(s.split())
+        if s.endswith('ms'):
+            seconds = float(s[:-2]) / 1000.0
+        elif s.endswith('s'):
+            seconds = float(s[:-1])
+        else:
+            raise ValueError(
+                f"Invalid time format: '{to_str}'. Use e.g., 5s, 500ms"
+            )
+        if seconds <= 0:
+            raise ValueError(
+                f"Timeout must be positive, got '{to_str}'"
+            )
+        return seconds
+
+    def _resolve_status_bit(self, status_name: str) -> int | None:
+        """Resolve a MACHINE_STATUS_* name to its bit mask.
+
+        Only MACHINE_STATUS_* names are supported.
+        """
+        return self._STATUS_NAME_TO_BIT.get(status_name)
+
+    def _handle_delay(self, cmd: dict) -> None:
+        """Handle a DELAY flow-control command: sleep for specified time."""
+        params = cmd.get('params', [])
+        if not params:
+            self._notify_script_error("DELAY requires a time argument")
+            return
+        try:
+            seconds = self._parse_timeout(params[0])
+        except ValueError as e:
+            self._notify_script_error(str(e))
+            return
+        # Sleep with shutdown check (interruptible)
+        deadline = time.monotonic() + seconds
+        while not self._shutdown.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(remaining, 0.1))
+
+    def _handle_wait(self, cmd: dict) -> None:
+        """Handle a WAIT flow-control command: poll machine status bit.
+
+        Wait for a MACHINE_STATUS_* bit to become active (set), or if
+        prefixed with ``!``, wait for the full lifecycle: active then inactive.
+
+        Supports optional to=<timeout> parameter (e.g. '30s', '5000ms').
+        """
+        params = cmd.get('params', [])
+        if not params:
+            self._notify_script_error("WAIT requires a status argument")
+            return
+
+        status_token = params[0]
+        invert = status_token.startswith('!')
+        status_name = status_token[1:] if invert else status_token
+
+        bit_mask = self._resolve_status_bit(status_name)
+        if bit_mask is None:
+            self._notify_script_error(
+                f"Unknown machine status: '{status_name}'. "
+                f"Use MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END, "
+                f"or MACHINE_STATUS_JOB_RUNNING"
+            )
+            return
+
+        # Parse optional timeout
+        timeout = None
+        to_str = cmd.get('to')
+        if to_str is not None:
+            try:
+                timeout = self._parse_timeout(to_str)
+            except ValueError as e:
+                self._notify_script_error(str(e))
+                return
+
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        if invert:
+            # Invert mode: wait for bit to become ACTIVE, then INACTIVE
+            # First check if already active — if so, skip the 'wait for set' phase
+            with self._lock:
+                current = self._machine_status.get(0x0400, 0)
+            if not (current & bit_mask):
+                # Phase 1: wait for 0→1 transition
+                while not self._shutdown.is_set():
+                    if deadline and time.monotonic() >= deadline:
+                        self._notify_script_error(
+                            f"Timeout waiting for {status_token}"
+                        )
+                        return
+                    with self._lock:
+                        current = self._machine_status.get(0x0400, 0)
+                    if current & bit_mask:
+                        break
+                    time.sleep(0.05)
+            # Phase 2: wait for 1→0 transition
+            while not self._shutdown.is_set():
+                if deadline and time.monotonic() >= deadline:
+                    # Not an error — the job had started and the deadline
+                    # applies to the total lifecycle
+                    return
+                with self._lock:
+                    current = self._machine_status.get(0x0400, 0)
+                if not (current & bit_mask):
+                    break
+                time.sleep(0.05)
+        else:
+            # Normal mode: wait for bit to become SET
+            while not self._shutdown.is_set():
+                if deadline and time.monotonic() >= deadline:
+                    self._notify_script_error(
+                        f"Timeout waiting for {status_token}"
+                    )
+                    return
+                with self._lock:
+                    current = self._machine_status.get(0x0400, 0)
+                if current & bit_mask:
+                    break
+                time.sleep(0.05)
 
     # ---- Properties ----
 
