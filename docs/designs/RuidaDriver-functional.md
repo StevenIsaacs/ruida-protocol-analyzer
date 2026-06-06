@@ -800,20 +800,38 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 |---|---|---|
 | `/help` or `?` | `_handle_help()` | Display formatted help text covering all three command categories |
 | `/load <path>` | `_cmd_load(path)` | Load a `.rds` script file from disk into `_loaded_script` |
-| `/exec` | `_cmd_exec()` | Execute the loaded script via `run_script()` |
-| `/clear` | `_cmd_clear()` | Clear all log panels and `_loaded_script` |
+| `/head <path>` | `_cmd_head(path)` | Load a `.rds` script file to prepend to the job on `/exec job` |
+| `/tail <path>` | `_cmd_tail(path)` | Load a `.rds` script file to append to the job on `/exec job` |
+| `/exec [job]` | `_cmd_exec(args)` | Execute via `run_script()`: full script (no args) or filtered job (head+START_PROCESS→EOF+tail) with `job` argument |
+| `/list [job\|script]` | `_cmd_list(args)` | Display composed job (head+job+tail) or loaded script in the main log |
+| `/save job <path>` | `_cmd_save(args)` | Write composed job (head+job+tail) to a file |
+| `/clear` | `_cmd_clear()` | Clear all log panels, loaded script, head, and tail |
 | `/quit` | `_cmd_quit()` | Exit the TUI (`self.exit()`) |
 
 **Error handling:**
 - Unknown `/` commands: `"Unknown TUI command: /<cmd>. Type /help or ? for available commands."`
-- `/load` with no path: `"Usage: /load <path>"`
-- `/load` file not found: `"File not found: <path>"`
-- `/load` permission denied: `"Permission denied: <path>"`
-- `/load` binary file: `"File is not a valid text file: <path>"`
+- `/load` / `/head` / `/tail` with no path: `"Usage: /load <path>"` / `"Usage: /head <path>"` / `"Usage: /tail <path>"`
+- `/load` / `/head` / `/tail` file not found: `"File not found: <path>"`
+- `/load` / `/head` / `/tail` permission denied: `"Permission denied: <path>"`
+- `/load` / `/head` / `/tail` binary file: `"File is not a valid text file: <path>"`
+- `/load` / `/head` / `/tail` empty file: `"File is empty or contains only blank lines: <path>"`
 - `/exec` with no script loaded: `"No script loaded. Use /load <path> first."`
 - `/exec` with no session: `"No active session. Use 'session start udp=...' first."`
+- `/exec` with `job` action but no START_PROCESS/EOF markers: `"No job commands found (no START_PROCESS/EOF markers)."`
+- `/exec` with unknown action: `"Unknown exec action: '<action>'. Usage: /exec [job]"`
+- `/list` with unknown subcommand: `"Usage: /list [job|script]"`
+- `/list script` with no script loaded: `"No script loaded. Use /load <path> first."`
+- `/list job` with no script loaded: `"No script loaded. Use /load <path> first."`
+- `/list job` with no job markers: `"No job commands found (no START_PROCESS/EOF markers)."`
+- `/save` with incorrect syntax: `"Usage: /save job <path>"`
+- `/save job` with no script loaded: `"No script loaded. Use /load <path> first."`
+- `/save job` with no job markers: `"No job commands to save (no START_PROCESS/EOF markers)."`
+- `/save job` permission denied: `"Permission denied: <path>"`
+- `/save job` write error: `"Error writing <path>: <ErrorType>: <message>"`
 
 **Case sensitivity:** All command names are case-insensitive (`/HELP`, `/Help`, `/help` all work).
+
+**Job composition:** `/exec job`, `/list job`, and `/save job` all call the central `_build_job_script(self, lines)` method which composes `self._head_script + filtered_job + self._tail_script`. If no START_PROCESS/EOF markers are found, the method returns an empty list and callers report the error.
 
 #### 6.2.6 Thread Bridge
 

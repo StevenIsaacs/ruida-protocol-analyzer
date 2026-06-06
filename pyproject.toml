@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ruida-protocol-analyzer"
-version = "0.5.0"
+version = "0.6.0"
 description = "RPA Protocol Analyzer - Parse and decode Ruida protocol packets"
 readme = "README.md"
 license = {file = "LICENSE"}

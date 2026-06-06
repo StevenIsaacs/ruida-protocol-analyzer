@@ -53,7 +53,7 @@ class RdsAdapter(App):
         ("ctrl+c", "quit", "Quit"),
     ]
 
-    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log')
+    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log', 'head', 'tail', 'list', 'save')
     _NORMAL_COMMANDS: tuple[str, ...] = ('session',)
 
     CSS = """
@@ -129,6 +129,8 @@ class RdsAdapter(App):
             'decoder':   lambda: self._decoder,
         }
         self._loaded_script: list[str] = []
+        self._head_script: list[str] = []
+        self._tail_script: list[str] = []
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
         )
@@ -136,10 +138,14 @@ class RdsAdapter(App):
             'help': 'Show help text',
             'load': 'Load a script file from disk',
             'exec': 'Execute the loaded script',
-            'clear': 'Clear all log panels and loaded script',
+            'clear': 'Clear all log panels, loaded script, head, and tail',
             'quit': 'Exit the TUI',
             'log': 'Toggle display of status/reply messages (on|off|status)',
             'session': 'Start or end a controller session (start udp=<IP> usb=<device> / end)',
+            'head': 'Load a script file to prepend to job on execution',
+            'tail': 'Load a script file to append to job on execution',
+            'list': 'Display loaded script (/list script) or composed job (/list job)',
+            'save': 'Save composed job to a file (/save job <path>)',
         }
         self._command_history: list[str] = []
         self._history_index: int | None = None
@@ -399,6 +405,14 @@ class RdsAdapter(App):
             self._cmd_quit()
         elif cmd == 'log':
             self._cmd_log(args)
+        elif cmd == 'head':
+            self._cmd_head(args)
+        elif cmd == 'tail':
+            self._cmd_tail(args)
+        elif cmd == 'list':
+            self._cmd_list(args)
+        elif cmd == 'save':
+            self._cmd_save(args)
 
     def _cmd_load(self, path: str) -> None:
         """Load a script file into memory."""
@@ -424,6 +438,54 @@ class RdsAdapter(App):
         except Exception as e:
             self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
 
+    def _cmd_head(self, path: str) -> None:
+        """Load a script file to prepend to job on execution."""
+        if not path:
+            self._log_error("Usage: /head <path>")
+            return
+        path = os.path.expanduser(path)
+        try:
+            with open(path, 'r') as f:
+                content = f.read()
+            lines = [l for l in content.splitlines() if l.strip()]
+            if not lines:
+                self._log_error(f"File is empty or contains only blank lines: {path}")
+                return
+            self._head_script = lines
+            self._log_info(f"Head loaded: {len(lines)} lines from {path}")
+        except FileNotFoundError:
+            self._log_error(f"File not found: {path}")
+        except PermissionError:
+            self._log_error(f"Permission denied: {path}")
+        except UnicodeDecodeError:
+            self._log_error(f"File is not a valid text file: {path}")
+        except Exception as e:
+            self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
+
+    def _cmd_tail(self, path: str) -> None:
+        """Load a script file to append to job on execution."""
+        if not path:
+            self._log_error("Usage: /tail <path>")
+            return
+        path = os.path.expanduser(path)
+        try:
+            with open(path, 'r') as f:
+                content = f.read()
+            lines = [l for l in content.splitlines() if l.strip()]
+            if not lines:
+                self._log_error(f"File is empty or contains only blank lines: {path}")
+                return
+            self._tail_script = lines
+            self._log_info(f"Tail loaded: {len(lines)} lines from {path}")
+        except FileNotFoundError:
+            self._log_error(f"File not found: {path}")
+        except PermissionError:
+            self._log_error(f"Permission denied: {path}")
+        except UnicodeDecodeError:
+            self._log_error(f"File is not a valid text file: {path}")
+        except Exception as e:
+            self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
+
     def _cmd_exec(self, args: str = '') -> None:
         """Execute the loaded script.
 
@@ -437,16 +499,18 @@ class RdsAdapter(App):
             self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
             return
         action = args.strip().lower()
-        if action == 'job':
-            script = self._filter_job_commands(self._loaded_script)
+        if action == '':
+            self._log_info(f"Executing {len(self._loaded_script)} lines...")
+            self.run_script(self._loaded_script)
+        elif action == 'job':
+            script = self._build_job_script(self._loaded_script)
             if not script:
                 self._log_error("No job commands found (no START_PROCESS/EOF markers).")
                 return
             self._log_info(f"Executing {len(script)} job commands...")
             self.run_script(script)
         else:
-            self._log_info(f"Executing {len(self._loaded_script)} lines...")
-            self.run_script(self._loaded_script)
+            self._log_error(f"Unknown exec action: '{action}'. Usage: /exec [job]")
 
     @staticmethod
     def _filter_job_commands(lines: list[str]) -> list[str]:
@@ -455,7 +519,7 @@ class RdsAdapter(App):
         result: list[str] = []
         for line in lines:
             stripped = line.strip().upper()
-            if 'START_PROCESS' in stripped:
+            if stripped == 'START_PROCESS' or stripped.startswith('START_PROCESS '):
                 in_job = True
             if in_job:
                 result.append(line)
@@ -463,13 +527,26 @@ class RdsAdapter(App):
                 break
         return result
 
+    def _build_job_script(self, lines: list[str]) -> list[str]:
+        """Compose head + job (START_PROCESS→EOF) + tail into a single script.
+
+        Returns empty list if no job markers are found in the input lines.
+        Callers are responsible for reporting empty-job errors.
+        """
+        job = self._filter_job_commands(lines)
+        if not job:
+            return []
+        return self._head_script + job + self._tail_script
+
     def _cmd_clear(self) -> None:
-        """Clear all log panels and loaded script."""
+        """Clear all log panels, loaded script, head, and tail."""
         self._log_widget.clear()
         self._status_log.clear()
         self._reply_log.clear()
         self._loaded_script = []
-        self._log_info("Logs cleared")
+        self._head_script = []
+        self._tail_script = []
+        self._log_info("Logs, head, and tail cleared")
 
     def _cmd_quit(self) -> None:
         """Exit the TUI."""
@@ -493,6 +570,54 @@ class RdsAdapter(App):
             self._log_info(f"Logging is {state}")
         else:
             self._log_error("Usage: /log [on|off|status]")
+
+    def _cmd_list(self, args: str) -> None:
+        """Handle /list subcommands: job or script."""
+        action = args.strip().lower()
+        if action == 'script':
+            if not self._loaded_script:
+                self._log_info("No script loaded. Use /load <path> first.")
+                return
+            self._log_info(f"Loaded script ({len(self._loaded_script)} lines):")
+            for line in self._loaded_script:
+                self._log_widget.write(f"  {line}")
+        elif action == 'job':
+            if not self._loaded_script:
+                self._log_info("No script loaded. Use /load <path> first.")
+                return
+            composed = self._build_job_script(self._loaded_script)
+            if not composed:
+                self._log_error("No job commands found (no START_PROCESS/EOF markers).")
+                return
+            self._log_info(f"Composed job ({len(composed)} lines):")
+            for line in composed:
+                self._log_widget.write(f"  {line}")
+        else:
+            self._log_error("Usage: /list [job|script]")
+
+    def _cmd_save(self, args: str) -> None:
+        """Handle /save subcommands: job <path>."""
+        parts = args.strip().split(None, 1)
+        if not parts or parts[0] != 'job' or len(parts) < 2:
+            self._log_error("Usage: /save job <path>")
+            return
+        path = parts[1]
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load <path> first.")
+            return
+        composed = self._build_job_script(self._loaded_script)
+        if not composed:
+            self._log_error("No job commands to save (no START_PROCESS/EOF markers).")
+            return
+        path = os.path.expanduser(path)
+        try:
+            with open(path, 'w') as f:
+                f.write('\n'.join(composed) + '\n')
+            self._log_info(f"Job saved to {path} ({len(composed)} lines)")
+        except PermissionError:
+            self._log_error(f"Permission denied: {path}")
+        except OSError as e:
+            self._log_error(f"Error writing {path}: {type(e).__name__}: {e}")
 
     # ------------------------------------------------------------------
     # Session lifecycle
