@@ -33,6 +33,7 @@ from protocols.ruida.ruida_protocol import MT
 
 import asyncio
 import re
+import threading
 
 
 def _parse_timeout_spec(to_str: str) -> float:
@@ -896,13 +897,15 @@ class RdsAdapter(App):
     def run_script(self, script: list[str]) -> None:
         """Queue a script for execution.
 
-        Thread-safe: bridges to the asyncio thread via call_from_thread
-        so this method can be called from any thread.
+        Thread-safe: can be called from any thread.
         """
         if self._ruida_driver is None:
             def _error() -> None:
                 self._log_error("No active session to run script.")
-            self.call_from_thread(_error)
+            if threading.get_ident() == self._thread_id:
+                _error()
+            else:
+                self.call_from_thread(_error)
             return
 
         def _run() -> None:
@@ -912,7 +915,11 @@ class RdsAdapter(App):
                 self._update_status_bar()
             except RuntimeError as e:
                 self._log_error(str(e))
-        self.call_from_thread(_run)
+
+        if threading.get_ident() == self._thread_id:
+            _run()
+        else:
+            self.call_from_thread(_run)
 
     # ------------------------------------------------------------------
     # Introspection (!) subsystem
