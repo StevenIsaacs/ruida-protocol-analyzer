@@ -546,7 +546,10 @@ class RdsAdapter(App):
 
     @staticmethod
     def _filter_job_commands(lines: list[str]) -> list[str]:
-        """Filter lines to only include commands between START_PROCESS and EOF (inclusive)."""
+        """Filter lines to only include commands between START_PROCESS and EOF (inclusive).
+
+        Excludes GET_SETTING and NEW_PACKET directives — they are not part of the job.
+        """
         in_job = False
         result: list[str] = []
         for line in lines:
@@ -554,6 +557,9 @@ class RdsAdapter(App):
             if stripped == 'START_PROCESS' or stripped.startswith('START_PROCESS '):
                 in_job = True
             if in_job:
+                # Skip GET_SETTING and NEW_PACKET — not part of the job
+                if stripped.startswith('GET_SETTING') or stripped.startswith('NEW_PACKET'):
+                    continue
                 result.append(line)
             if stripped == 'EOF' or stripped.startswith('EOF '):
                 break
