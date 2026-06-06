@@ -93,6 +93,7 @@ Examples:
     parser.add_argument(
         '--magic',
         metavar='<magic_number>',
+        default='0x88',
         help='Specify the swizzle magic number rather than attempt '
             'to discover it in the capture. '
             'Available only with the ruida protocol.'

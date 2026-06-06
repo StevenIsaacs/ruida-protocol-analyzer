@@ -67,15 +67,35 @@ class UdpDumpReader():
                 return None
             self.line_number += 1
             self.out.set_pkt_n(self.line_number)
-            _fields:list[str] = self.line.strip().split('\t')
+            _fields:list[str] = self.line.rstrip('\n\r').split('\t')
+
+            # Validate field count: tshark -T fields with 4 -e flags yields
+            # 4 tab-separated fields (frame.time_delta, udp.port, udp.length,
+            # data.data).
+            if len(_fields) != 4:
+                raise SyntaxError(
+                    f'Line {self.line_number}: expected 4 tab-separated fields, '
+                    f'got {len(_fields)}')
+
+            # First packet has no previous frame, so frame.time_delta is
+            # empty.  Treat this as delta_time = 0.
+            if _fields[0] == '':
+                _fields[0] = '0'
 
             self.delta_time = float(_fields[0])
             self.out.reader(f'Interval:{self.delta_time:.6f}S')
 
+            # Validate Ruida port combination: the controller exchanges
+            # packets between port 40200 and 50200.
+            if _fields[1] not in ('50200,40200', '40200,50200'):
+                raise SyntaxError(
+                    f'Line {self.line_number}: unrecognized port combination '
+                    f'"{_fields[1]}"; expected 50200,40200 or 40200,50200')
+
             _ports = _fields[1].split(',')
             self.to_port = int(_ports[0])
             self.from_port = int(_ports[1])
-            self.length = int(_fields[2]) - 8 # Subtract length of UDP header.
+            self.length = int(_fields[2]) - 8  # Subtract length of UDP header.
             self.data = bytes.fromhex(_fields[3])
             _n = len(self.data)
             if _n != self.length:

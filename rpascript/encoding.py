@@ -363,5 +363,27 @@ def parse_value(
         if raw in rev_rot:
             return rev_rot[raw]
 
+    # --- MStat label-to-bitmask resolution ---
+    # When the decoded reply is a human-readable label (e.g. 'Job Running')
+    # instead of a hex number, map it back to its numeric bitmask so the
+    # encoder can produce the correct binary value.
+    if decoder_fn == 'm_stat':
+        label_to_bit = {lbl: bit for bit, lbl in rdap.MST}
+        parts = [p.strip() for p in raw.split(',')]
+        result = 0
+        for part in parts:
+            if part in label_to_bit:
+                result |= label_to_bit[part]
+            else:
+                # Unknown label — skip; the round-trip will be inexact but
+                # won't crash.  The loss is acceptable since m_stat labels
+                # are informational and the numeric value is captured in the
+                # original capture log, not the script file.
+                pass
+        # If at least one label was resolved, return the bitmask;
+        # otherwise fall through to the string fallback below.
+        if result or parts == ['']:
+            return result
+
     # --- Fallback: return as string ---
     return raw

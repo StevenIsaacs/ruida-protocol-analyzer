@@ -574,7 +574,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Log shows `File not found: nonexistent.rds` (or similar) error message. |
 
 #### Test 5.4.7 — `/exec` With No Script Loaded
-- [ ] Test 5.4.7
+- [x] Test 5.4.7 ✅ 2026-06-06
 
 | Field | Value |
 |-------|-------|
@@ -594,7 +594,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Log shows `No active session` error message. No commands are sent to the controller. |
 
 #### Test 5.4.9 — `/clear` Clears Logs
-- [ ] Test 5.4.9
+- [x] Test 5.4.9 ✅ 2026-06-06
 
 | Field | Value |
 |-------|-------|
@@ -604,7 +604,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Log area is empty. Any previously loaded script (`_loaded_script`) is cleared. Status and reply panels are not affected (they persist). |
 
 #### Test 5.4.10 — `/quit` Exits TUI
-- [ ] Test 5.4.10
+- [x] Test 5.4.10 ✅ 2026-06-06
 
 | Field | Value |
 |-------|-------|
@@ -614,7 +614,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | TUI closes cleanly. No traceback or exception message printed to terminal. Exit code 0. Returns to shell without error. |
 
 #### Test 5.4.11 — Unknown Slash Command
-- [ ] Test 5.4.11
+- [x] Test 5.4.11 ✅ 2026-06-06
 
 | Field | Value |
 |-------|-------|
@@ -624,7 +624,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Expected result** | Log shows `Unknown TUI command: /foobar` (or similar) error message. The TUI remains stable and responsive. |
 
 #### Test 5.4.12 — Case Insensitivity of Slash Commands
-- [ ] Test 5.4.12
+- [x] Test 5.4.12 ✅ 2026-06-06
 
 | Field | Value |
 |-------|-------|

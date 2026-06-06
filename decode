@@ -5,15 +5,16 @@ usage () {
 Usage: $_self <file> [<options>]
 
 Use this script to run rpa.py to process a log file previously captured
-by the capture script. The log file is processed twice. First to produce a
-summarized decode and second to produce a verbose decode.
+by the capture script. The log file is processed three times. First to produce a
+summarized decode, second to produce a verbose decode, and third to generate a
+.rds script for round-trip verification.
 
 The verbose decode generates an interactive Bokeh plot of all moves and cuts.
 Requires a virtual environment with Bokeh installed. Create one from requirements.txt.
 
 Parameters:
  1 The capture file name -- not including extension. Processes <file>.log.
-   The output is written to <file>.txt and <file>-vrb.txt.
+    The output is written to <file>.txt, <file>-vrb.txt, and <file>.rds.
  2 Optional command line arguments for verbose mode. Often this will be used
     to generate a plot of all head movements. e.g.: "--plot-moves".
 EOF
@@ -52,3 +53,5 @@ command -v rpa >/dev/null 2>&1 || _rpa_cmd="python rpa.py"
 
 $_rpa_cmd -o $_file.txt $_file.log
 $_rpa_cmd --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
+
+$_rpa_cmd --generate-script $_file.log > /dev/null
