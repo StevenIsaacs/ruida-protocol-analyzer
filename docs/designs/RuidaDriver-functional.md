@@ -781,7 +781,7 @@ The TUI provides an interactive introspection mode for inspecting and calling me
 
 | Expression | Behavior | Example |
 |---|---|---|
-| `!<path>` | Show `repr()` of the resolved object | `!session` |
+| `!<path>` | Show formatted value of the resolved object (multi-line for containers, literal breaks for docstrings) | `!session` |
 | `!<path> <args...>` | Call the callable with space-separated, comma-delimited arguments | `!transport._package 0xAA` |
 | `!<path>()` | Show `inspect.signature()` of the callable | `!decoder.decode_address()` |
 | `!<path>(<args>)` | Call with parenthesized arguments | `!transport._package(0xD0, 0x1A, 0x00)` |
@@ -791,6 +791,11 @@ The TUI provides an interactive introspection mode for inspecting and calling me
 1. `ast.literal_eval` — int, float, list, dict, None, True, False
 2. Hex string → `bytearray.fromhex()` — e.g., `0xAA`, `0xDEADBE`
 3. Fallback — treated as raw string
+
+**Formatting:** The output starts with the expression in bold as a header line. The value is then displayed with:
+- **Containers** (dicts, lists, tuples): one item per line with 2-space indentation
+- **Docstrings** (multi-line strings): displayed with literal line breaks instead of `repr()` escape sequences
+- **Other values**: `repr()` output as-is
 
 #### 6.2.5 Slash Commands (`/` prefix)
 

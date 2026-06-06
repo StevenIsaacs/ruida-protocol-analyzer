@@ -203,7 +203,9 @@ class RdsAdapter(App):
 
         # Introspection mode: !<path> [args...]
         if line.startswith('!'):
-            result = self._handle_introspect(line[1:].strip())
+            expr = line[1:].strip()
+            result = self._handle_introspect(expr)
+            self._log_widget.write(f"[bold]!{expr}[/bold]")
             self._log_info(result)
             return
         # Help shortcut: ? as first character
@@ -857,7 +859,7 @@ class RdsAdapter(App):
                 args = self._parse_introspect_args(args_raw)
                 try:
                     result = obj(*args)
-                    return repr(result)
+                    return self._format_value(result)
                 except TypeError as e:
                     return f"TypeError: {e}"
                 except Exception as e:
@@ -866,7 +868,7 @@ class RdsAdapter(App):
             # No args → show signature for callables, repr for variables
             if callable(obj):
                 return self._format_signature(obj)
-            return repr(obj)
+            return self._format_value(obj)
 
         # Method call with parens
         path = expr[:paren_idx].strip()
@@ -893,7 +895,7 @@ class RdsAdapter(App):
 
         try:
             result = obj(*args)
-            return repr(result)
+            return self._format_value(result)
         except TypeError as e:
             return f"TypeError: {e}"
         except Exception as e:
@@ -906,6 +908,48 @@ class RdsAdapter(App):
             return f"{getattr(obj, '__name__', type(obj).__name__)}{sig}"
         except (ValueError, TypeError):
             return repr(obj)
+
+    def _format_value(self, value: Any) -> str:
+        """Format a Python value for readable multi-line TUI display.
+
+        Lists/tuples/dicts: one item per line with 2-space indentation.
+        Multi-line strings (docstrings): literal line breaks.
+        Other values: repr() output.
+        """
+        if isinstance(value, dict):
+            if not value:
+                return "{}"
+            lines = ["{"]
+            for k, v in value.items():
+                v_fmt = self._format_value(v)
+                if '\n' in v_fmt:
+                    lines.append(f"  {repr(k)}:")
+                    for sub in v_fmt.split('\n'):
+                        lines.append(f"    {sub}")
+                else:
+                    lines.append(f"  {repr(k)}: {v_fmt}")
+            lines.append("}")
+            return '\n'.join(lines)
+
+        if isinstance(value, (list, tuple)):
+            if not value:
+                return "[]" if isinstance(value, list) else "()"
+            bracket_open = "[" if isinstance(value, list) else "("
+            bracket_close = "]" if isinstance(value, list) else ")"
+            lines = [bracket_open]
+            for item in value:
+                item_fmt = self._format_value(item)
+                for sub in item_fmt.split('\n'):
+                    lines.append(f"  {sub}")
+                lines[-1] += ","
+            lines.append(bracket_close)
+            return '\n'.join(lines)
+
+        if isinstance(value, str) and '\n' in value:
+            # Multi-line string (docstring) — display with literal line breaks
+            return value
+
+        return repr(value)
 
     def _parse_introspect_args(self, args_str: str) -> list[Any]:
         """Parse a comma-separated argument string into Python values.
