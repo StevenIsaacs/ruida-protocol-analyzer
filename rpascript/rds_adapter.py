@@ -13,6 +13,7 @@ from typing import Any, Callable
 import ast
 import functools
 import inspect
+import json
 import os
 
 from textual import on
@@ -190,12 +191,13 @@ class RdsAdapter(App):
         yield Static(id="status-bar")
 
     def on_mount(self) -> None:
-        """Widgets are ready — cache references and log startup message."""
+        """Widgets are ready — cache references, load history, and log startup message."""
         self._log_widget = self.query_one("#log-area", RichLog)
         self._status_log = self.query_one("#status-log", RichLog)
         self._reply_log = self.query_one("#reply-log", RichLog)
         self._status_bar = self.query_one("#status-bar", Static)
         self._update_status_bar()
+        self._load_command_history()
 
     # ------------------------------------------------------------------
     # Command input handling
@@ -1268,25 +1270,56 @@ class RdsAdapter(App):
         pass
 
     def stop(self) -> None:
-        """AppAdapter interface — cleanup handled by on_exit or session end."""
+        """AppAdapter interface — cleanup handled by _on_exit_app or session end."""
         pass
 
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 
-    def on_exit(self) -> None:
-        """Clean up active session when TUI exits.
+    async def _on_exit_app(self) -> None:
+        """Save command history, then clean up active session when TUI exits.
 
-        Ensures the driver runner is stopped and the session is disconnected
-        when the user quits (Ctrl+C) without explicitly running 'session end'.
+        Overrides the internal Textual lifecycle hook _on_exit_app (called when
+        the app exits) to persist command history and tear down the session.
+        In Textual 8.x, the shutdown message is ExitApp, which dispatches to
+        _on_exit_app — NOT on_exit (which has no matching message class).
         """
+        self._save_command_history()
         if self._ruida_driver is not None:
             self._ruida_driver.stop_script_runner()
             self._ruida_driver = None
         if self._session is not None:
             self._session.disconnect()
             self._session = None
+        await super()._on_exit_app()
+
+    @staticmethod
+    def _history_path() -> str:
+        """Return path to the command history file (XDG config dir)."""
+        config_dir = os.path.expanduser("~/.config/ruida-tui")
+        return os.path.join(config_dir, "command_history.json")
+
+    def _load_command_history(self) -> None:
+        """Load command history from disk. Silently handles missing/corrupt files."""
+        path = self._history_path()
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            if isinstance(data, list) and all(isinstance(item, str) for item in data):
+                self._command_history = data[-500:]
+        except (FileNotFoundError, json.JSONDecodeError, PermissionError):
+            pass  # Start with empty history
+
+    def _save_command_history(self) -> None:
+        """Save command history to disk. Silently handles write failures."""
+        path = self._history_path()
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(self._command_history[-500:], f)
+        except (OSError, PermissionError):
+            pass  # Non-fatal if we can't save history
 
     # ------------------------------------------------------------------
     # Helpers
