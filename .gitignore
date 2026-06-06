@@ -11,3 +11,5 @@ build
 dist
 release
 *.egg-info
+docs/plans
+commit.txt
