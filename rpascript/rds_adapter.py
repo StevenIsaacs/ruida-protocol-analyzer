@@ -29,7 +29,7 @@ from ruidadriver.ruida_driver import RdDriver
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
 
-from protocols.ruida.ruida_protocol import MT
+from protocols.ruida.ruida_protocol import MT, MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END, MACHINE_STATUS_JOB_RUNNING
 
 import asyncio
 import re
@@ -165,7 +165,7 @@ class RdsAdapter(App):
             'session': 'Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)',
             'head': 'Load a script file to prepend to job on execution',
             'tail': 'Load a script file to append to job on execution',
-            'list': 'Display loaded script (/list script) or composed job (/list job)',
+            'list': 'Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)',
             'save': 'Save composed job to a file (/save job <path>)',
             'stop': 'Stop the current operation (session connection or script execution). Also bound to Escape.',
         }
@@ -173,6 +173,7 @@ class RdsAdapter(App):
         self._history_index: int | None = None
         self._position: dict[str, float | str | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
         self._session_disconnected: bool = False
+        self._machine_status: int = 0
         self._last_cmd_was_get_setting: bool = False
 
     # ------------------------------------------------------------------
@@ -617,7 +618,7 @@ class RdsAdapter(App):
             self._log_error("Usage: /log [on|off|status]")
 
     def _cmd_list(self, args: str) -> None:
-        """Handle /list subcommands: job or script."""
+        """Handle /list subcommands: script, job, head, or tail."""
         action = args.strip().lower()
         if action == 'script':
             if not self._loaded_script:
@@ -637,8 +638,22 @@ class RdsAdapter(App):
             self._log_info(f"Composed job ({len(composed)} lines):")
             for line in composed:
                 self._log_widget.write(f"  {line}")
+        elif action == 'head':
+            if not self._head_script:
+                self._log_info("No head script loaded. Use /head <path> first.")
+                return
+            self._log_info(f"Head script ({len(self._head_script)} lines):")
+            for line in self._head_script:
+                self._log_widget.write(f"  {line}")
+        elif action == 'tail':
+            if not self._tail_script:
+                self._log_info("No tail script loaded. Use /tail <path> first.")
+                return
+            self._log_info(f"Tail script ({len(self._tail_script)} lines):")
+            for line in self._tail_script:
+                self._log_widget.write(f"  {line}")
         else:
-            self._log_error("Usage: /list [job|script]")
+            self._log_error("Usage: /list [job|script|head|tail]")
 
     def _cmd_save(self, args: str) -> None:
         """Handle /save subcommands: job <path>."""
@@ -1195,6 +1210,9 @@ class RdsAdapter(App):
             # MEM_BED_SIZE_Y at MT[0x00][0x36] → 0x0036
             elif addr == 0x0036:
                 self._position['BedY'] = d.value
+            # MEM_MACHINE_STATUS at MT[0x04][0x00] → 0x0400
+            elif addr == 0x0400:
+                self._machine_status = d.to_uint(data_bytes)
 
             if decoded:
                 return f"{mnemonic}: {decoded}"
@@ -1252,6 +1270,23 @@ class RdsAdapter(App):
             machine_parts.append("BedY: —")
         machine = "  ".join(machine_parts)
 
+        # Machine status indicators (MOVE, PART, JOB)
+        status_parts = []
+        ms = self._machine_status
+        if ms & MACHINE_STATUS_MOVING[0]:
+            status_parts.append("[bold green]MOVE[/bold green]")
+        else:
+            status_parts.append("MOVE")
+        if ms & MACHINE_STATUS_PART_END[0]:
+            status_parts.append("[bold green]PART[/bold green]")
+        else:
+            status_parts.append("PART")
+        if ms & MACHINE_STATUS_JOB_RUNNING[0]:
+            status_parts.append("[bold green]JOB[/bold green]")
+        else:
+            status_parts.append("JOB")
+        indicators = " ".join(status_parts)
+
         # Position
         pos_parts = []
         for axis in ('X', 'Y', 'Z', 'U'):
@@ -1262,7 +1297,7 @@ class RdsAdapter(App):
                 pos_parts.append(f"{axis}: —")
         pos = "  ".join(pos_parts)
 
-        self._status_bar.update(f"{conn}  {transport_info}  |  {machine}  |  {counters}  |  {pos}")
+        self._status_bar.update(f"{conn}  {transport_info}  |  {indicators}  |  {machine}  |  {counters}  |  {pos}")
 
     # ------------------------------------------------------------------
     # AppAdapter-compatible no-ops (TUI creates sessions on demand)
