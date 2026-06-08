@@ -36,15 +36,17 @@ class StatusDict(TypedDict, total=False):
     """Status update dict sent from RdDriver to status listeners.
     
     All fields are optional — only keys that changed are present.
+    Non-bool values are (raw_value, formatted_string) tuples.
+    Machine status bits remain simple bools.
     """
-    MEM_CURRENT_POSITION_X: float
-    MEM_CURRENT_POSITION_Y: float
-    MEM_CURRENT_POSITION_Z: float
-    MEM_CURRENT_POSITION_U: float
-    MEM_CARD_ID: int
-    MEM_BED_SIZE_X: float
-    MEM_BED_SIZE_Y: float
-    MEM_MACHINE_STATUS: int
+    MEM_CURRENT_POSITION_X: tuple[float, str]
+    MEM_CURRENT_POSITION_Y: tuple[float, str]
+    MEM_CURRENT_POSITION_Z: tuple[float, str]
+    MEM_CURRENT_POSITION_U: tuple[float, str]
+    MEM_CARD_ID: tuple[int, str]
+    MEM_BED_SIZE_X: tuple[float, str]
+    MEM_BED_SIZE_Y: tuple[float, str]
+    MEM_MACHINE_STATUS: tuple[int, str]
     MACHINE_STATUS_MOVING: bool
     MACHINE_STATUS_PART_END: bool
     MACHINE_STATUS_JOB_RUNNING: bool
@@ -131,6 +133,7 @@ class RdDriver:
             ('MACHINE_STATUS_PART_END', rdap.MACHINE_STATUS_PART_END[0]),
             ('MACHINE_STATUS_JOB_RUNNING', rdap.MACHINE_STATUS_JOB_RUNNING[0]),
         ]
+        self._address_to_spec: dict[int, tuple[str, str, str]] = {}
         
         scripts = [
             ('_PING_SCRIPT', self._PING_SCRIPT),
@@ -151,6 +154,7 @@ class RdDriver:
                             address = (msb << 8) | lsb
                             self._handled_addresses.add(address)
                             self._address_to_mnemonic[address] = mnemonic
+                            self._address_to_spec[address] = mt_entry[1]
 
     # ---- Listener Registration ----
 
@@ -201,6 +205,34 @@ class RdDriver:
                 bit_changes[bit_name] = bool(new_value & bit_mask)
         return bit_changes
 
+    @staticmethod
+    def _format_status_value(address: int, raw_reply: bytearray) -> str:
+        """Format a decoded reply value using the MT table format spec.
+        
+        Uses the RdDecoder with the MT spec for this address to produce
+        a human-readable formatted string (e.g., '123.456 mm' for a coord).
+        Falls back to str(raw_value) if the MT entry is not found or decode fails.
+        """
+        from protocols.ruida.ruida_protocol import MT, RD_TYPES, RDT_BYTES
+        msb = (address >> 8) & 0xFF
+        lsb = address & 0xFF
+        mt_entry = MT.get(msb, {}).get(lsb)
+        if mt_entry is None:
+            return str(RdDecoder().decode_value(raw_reply))
+        spec = mt_entry[1]  # (format_string, decoder_fn, raw_type)
+        d = RdDecoder()
+        d.format = spec[0]
+        d.rd_type = spec[2]
+        d.data = bytearray([])
+        d.value = None
+        d.cstring = d.rd_type == 'cstring'
+        d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
+        decoder_method = getattr(d, f'rd_{spec[1]}')
+        try:
+            return decoder_method(raw_reply[4:9])
+        except Exception:
+            return str(RdDecoder().decode_value(raw_reply))
+
     def _on_reply(self, replies: list[bytearray]) -> None:
         """Internal reply handler: decode for status tracking, filter handled replies.
         
@@ -225,7 +257,8 @@ class RdDriver:
                 
                 if prev is _UNSET or prev != new_value:
                     mnemonic = self._address_to_mnemonic.get(address, f"0x{address:04X}")
-                    changes[mnemonic] = new_value
+                    formatted = self._format_status_value(address, raw_reply)
+                    changes[mnemonic] = (new_value, formatted)
                     
                     changes.update(self._diff_machine_status_bits(address, prev, new_value, self._address_to_bit_keys))
                 

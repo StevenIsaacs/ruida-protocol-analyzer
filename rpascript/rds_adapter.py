@@ -172,9 +172,10 @@ class RdsAdapter(App):
         }
         self._command_history: list[str] = []
         self._history_index: int | None = None
-        self._position: dict[str, float | str | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
+        self._position: dict[str, tuple | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
         self._session_disconnected: bool = False
         self._machine_status: int = 0
+        self._machine_status_formatted: str = '0'
         self._last_cmd_was_get_setting: bool = False
 
     # ------------------------------------------------------------------
@@ -874,21 +875,30 @@ class RdsAdapter(App):
                 # StatusDict received — update tracked values
                 for key, value in event.items():
                     if key == 'MEM_CURRENT_POSITION_X':
-                        self._position['X'] = value
+                        raw, formatted = value
+                        self._position['X'] = (raw, formatted)
                     elif key == 'MEM_CURRENT_POSITION_Y':
-                        self._position['Y'] = value
+                        raw, formatted = value
+                        self._position['Y'] = (raw, formatted)
                     elif key == 'MEM_CURRENT_POSITION_Z':
-                        self._position['Z'] = value
+                        raw, formatted = value
+                        self._position['Z'] = (raw, formatted)
                     elif key == 'MEM_CURRENT_POSITION_U':
-                        self._position['U'] = value
+                        raw, formatted = value
+                        self._position['U'] = (raw, formatted)
                     elif key == 'MEM_CARD_ID':
-                        self._position['Card'] = value
+                        raw, formatted = value
+                        self._position['Card'] = (raw, formatted)
                     elif key == 'MEM_BED_SIZE_X':
-                        self._position['BedX'] = value
+                        raw, formatted = value
+                        self._position['BedX'] = (raw, formatted)
                     elif key == 'MEM_BED_SIZE_Y':
-                        self._position['BedY'] = value
+                        raw, formatted = value
+                        self._position['BedY'] = (raw, formatted)
                     elif key == 'MEM_MACHINE_STATUS':
-                        self._machine_status = int(value)
+                        raw, formatted = value
+                        self._machine_status = int(raw)
+                        self._machine_status_formatted = formatted
                     elif key in ('MACHINE_STATUS_MOVING', 'MACHINE_STATUS_PART_END', 'MACHINE_STATUS_JOB_RUNNING'):
                         bitmask = MACHINE_STATUS_MOVING[0] if key == 'MACHINE_STATUS_MOVING' else \
                                   MACHINE_STATUS_PART_END[0] if key == 'MACHINE_STATUS_PART_END' else \
@@ -1263,21 +1273,24 @@ class RdsAdapter(App):
         # Counters
         counters = f"Events: {self._event_count}  Replies: {self._reply_count}  Scripts: {self._script_count}"
 
-        # Machine info (Card, BedX, BedY)
+        # Machine info (Card, BedX, BedY) — use pre-formatted values from StatusDict
         machine_parts = []
         card = self._position.get('Card')
         if card is not None:
-            machine_parts.append(f"Card: {card}")
+            _, formatted = card
+            machine_parts.append(f"Card: {formatted}")
         else:
             machine_parts.append("Card: —")
         bedx = self._position.get('BedX')
         if bedx is not None:
-            machine_parts.append(f"BedX: [bold]{bedx:.3f}[/bold]")
+            _, formatted = bedx
+            machine_parts.append(f"BedX: [bold]{formatted}[/bold]")
         else:
             machine_parts.append("BedX: —")
         bedy = self._position.get('BedY')
         if bedy is not None:
-            machine_parts.append(f"BedY: [bold]{bedy:.3f}[/bold]")
+            _, formatted = bedy
+            machine_parts.append(f"BedY: [bold]{formatted}[/bold]")
         else:
             machine_parts.append("BedY: —")
         machine = "  ".join(machine_parts)
@@ -1299,12 +1312,13 @@ class RdsAdapter(App):
             status_parts.append("JOB")
         indicators = " ".join(status_parts)
 
-        # Position
+        # Position — use pre-formatted values from StatusDict
         pos_parts = []
         for axis in ('X', 'Y', 'Z', 'U'):
             v = self._position[axis]
             if v is not None:
-                pos_parts.append(f"{axis}: [bold]{v:.3f}[/bold]")
+                _, formatted = v
+                pos_parts.append(f"{axis}: [bold]{formatted}[/bold]")
             else:
                 pos_parts.append(f"{axis}: —")
         pos = "  ".join(pos_parts)
