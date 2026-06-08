@@ -13,7 +13,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 from rpascript.encoding import (
     encode_command,
@@ -27,6 +27,27 @@ from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
 from ruidadriver.rd_transport import RdTransport
 import protocols.ruida.ruida_protocol as rdap
+
+
+_UNSET = object()  # Sentinel for "never seen before" in status change detection
+
+
+class StatusDict(TypedDict, total=False):
+    """Status update dict sent from RdDriver to status listeners.
+    
+    All fields are optional — only keys that changed are present.
+    """
+    MEM_CURRENT_POSITION_X: float
+    MEM_CURRENT_POSITION_Y: float
+    MEM_CURRENT_POSITION_Z: float
+    MEM_CURRENT_POSITION_U: float
+    MEM_CARD_ID: int
+    MEM_BED_SIZE_X: float
+    MEM_BED_SIZE_Y: float
+    MEM_MACHINE_STATUS: int
+    MACHINE_STATUS_MOVING: bool
+    MACHINE_STATUS_PART_END: bool
+    MACHINE_STATUS_JOB_RUNNING: bool
 
 
 class RdDriver:
@@ -84,11 +105,56 @@ class RdDriver:
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
         self._cancel_flag: bool = False
-        self._machine_status: dict[int, Any] = {}
+        self._decoded_values: dict[int, Any] = {}
+        self._build_status_map()
+
+    def _build_status_map(self) -> None:
+        """Build address resolution maps from _PING_SCRIPT, _QUERY_SCRIPT, _BED_SIZE_SCRIPT.
+        
+        Populates:
+            _handled_addresses: set[int] — fast membership check for reply filtering
+            _address_to_mnemonic: dict[int, str] — for building status-dict keys
+            _address_to_bit_keys: dict[int, list[tuple[str, int]]] — maps 0x0400 to status bit descriptors
+        """
+        from rpascript.interpreter import ScriptParser
+        from rpascript.encoding import encode_command
+        from rpalib.ruida_transcoder import RdEncoder
+        
+        parser = ScriptParser()
+        
+        self._handled_addresses: set[int] = set()
+        self._address_to_mnemonic: dict[int, str] = {}
+        # Map 0x0400 to (bit_key_name, bit_mask) for individual status bits
+        self._address_to_bit_keys: dict[int, list[tuple[str, int]]] = {}
+        self._address_to_bit_keys[0x0400] = [
+            ('MACHINE_STATUS_MOVING', rdap.MACHINE_STATUS_MOVING[0]),
+            ('MACHINE_STATUS_PART_END', rdap.MACHINE_STATUS_PART_END[0]),
+            ('MACHINE_STATUS_JOB_RUNNING', rdap.MACHINE_STATUS_JOB_RUNNING[0]),
+        ]
+        
+        scripts = [
+            ('_PING_SCRIPT', self._PING_SCRIPT),
+            ('_QUERY_SCRIPT', self._QUERY_SCRIPT),
+            ('_BED_SIZE_SCRIPT', self._BED_SIZE_SCRIPT),
+        ]
+        
+        for script_name, script_lines in scripts:
+            parsed = parser.parse_lines(script_lines)
+            for cmd in parsed:
+                if cmd.get('mnemonic') == 'GET_SETTING':
+                    params = cmd.get('params', [])
+                    if params:
+                        mnemonic = params[0]
+                        mt_entry = parser._mt_map.get(mnemonic)
+                        if mt_entry is not None:
+                            msb, lsb = mt_entry
+                            address = (msb << 8) | lsb
+                            self._handled_addresses.add(address)
+                            self._address_to_mnemonic[address] = mnemonic
 
     # ---- Listener Registration ----
 
-    def register_status_listener(self, listener: Callable[[RdStatusEvent], None]) -> None:
+    def register_status_listener(self, listener: Callable[[RdStatusEvent | StatusDict], None]) -> None:
         """Register a listener for RdStatusEvent notifications. Thread-safe."""
         with self._lock:
             self._status_listeners.append(listener)
@@ -105,7 +171,7 @@ class RdDriver:
 
     # ---- Internal Callbacks ----
 
-    def _on_status_event(self, event: RdStatusEvent) -> None:
+    def _on_status_event(self, event: RdStatusEvent | StatusDict) -> None:
         """Forward RdStatus events to registered listeners. Thread-safe via copy-on-iterate."""
         with self._lock:
             listeners = list(self._status_listeners)
@@ -115,45 +181,74 @@ class RdDriver:
             except Exception:
                 pass  # Isolate bad callbacks
 
-    def _on_reply(self, replies: list[bytearray]) -> None:
-        """Internal reply handler: decode for status tracking, then forward to reply listeners.
+    @staticmethod
+    def _diff_machine_status_bits(address: int, prev: object, new_value: int, address_to_bit_keys: dict[int, list[tuple[str, int]]]) -> dict[str, bool]:
+        """Compare old and new machine status values and return changed bits as bool dict.
+        
+        Returns dict with changed bit names → bool value. Empty dict if address is not 0x0400.
+        """
+        bit_changes: dict[str, bool] = {}
+        if address != 0x0400:
+            return bit_changes
+        bit_keys = address_to_bit_keys.get(0x0400, [])
+        for bit_name, bit_mask in bit_keys:
+            if prev is not _UNSET:
+                prev_set = bool(prev & bit_mask)
+                new_set = bool(new_value & bit_mask)
+                if prev_set != new_set:
+                    bit_changes[bit_name] = new_set
+            else:
+                bit_changes[bit_name] = bool(new_value & bit_mask)
+        return bit_changes
 
-        Decodes each GET_SETTING reply bytearray to extract address and value,
-        updates internal machine status tracking, fires MACHINE_STATUS_* events,
-        and queues BED_SIZE_SCRIPT on MEM_CARD_ID replies.
+    def _on_reply(self, replies: list[bytearray]) -> None:
+        """Internal reply handler: decode for status tracking, filter handled replies.
+        
+        For handled addresses (from _PING_SCRIPT, _QUERY_SCRIPT, _BED_SIZE_SCRIPT):
+        - Decode value, compare with previous, build changes dict if changed.
+        - Machine status bits are split into individual bool keys.
+        - Do NOT forward to reply listeners.
+        
+        For non-handled addresses:
+        - Forward raw reply data to registered reply listeners.
         """
         decoder = RdDecoder()
+        changes: dict[str, Any] = {}
+        forward_replies: list[bytearray] = []
+        
         for raw_reply in replies:
-            address = decoder.decode_address(raw_reply)  # e.g., 0x0400
-            value = decoder.decode_value(raw_reply)      # e.g., 3 for machine status
+            address = decoder.decode_address(raw_reply)
+            
+            if address in self._handled_addresses:
+                new_value = decoder.decode_value(raw_reply)
+                prev = self._decoded_values.get(address, _UNSET)
+                
+                if prev is _UNSET or prev != new_value:
+                    mnemonic = self._address_to_mnemonic.get(address, f"0x{address:04X}")
+                    changes[mnemonic] = new_value
+                    
+                    changes.update(self._diff_machine_status_bits(address, prev, new_value, self._address_to_bit_keys))
+                
+                self._decoded_values[address] = new_value
+                
+                if address == 0x057E:
+                    self.run(self._BED_SIZE_SCRIPT)
+            else:
+                forward_replies.append(raw_reply)
+        
+        if changes:
+            self._on_status_event(StatusDict(**changes))
+        
+        if forward_replies:
             with self._lock:
-                self._machine_status[address] = value
-            # Parse machine status bits into individual events (outside _lock to avoid callback reentrancy)
-            if address == 0x0400:  # MEM_MACHINE_STATUS (rd_mt convention: msb<<8|lsb)
-                for event in self._parse_machine_status(value):
-                    self._on_status_event(event)
-            # On MEM_CARD_ID reply, queue bed size queries
-            if address == 0x057E:  # MEM_CARD_ID (rd_mt convention: msb<<8|lsb)
-                self.run(self._BED_SIZE_SCRIPT)
-        # Forward raw reply data to registered reply listeners
-        with self._lock:
-            listeners = list(self._reply_listeners)
-        for listener in listeners:
-            try:
-                listener(replies)
-            except Exception:
-                pass  # Isolate bad callbacks
+                listeners = list(self._reply_listeners)
+            for listener in listeners:
+                try:
+                    listener(forward_replies)
+                except Exception:
+                    pass
 
-    def _parse_machine_status(self, value: int) -> list[RdStatusEvent]:
-        """Parse MEM_MACHINE_STATUS value into RdStatusEvent list."""
-        events = []
-        if value & rdap.MACHINE_STATUS_MOVING[0]:
-            events.append(RdStatusEvent.MACHINE_STATUS_MOVING)
-        if value & rdap.MACHINE_STATUS_PART_END[0]:
-            events.append(RdStatusEvent.MACHINE_STATUS_PART_END)
-        if value & rdap.MACHINE_STATUS_JOB_RUNNING[0]:
-            events.append(RdStatusEvent.MACHINE_STATUS_JOB_RUNNING)
-        return events
+
 
     # ---- Script Runner Lifecycle ----
 
@@ -460,7 +555,7 @@ class RdDriver:
             # Invert mode: wait for bit to become ACTIVE, then INACTIVE
             # First check if already active — if so, skip the 'wait for set' phase
             with self._lock:
-                current = self._machine_status.get(0x0400, 0)
+                current = self._decoded_values.get(0x0400, 0)
             if not (current & bit_mask):
                 # Phase 1: wait for 0→1 transition
                 while not self._shutdown.is_set():
@@ -470,7 +565,7 @@ class RdDriver:
                         )
                         return
                     with self._lock:
-                        current = self._machine_status.get(0x0400, 0)
+                        current = self._decoded_values.get(0x0400, 0)
                     if current & bit_mask:
                         break
                     time.sleep(0.05)
@@ -481,7 +576,7 @@ class RdDriver:
                     # applies to the total lifecycle
                     return
                 with self._lock:
-                    current = self._machine_status.get(0x0400, 0)
+                    current = self._decoded_values.get(0x0400, 0)
                 if not (current & bit_mask):
                     break
                 time.sleep(0.05)
@@ -494,7 +589,7 @@ class RdDriver:
                     )
                     return
                 with self._lock:
-                    current = self._machine_status.get(0x0400, 0)
+                    current = self._decoded_values.get(0x0400, 0)
                 if current & bit_mask:
                     break
                 time.sleep(0.05)
@@ -510,4 +605,4 @@ class RdDriver:
     def machine_status(self) -> dict[int, Any]:
         """Current machine status dict (address → decoded value). Read-only snapshot."""
         with self._lock:
-            return dict(self._machine_status)
+            return dict(self._decoded_values)

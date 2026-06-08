@@ -25,7 +25,7 @@ from textual.widgets import Footer, Header, Input, RichLog, Static
 from rpascript.interpreter import ScriptParser, reconstruct_script_line
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import encode_command
-from ruidadriver.ruida_driver import RdDriver
+from ruidadriver.ruida_driver import RdDriver, StatusDict
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
 
@@ -34,6 +34,7 @@ from protocols.ruida.ruida_protocol import MT, MACHINE_STATUS_MOVING, MACHINE_ST
 import asyncio
 import re
 import threading
+import logging
 
 
 def _parse_timeout_spec(to_str: str) -> float:
@@ -862,13 +863,51 @@ class RdsAdapter(App):
     # AppAdapter-compatible interface (called from driver background thread)
     # ------------------------------------------------------------------
 
-    def on_status_event(self, event: RdStatusEvent) -> None:
+    def on_status_event(self, event: RdStatusEvent | StatusDict) -> None:
         """Handle a status event from the driver.
 
         Called from the driver's background thread. Bridges to the asyncio
         event loop thread via call_from_thread for safe widget updates.
         """
         def _update() -> None:
+            if isinstance(event, dict):
+                # StatusDict received — update tracked values
+                for key, value in event.items():
+                    if key == 'MEM_CURRENT_POSITION_X':
+                        self._position['X'] = value
+                    elif key == 'MEM_CURRENT_POSITION_Y':
+                        self._position['Y'] = value
+                    elif key == 'MEM_CURRENT_POSITION_Z':
+                        self._position['Z'] = value
+                    elif key == 'MEM_CURRENT_POSITION_U':
+                        self._position['U'] = value
+                    elif key == 'MEM_CARD_ID':
+                        self._position['Card'] = value
+                    elif key == 'MEM_BED_SIZE_X':
+                        self._position['BedX'] = value
+                    elif key == 'MEM_BED_SIZE_Y':
+                        self._position['BedY'] = value
+                    elif key == 'MEM_MACHINE_STATUS':
+                        self._machine_status = int(value)
+                    elif key in ('MACHINE_STATUS_MOVING', 'MACHINE_STATUS_PART_END', 'MACHINE_STATUS_JOB_RUNNING'):
+                        bitmask = MACHINE_STATUS_MOVING[0] if key == 'MACHINE_STATUS_MOVING' else \
+                                  MACHINE_STATUS_PART_END[0] if key == 'MACHINE_STATUS_PART_END' else \
+                                  MACHINE_STATUS_JOB_RUNNING[0]
+                        if value:
+                            self._machine_status |= bitmask
+                        else:
+                            self._machine_status &= ~bitmask
+                    else:
+                        logging.getLogger(__name__).warning(
+                            "Unknown status key in StatusDict: %s = %r", key, value
+                        )
+                if self._logging_enabled:
+                    self._status_log.write(f"[STATUS] {dict(event)}")
+                self._event_count += 1
+                self._update_status_bar()
+                return
+            
+            # Original RdStatusEvent handling (unchanged)
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
@@ -1186,33 +1225,6 @@ class RdsAdapter(App):
                 decoded = decoder_method(data_bytes)
             except Exception:
                 decoded = None
-
-            # Track position values for the status bar
-            # Addresses follow rd_mt convention: (MT_msb << 8) | MT_lsb
-            # MEM_CURRENT_POSITION_X at MT[0x04][0x21] → 0x0421
-            # MEM_CURRENT_POSITION_Y at MT[0x04][0x31] → 0x0431
-            # MEM_CURRENT_POSITION_Z at MT[0x04][0x41] → 0x0441
-            # MEM_CURRENT_POSITION_U at MT[0x04][0x51] → 0x0451
-            if addr == 0x0421:
-                self._position['X'] = d.value
-            elif addr == 0x0431:
-                self._position['Y'] = d.value
-            elif addr == 0x0441:
-                self._position['Z'] = d.value
-            elif addr == 0x0451:
-                self._position['U'] = d.value
-            # MEM_CARD_ID at MT[0x05][0x7E] → 0x057E
-            elif addr == 0x057E:
-                self._position['Card'] = d.value
-            # MEM_BED_SIZE_X at MT[0x00][0x26] → 0x0026
-            elif addr == 0x0026:
-                self._position['BedX'] = d.value
-            # MEM_BED_SIZE_Y at MT[0x00][0x36] → 0x0036
-            elif addr == 0x0036:
-                self._position['BedY'] = d.value
-            # MEM_MACHINE_STATUS at MT[0x04][0x00] → 0x0400
-            elif addr == 0x0400:
-                self._machine_status = d.to_uint(data_bytes)
 
             if decoded:
                 return f"{mnemonic}: {decoded}"

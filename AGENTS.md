@@ -51,14 +51,17 @@ There are no unit tests, no formatter, no linter, no type checker, and no CI pip
 ## Dev tips
 
 - README states VSCode or its forks like VSCodium and Antigravity are the recommended IDEs for stepping through code alongside plots.
+- PEP8 compliance expected.
 - `.vscode/launch.json` exists for debugging.
 - `--plot-moves` opens a Bokeh server application in browser showing interactive head moves with power/speed popups, context menus, and filtering.
 - Ignored dirs: `discovery/`, `testing/`, `tmp/`, `build/`, `dist/`, `__pycache__`, `.png` files.
+- Temporary files are to be placed in `tmp/`.
 - Test output files are to be placed in `tmp/`.
 - Test output file names have the form `<base>-<run>.<ext>` where:
 	- `<base>` is the base name of the input file.
 	- `<run>` is a sequential two digit run number. New runs with the same input file will increment this number.
 	- `<ext>` is the extension corresponding to the output file type where:
+		- `.log` is a `tshark` capture file.
 		- `.txt` is a decode text file.
 		- `.rds` is a Ruida Script file.
 		- `.tshark` is a generated `tshark` log file. NOTE: When doing round trip testing packet sequence and content should be identical to the input file. The timestamps can vary.
@@ -69,4 +72,3 @@ There are no unit tests, no formatter, no linter, no type checker, and no CI pip
 			- `tmp/selected-01.tshark` for the `tshark` log using `tmp/selected-01.rds` as the input to `ruidascript`.
 			- `tmp/selected-01-rt.txt` for the decode file generated using `tmp/selected-01.tshark` as the input file.
 		A second run will have the number `02` instead of `01`.
-
