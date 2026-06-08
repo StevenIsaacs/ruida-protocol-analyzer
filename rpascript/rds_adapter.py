@@ -170,6 +170,10 @@ class RdsAdapter(App):
             'save': 'Save composed job to a file (/save job <path>)',
             'stop': 'Stop the current operation (session connection or script execution). Also bound to Escape.',
         }
+        self._suggest_matches: list[str] = []
+        self._suggest_selected: int = 0
+        self._suggest_mode: str = ''  # 'slash', 'introspect', or '' when no popup
+        self._suppress_popup: bool = False  # Suppress on_input_changed for programmatic value changes
         self._command_history: list[str] = []
         self._history_index: int | None = None
         self._position: dict[str, tuple | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
@@ -200,12 +204,56 @@ class RdsAdapter(App):
         self._status_log = self.query_one("#status-log", RichLog)
         self._reply_log = self.query_one("#reply-log", RichLog)
         self._status_bar = self.query_one("#status-bar", Static)
+        # Restrict focus to command input only — Tab stays on Input
+        self._log_widget.can_focus = False
+        self._status_log.can_focus = False
+        self._reply_log.can_focus = False
         self._update_status_bar()
         self._load_command_history()
 
     # ------------------------------------------------------------------
     # Command input handling
     # ------------------------------------------------------------------
+
+    def _render_suggest_popup(self) -> None:
+        """Render the suggestion popup with current selection highlighted.
+
+        Only shows items within a visible window around the selected item to
+        keep the selection on screen when the list exceeds max_lines.
+        """
+        self._suggest_popup.clear()
+        if not self._suggest_matches:
+            self._suggest_popup.write("[dim]No matching commands[/dim]")
+            return
+
+        # Compute visible window centered on selected item
+        max_items = self._suggest_popup.max_lines - 1  # reserve 1 line for header
+        total = len(self._suggest_matches)
+        half = max_items // 2
+        start = max(0, self._suggest_selected - half)
+        end = min(total, start + max_items)
+        # If we're below max_items, shift window up
+        if end - start < max_items:
+            start = max(0, end - max_items)
+
+        if self._suggest_mode == 'slash':
+            self._suggest_popup.write("[bold]Commands:[/bold]")
+            for i in range(start, end):
+                cmd = self._suggest_matches[i]
+                line = f"  /{cmd:<12} {self._cmd_descriptions[cmd]}"
+                if i == self._suggest_selected:
+                    self._suggest_popup.write(f"[reverse]{line}[/reverse]")
+                else:
+                    self._suggest_popup.write(line)
+        elif self._suggest_mode == 'introspect':
+            self._suggest_popup.write("[bold]Introspect:[/bold]")
+            for i in range(start, end):
+                obj = self._suggest_matches[i]
+                line = f"  ?{obj}"
+                if i == self._suggest_selected:
+                    self._suggest_popup.write(f"[reverse]{line}[/reverse]")
+                else:
+                    self._suggest_popup.write(line)
 
     @on(Input.Submitted, "#command-input")
     async def on_command(self, event: Input.Submitted) -> None:
@@ -227,16 +275,18 @@ class RdsAdapter(App):
         if self._suggest_popup.is_attached:
             self._suggest_popup.remove()
 
-        # Introspection mode: !<path> [args...]
-        if line.startswith('!'):
+        # Introspection mode: ?<object>[.<attr>] [args...]
+        if line.startswith('?'):
             expr = line[1:].strip()
+            if not expr:
+                # Just '?' — show available introspection objects
+                known = ', '.join(sorted(self._introspect_map.keys()))
+                self._log_widget.write("[bold]?[/bold]")
+                self._log_info(f"Introspect: {known}")
+                return
             result = self._handle_introspect(expr)
-            self._log_widget.write(f"[bold]!{expr}[/bold]")
+            self._log_widget.write(f"[bold]?{expr}[/bold]")
             self._log_info(result)
-            return
-        # Help shortcut: ? as first character
-        if line == '?':
-            self._log_info(self._handle_help())
             return
         # Slash-prefixed TUI commands
         if line.startswith('/'):
@@ -297,6 +347,14 @@ class RdsAdapter(App):
     @on(Input.Changed, "#command-input")
     def on_input_changed(self, event: Input.Changed) -> None:
         """Show/filter command popup as user types."""
+        # Suppress popup for programmatic value changes (e.g., history recall)
+        if self._suppress_popup:
+            self._suppress_popup = False
+            self._suggest_matches = []
+            self._suggest_mode = ''
+            if self._suggest_popup.is_attached:
+                self._suggest_popup.remove()
+            return
         value = event.value
 
         # Slash commands
@@ -309,17 +367,39 @@ class RdsAdapter(App):
 
             if not self._suggest_popup.is_attached:
                 self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
-            self._suggest_popup.clear()
             if matches:
-                self._suggest_popup.write("[bold]Commands:[/bold]")
-                for cmd in matches:
-                    self._suggest_popup.write(f"  /{cmd:<12} {self._cmd_descriptions[cmd]}")
+                self._suggest_matches = matches
+                self._suggest_selected = 0
+                self._suggest_mode = 'slash'
             else:
-                self._suggest_popup.write("[dim]No matching commands[/dim]")
+                self._suggest_matches = []
+                self._suggest_mode = ''
+            self._render_suggest_popup()
+            return
+
+        # Introspection objects: ?<object>
+        if value.startswith('?'):
+            prefix = value[1:].strip()
+            known = list(self._introspect_map.keys())
+            if not prefix:
+                matches = sorted(known)
+            else:
+                matches = sorted(k for k in known if k.startswith(prefix.lower()))
+
+            if not self._suggest_popup.is_attached:
+                self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+            if matches:
+                self._suggest_matches = matches
+                self._suggest_selected = 0
+                self._suggest_mode = 'introspect'
+            else:
+                self._suggest_matches = []
+                self._suggest_mode = ''
+            self._render_suggest_popup()
             return
 
         # Normal commands (not introspection, not help query)
-        if value and not value.startswith(('!', '?')):
+        if value and not value.startswith('?'):
             clean = value.strip().lower()
 
             if ' ' in clean:
@@ -345,6 +425,8 @@ class RdsAdapter(App):
         # No popup needed — remove if attached
         if self._suggest_popup.is_attached:
             self._suggest_popup.remove()
+            self._suggest_matches = []
+            self._suggest_mode = ''
 
     # ------------------------------------------------------------------
     # Command history (Up/Down navigation)
@@ -357,11 +439,16 @@ class RdsAdapter(App):
         Only responds when the command-input widget is focused.
         """
         inp = self.query_one("#command-input", Input)
-        if not inp.has_focus:
+        popup_has_focus = self._suggest_popup.is_attached and self._suggest_popup.has_focus
+        if not inp.has_focus and not popup_has_focus:
             return
 
         if event.key == "up":
             event.stop()
+            if popup_has_focus and self._suggest_matches:
+                self._suggest_selected = (self._suggest_selected - 1) % len(self._suggest_matches)
+                self._render_suggest_popup()
+                return
             if not self._command_history:
                 return
             if self._history_index is None:
@@ -371,11 +458,16 @@ class RdsAdapter(App):
             else:
                 return  # already at oldest
             cmd = self._command_history[self._history_index]
+            self._suppress_popup = True
             inp.value = cmd
             inp.cursor_position = len(cmd)
 
         elif event.key == "down":
             event.stop()
+            if popup_has_focus and self._suggest_matches:
+                self._suggest_selected = (self._suggest_selected + 1) % len(self._suggest_matches)
+                self._render_suggest_popup()
+                return
             if self._history_index is None:
                 return  # not browsing history
             if self._history_index < len(self._command_history) - 1:
@@ -385,8 +477,72 @@ class RdsAdapter(App):
                 # At newest entry -> clear input
                 self._history_index = None
                 cmd = ""
+            self._suppress_popup = True
             inp.value = cmd
             inp.cursor_position = len(cmd)
+
+        elif event.key == "enter":
+            """Confirm selection from suggest popup."""
+            if popup_has_focus and self._suggest_matches:
+                event.stop()
+                selected = self._suggest_matches[self._suggest_selected]
+                prefix = '/' if self._suggest_mode == 'slash' else '?'
+                self._suppress_popup = True
+                completed_val = f"{prefix}{selected}"
+                inp.focus()  # Must be BEFORE value set (selects old value, harmless)
+                inp.value = completed_val  # Set autocompleted value; End key moves cursor to end
+                self.post_message(Key("end", None))
+                self._suggest_popup.remove()
+                self._suggest_matches = []
+                self._suggest_mode = ''
+                return
+
+        elif event.key == "tab":
+            """Tab autocomplete for / and ? command prefixes."""
+            # If popup has focus, autofill with selected item
+            if popup_has_focus and self._suggest_matches:
+                event.stop()
+                selected = self._suggest_matches[self._suggest_selected]
+                prefix = '/' if self._suggest_mode == 'slash' else '?'
+                self._suppress_popup = True
+                completed_val = f"{prefix}{selected}"
+                inp.focus()  # Must be BEFORE value set (selects old value, harmless)
+                inp.value = completed_val  # Set autocompleted value; End key moves cursor to end
+                self.post_message(Key("end", None))
+                self._suggest_popup.remove()
+                self._suggest_matches = []
+                self._suggest_mode = ''
+                return
+
+            # Existing autocomplete when input has focus
+            if not self._suggest_popup.is_attached:
+                return
+            event.stop()
+            value = inp.value
+
+            if value.startswith('/'):
+                prefix = value[1:].strip()
+                if not prefix:
+                    matches = list(self._SLASH_COMMANDS)
+                else:
+                    matches = [c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())]
+                if len(matches) == 1:
+                    completed_val = f"/{matches[0]}"
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+
+            elif value.startswith('?'):
+                prefix = value[1:].strip()
+                known = list(self._introspect_map.keys())
+                if not prefix:
+                    matches = sorted(known)
+                else:
+                    matches = sorted(k for k in known if k.startswith(prefix.lower()))
+                if len(matches) == 1:
+                    completed_val = f"?{matches[0]}"
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+
 
     # ------------------------------------------------------------------
     # Slash-command handlers
@@ -398,10 +554,9 @@ class RdsAdapter(App):
         return (
             "[bold]TUI Commands[/bold] (prefix with /):\n"
             f"{cmd_list}\n"
-            "  ?                 Alias for /help\n"
-            "\n"
-            "[bold]Introspection[/bold] (prefix with !):\n"
-            "  !<object>[.<attr>] [args...]  Inspect or call objects\n"
+            "[bold]Introspection[/bold] (prefix with ?):\n"
+            "  ?<object>[.<attr>] [args...]  Inspect or call objects\n"
+            "  ?                 List available introspection objects\n"
             "  Available: session, transport, driver, status, parser, decoder\n"
             "\n"
             "[bold]Ruida Commands[/bold] (no prefix):\n"
@@ -916,7 +1071,7 @@ class RdsAdapter(App):
                 self._event_count += 1
                 self._update_status_bar()
                 return
-            
+
             # Original RdStatusEvent handling (unchanged)
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
@@ -986,7 +1141,7 @@ class RdsAdapter(App):
             self.call_from_thread(_run)
 
     # ------------------------------------------------------------------
-    # Introspection (!) subsystem
+    # Introspection (?) subsystem
     # ------------------------------------------------------------------
 
     def _resolve_path(self, path: str) -> tuple[Any, str | None]:
@@ -1023,7 +1178,7 @@ class RdsAdapter(App):
         return (obj, None)
 
     def _handle_introspect(self, expr: str) -> str:
-        """Handle a !-prefixed introspection expression.
+        """Handle a ?-prefixed introspection expression.
 
         No parentheses → variable view (repr).
         With parentheses → method call with args, or signature display if no args.
