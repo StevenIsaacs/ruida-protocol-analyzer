@@ -35,6 +35,7 @@ import asyncio
 import re
 import threading
 import logging
+import time
 
 
 def _parse_timeout_spec(to_str: str) -> float:
@@ -177,6 +178,7 @@ class RdsAdapter(App):
         self._command_history: list[str] = []
         self._history_index: int | None = None
         self._position: dict[str, tuple | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
+        self._last_coord_change: dict[str, float] = {'X': 0.0, 'Y': 0.0, 'Z': 0.0, 'U': 0.0}
         self._session_disconnected: bool = False
         self._machine_status: int = 0
         self._machine_status_formatted: str = '0'
@@ -210,6 +212,7 @@ class RdsAdapter(App):
         self._reply_log.can_focus = False
         self._update_status_bar()
         self._load_command_history()
+        self.query_one("#command-input", Input).focus()
 
     # ------------------------------------------------------------------
     # Command input handling
@@ -1032,15 +1035,19 @@ class RdsAdapter(App):
                     if key == 'MEM_CURRENT_POSITION_X':
                         raw, formatted = value
                         self._position['X'] = (raw, formatted)
+                        self._last_coord_change['X'] = time.time()
                     elif key == 'MEM_CURRENT_POSITION_Y':
                         raw, formatted = value
                         self._position['Y'] = (raw, formatted)
+                        self._last_coord_change['Y'] = time.time()
                     elif key == 'MEM_CURRENT_POSITION_Z':
                         raw, formatted = value
                         self._position['Z'] = (raw, formatted)
+                        self._last_coord_change['Z'] = time.time()
                     elif key == 'MEM_CURRENT_POSITION_U':
                         raw, formatted = value
                         self._position['U'] = (raw, formatted)
+                        self._last_coord_change['U'] = time.time()
                     elif key == 'MEM_CARD_ID':
                         raw, formatted = value
                         self._position['Card'] = (raw, formatted)
@@ -1468,12 +1475,16 @@ class RdsAdapter(App):
         indicators = " ".join(status_parts)
 
         # Position — use pre-formatted values from StatusDict
+        now = time.time()
         pos_parts = []
         for axis in ('X', 'Y', 'Z', 'U'):
             v = self._position[axis]
             if v is not None:
                 _, formatted = v
-                pos_parts.append(f"{axis}: [bold]{formatted}[/bold]")
+                if now - self._last_coord_change.get(axis, 0.0) < 2.0:
+                    pos_parts.append(f"[bold yellow]{axis}: {formatted}[/bold yellow]")
+                else:
+                    pos_parts.append(f"{axis}: [bold]{formatted}[/bold]")
             else:
                 pos_parts.append(f"{axis}: —")
         pos = "  ".join(pos_parts)
