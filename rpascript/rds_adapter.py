@@ -8,34 +8,36 @@ in real-time via the AppAdapter → RdDriver → RdSession stack.
 
 from __future__ import annotations
 
-from typing import Any, Callable
-
 import ast
+import asyncio
 import functools
 import inspect
 import json
+import logging
 import os
+import re
+import threading
+import time
+from typing import Any, Callable
 
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.events import Key
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Header, Input, RichLog, Static
 
-from rpascript.interpreter import ScriptParser, reconstruct_script_line
+from protocols.ruida.ruida_protocol import (
+    MACHINE_STATUS_JOB_RUNNING,
+    MACHINE_STATUS_MOVING,
+    MACHINE_STATUS_PART_END,
+    MT,
+)
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import encode_command
-from ruidadriver.ruida_driver import RdDriver, StatusDict
+from rpascript.interpreter import ScriptParser, reconstruct_script_line
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
-
-from protocols.ruida.ruida_protocol import MT, MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END, MACHINE_STATUS_JOB_RUNNING
-
-import asyncio
-import re
-import threading
-import logging
-import time
+from ruidadriver.ruida_driver import RdDriver, StatusDict
 
 
 def _parse_timeout_spec(to_str: str) -> float:
@@ -43,12 +45,12 @@ def _parse_timeout_spec(to_str: str) -> float:
 
     Raises ValueError on invalid format.
     """
-    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(ms|s)', to_str.strip())
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(ms|s)", to_str.strip())
     if not match:
         raise ValueError(f"Invalid timeout format: '{to_str}'. Use e.g., 5s, 500ms")
     value = float(match.group(1))
     unit = match.group(2)
-    if unit == 'ms':
+    if unit == "ms":
         return value / 1000.0
     return value
 
@@ -74,8 +76,20 @@ class RdsAdapter(App):
         ("escape", "stop", "Stop"),
     ]
 
-    _SLASH_COMMANDS: tuple[str, ...] = ('help', 'load', 'exec', 'clear', 'quit', 'log', 'head', 'tail', 'list', 'save', 'stop')
-    _NORMAL_COMMANDS: tuple[str, ...] = ('session',)
+    _SLASH_COMMANDS: tuple[str, ...] = (
+        "help",
+        "load",
+        "exec",
+        "clear",
+        "quit",
+        "log",
+        "head",
+        "tail",
+        "list",
+        "save",
+        "stop",
+    )
+    _NORMAL_COMMANDS: tuple[str, ...] = ("session",)
 
     CSS = """
     #main-container {
@@ -142,12 +156,12 @@ class RdsAdapter(App):
         self._script_count = 0
         self._logging_enabled: bool = True
         self._introspect_map: dict[str, Callable[[], Any]] = {
-            'session':   lambda: self._session,
-            'transport': lambda: self._session.transport if self._session else None,
-            'driver':    lambda: self._ruida_driver,
-            'status':    lambda: self._session.status if self._session else None,
-            'parser':    lambda: self._parser,
-            'decoder':   lambda: self._decoder,
+            "session": lambda: self._session,
+            "transport": lambda: self._session.transport if self._session else None,
+            "driver": lambda: self._ruida_driver,
+            "status": lambda: self._session.status if self._session else None,
+            "parser": lambda: self._parser,
+            "decoder": lambda: self._decoder,
         }
         self._loaded_script: list[str] = []
         self._head_script: list[str] = []
@@ -158,30 +172,45 @@ class RdsAdapter(App):
             id="suggest-popup", highlight=True, markup=True, max_lines=10
         )
         self._cmd_descriptions: dict[str, str] = {
-            'help': 'Show help text',
-            'load': 'Load a script file from disk',
-            'exec': 'Execute the loaded script',
-            'clear': 'Clear all log panels, loaded script, head, and tail',
-            'quit': 'Exit the TUI',
-            'log': 'Toggle display of status/reply messages (on|off|status)',
-            'session': 'Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)',
-            'head': 'Load a script file to prepend to job on execution',
-            'tail': 'Load a script file to append to job on execution',
-            'list': 'Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)',
-            'save': 'Save composed job to a file (/save job <path>)',
-            'stop': 'Stop the current operation (session connection or script execution). Also bound to Escape.',
+            "help": "Show help text",
+            "load": "Load a script file from disk",
+            "exec": "Execute the loaded script",
+            "clear": "Clear all log panels, loaded script, head, and tail",
+            "quit": "Exit the TUI",
+            "log": "Toggle display of status/reply messages (on|off|status)",
+            "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
+            "head": "Load a script file to prepend to job on execution",
+            "tail": "Load a script file to append to job on execution",
+            "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
+            "save": "Save composed job to a file (/save job <path>)",
+            "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
         }
         self._suggest_matches: list[str] = []
         self._suggest_selected: int = 0
-        self._suggest_mode: str = ''  # 'slash', 'introspect', or '' when no popup
-        self._suppress_popup: bool = False  # Suppress on_input_changed for programmatic value changes
+        self._suggest_mode: str = ""  # 'slash', 'introspect', or '' when no popup
+        self._suppress_popup: bool = (
+            False  # Suppress on_input_changed for programmatic value changes
+        )
         self._command_history: list[str] = []
         self._history_index: int | None = None
-        self._position: dict[str, tuple | None] = {'X': None, 'Y': None, 'Z': None, 'U': None, 'Card': None, 'BedX': None, 'BedY': None}
-        self._last_coord_change: dict[str, float] = {'X': 0.0, 'Y': 0.0, 'Z': 0.0, 'U': 0.0}
+        self._position: dict[str, tuple | None] = {
+            "X": None,
+            "Y": None,
+            "Z": None,
+            "U": None,
+            "Card": None,
+            "BedX": None,
+            "BedY": None,
+        }
+        self._last_coord_change: dict[str, float] = {
+            "X": 0.0,
+            "Y": 0.0,
+            "Z": 0.0,
+            "U": 0.0,
+        }
         self._session_disconnected: bool = False
         self._machine_status: int = 0
-        self._machine_status_formatted: str = '0'
+        self._machine_status_formatted: str = "0"
         self._last_cmd_was_get_setting: bool = False
 
     # ------------------------------------------------------------------
@@ -193,10 +222,17 @@ class RdsAdapter(App):
         yield Header()
         with Horizontal(id="main-container"):
             with Vertical(id="log-panel"):
-                yield RichLog(id="log-area", highlight=True, markup=True, max_lines=1000)
-                yield Input(id="command-input", placeholder="> Enter command (session start/end, or rpascript)...")
+                yield RichLog(
+                    id="log-area", highlight=True, markup=True, max_lines=1000
+                )
+                yield Input(
+                    id="command-input",
+                    placeholder="> Enter command (session start/end, or rpascript)...",
+                )
             with Vertical(id="side-panel"):
-                yield RichLog(id="status-log", highlight=True, markup=True, max_lines=50)
+                yield RichLog(
+                    id="status-log", highlight=True, markup=True, max_lines=50
+                )
                 yield RichLog(id="reply-log", highlight=True, markup=True, max_lines=50)
         yield Static(id="status-bar")
 
@@ -239,7 +275,7 @@ class RdsAdapter(App):
         if end - start < max_items:
             start = max(0, end - max_items)
 
-        if self._suggest_mode == 'slash':
+        if self._suggest_mode == "slash":
             self._suggest_popup.write("[bold]Commands:[/bold]")
             for i in range(start, end):
                 cmd = self._suggest_matches[i]
@@ -248,7 +284,7 @@ class RdsAdapter(App):
                     self._suggest_popup.write(f"[reverse]{line}[/reverse]")
                 else:
                     self._suggest_popup.write(line)
-        elif self._suggest_mode == 'introspect':
+        elif self._suggest_mode == "introspect":
             self._suggest_popup.write("[bold]Introspect:[/bold]")
             for i in range(start, end):
                 obj = self._suggest_matches[i]
@@ -279,11 +315,11 @@ class RdsAdapter(App):
             self._suggest_popup.remove()
 
         # Introspection mode: ?<object>[.<attr>] [args...]
-        if line.startswith('?'):
+        if line.startswith("?"):
             expr = line[1:].strip()
             if not expr:
                 # Just '?' — show available introspection objects
-                known = ', '.join(sorted(self._introspect_map.keys()))
+                known = ", ".join(sorted(self._introspect_map.keys()))
                 self._log_widget.write("[bold]?[/bold]")
                 self._log_info(f"Introspect: {known}")
                 return
@@ -292,7 +328,7 @@ class RdsAdapter(App):
             self._log_info(result)
             return
         # Slash-prefixed TUI commands
-        if line.startswith('/'):
+        if line.startswith("/"):
             self._handle_slash_command(line)
             return
         self._log_script(line)
@@ -310,34 +346,45 @@ class RdsAdapter(App):
             self._script_count += 1
 
             # Pre-encode regular commands to show wire-format bytes in the log
-            if cmd['type'] not in ('SESSION_START', 'SESSION_END', 'DELAY', 'WAIT'):
+            if cmd["type"] not in ("SESSION_START", "SESSION_END", "DELAY", "WAIT"):
                 try:
-                    encoded = encode_command(cmd, self._parser.mnemonic_map, self._parser._mt_map, RdEncoder())
-                    hex_str = ' '.join(f'{b:02X}' for b in encoded)
-                    self._log_widget.write(f"[dim]         ⇒ {hex_str} ({len(encoded)} bytes)[/dim]")
+                    encoded = encode_command(
+                        cmd,
+                        self._parser.mnemonic_map,
+                        self._parser._mt_map,
+                        RdEncoder(),
+                    )
+                    hex_str = " ".join(f"{b:02X}" for b in encoded)
+                    self._log_widget.write(
+                        f"[dim]         ⇒ {hex_str} ({len(encoded)} bytes)[/dim]"
+                    )
                 except Exception as e:
                     self._log_error(f"Encoding failed: {e}")
 
             # Only track GET_SETTING commands with valid, resolvable addresses
             # to prevent stale flag from showing QUERY replies as GET_SETTING results
-            if cmd.get('mnemonic', '') == 'GET_SETTING':
-                params = cmd.get('params', [])
+            if cmd.get("mnemonic", "") == "GET_SETTING":
+                params = cmd.get("params", [])
                 if params and self._is_resolvable_address(params[0]):
                     self._last_cmd_was_get_setting = True
                 else:
-                    reason = f"unknown address: {params[0]}" if params else "missing address"
+                    reason = (
+                        f"unknown address: {params[0]}" if params else "missing address"
+                    )
                     self._log_error(f"Invalid GET_SETTING: {reason}")
                     return
             else:
                 self._last_cmd_was_get_setting = False
 
-            if cmd['type'] == 'SESSION_START':
-                await self._start_session(**cmd['params'])
-            elif cmd['type'] == 'SESSION_END':
+            if cmd["type"] == "SESSION_START":
+                await self._start_session(**cmd["params"])
+            elif cmd["type"] == "SESSION_END":
                 await self._stop_session()
             else:
                 if self._ruida_driver is None:
-                    self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
+                    self._log_error(
+                        "No active session. Use 'session start udp=<IP> usb=<device>' first."
+                    )
                     return
                 try:
                     reconstructed = reconstruct_script_line(cmd)
@@ -354,34 +401,38 @@ class RdsAdapter(App):
         if self._suppress_popup:
             self._suppress_popup = False
             self._suggest_matches = []
-            self._suggest_mode = ''
+            self._suggest_mode = ""
             if self._suggest_popup.is_attached:
                 self._suggest_popup.remove()
             return
         value = event.value
 
         # Slash commands
-        if value.startswith('/'):
+        if value.startswith("/"):
             prefix = value[1:].strip()
             if not prefix:
                 matches = list(self._SLASH_COMMANDS)
             else:
-                matches = [c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())]
+                matches = [
+                    c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())
+                ]
 
             if not self._suggest_popup.is_attached:
-                self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+                self.query_one("#log-panel").mount(
+                    self._suggest_popup, before="#command-input"
+                )
             if matches:
                 self._suggest_matches = matches
                 self._suggest_selected = 0
-                self._suggest_mode = 'slash'
+                self._suggest_mode = "slash"
             else:
                 self._suggest_matches = []
-                self._suggest_mode = ''
+                self._suggest_mode = ""
             self._render_suggest_popup()
             return
 
         # Introspection objects: ?<object>
-        if value.startswith('?'):
+        if value.startswith("?"):
             prefix = value[1:].strip()
             known = list(self._introspect_map.keys())
             if not prefix:
@@ -390,24 +441,26 @@ class RdsAdapter(App):
                 matches = sorted(k for k in known if k.startswith(prefix.lower()))
 
             if not self._suggest_popup.is_attached:
-                self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+                self.query_one("#log-panel").mount(
+                    self._suggest_popup, before="#command-input"
+                )
             if matches:
                 self._suggest_matches = matches
                 self._suggest_selected = 0
-                self._suggest_mode = 'introspect'
+                self._suggest_mode = "introspect"
             else:
                 self._suggest_matches = []
-                self._suggest_mode = ''
+                self._suggest_mode = ""
             self._render_suggest_popup()
             return
 
         # Normal commands (not introspection, not help query)
-        if value and not value.startswith('?'):
+        if value and not value.startswith("?"):
             clean = value.strip().lower()
 
-            if ' ' in clean:
+            if " " in clean:
                 # Space detected — lock to the matched command root, no more filtering
-                root_cmd = clean.split(' ', 1)[0]
+                root_cmd = clean.split(" ", 1)[0]
                 if root_cmd in self._NORMAL_COMMANDS:
                     matches = [root_cmd]
                 else:
@@ -418,18 +471,22 @@ class RdsAdapter(App):
 
             if matches:
                 if not self._suggest_popup.is_attached:
-                    self.query_one("#log-panel").mount(self._suggest_popup, before="#command-input")
+                    self.query_one("#log-panel").mount(
+                        self._suggest_popup, before="#command-input"
+                    )
                 self._suggest_popup.clear()
                 self._suggest_popup.write("[bold]Commands:[/bold]")
                 for cmd in matches:
-                    self._suggest_popup.write(f"  {cmd:<12} {self._cmd_descriptions[cmd]}")
+                    self._suggest_popup.write(
+                        f"  {cmd:<12} {self._cmd_descriptions[cmd]}"
+                    )
                 return
 
         # No popup needed — remove if attached
         if self._suggest_popup.is_attached:
             self._suggest_popup.remove()
             self._suggest_matches = []
-            self._suggest_mode = ''
+            self._suggest_mode = ""
 
     # ------------------------------------------------------------------
     # Command history (Up/Down navigation)
@@ -442,14 +499,18 @@ class RdsAdapter(App):
         Only responds when the command-input widget is focused.
         """
         inp = self.query_one("#command-input", Input)
-        popup_has_focus = self._suggest_popup.is_attached and self._suggest_popup.has_focus
+        popup_has_focus = (
+            self._suggest_popup.is_attached and self._suggest_popup.has_focus
+        )
         if not inp.has_focus and not popup_has_focus:
             return
 
         if event.key == "up":
             event.stop()
             if popup_has_focus and self._suggest_matches:
-                self._suggest_selected = (self._suggest_selected - 1) % len(self._suggest_matches)
+                self._suggest_selected = (self._suggest_selected - 1) % len(
+                    self._suggest_matches
+                )
                 self._render_suggest_popup()
                 return
             if not self._command_history:
@@ -468,7 +529,9 @@ class RdsAdapter(App):
         elif event.key == "down":
             event.stop()
             if popup_has_focus and self._suggest_matches:
-                self._suggest_selected = (self._suggest_selected + 1) % len(self._suggest_matches)
+                self._suggest_selected = (self._suggest_selected + 1) % len(
+                    self._suggest_matches
+                )
                 self._render_suggest_popup()
                 return
             if self._history_index is None:
@@ -489,7 +552,7 @@ class RdsAdapter(App):
             if popup_has_focus and self._suggest_matches:
                 event.stop()
                 selected = self._suggest_matches[self._suggest_selected]
-                prefix = '/' if self._suggest_mode == 'slash' else '?'
+                prefix = "/" if self._suggest_mode == "slash" else "?"
                 self._suppress_popup = True
                 completed_val = f"{prefix}{selected}"
                 inp.focus()  # Must be BEFORE value set (selects old value, harmless)
@@ -497,7 +560,7 @@ class RdsAdapter(App):
                 self.post_message(Key("end", None))
                 self._suggest_popup.remove()
                 self._suggest_matches = []
-                self._suggest_mode = ''
+                self._suggest_mode = ""
                 return
 
         elif event.key == "tab":
@@ -506,7 +569,7 @@ class RdsAdapter(App):
             if popup_has_focus and self._suggest_matches:
                 event.stop()
                 selected = self._suggest_matches[self._suggest_selected]
-                prefix = '/' if self._suggest_mode == 'slash' else '?'
+                prefix = "/" if self._suggest_mode == "slash" else "?"
                 self._suppress_popup = True
                 completed_val = f"{prefix}{selected}"
                 inp.focus()  # Must be BEFORE value set (selects old value, harmless)
@@ -514,7 +577,7 @@ class RdsAdapter(App):
                 self.post_message(Key("end", None))
                 self._suggest_popup.remove()
                 self._suggest_matches = []
-                self._suggest_mode = ''
+                self._suggest_mode = ""
                 return
 
             # Existing autocomplete when input has focus
@@ -523,18 +586,20 @@ class RdsAdapter(App):
             event.stop()
             value = inp.value
 
-            if value.startswith('/'):
+            if value.startswith("/"):
                 prefix = value[1:].strip()
                 if not prefix:
                     matches = list(self._SLASH_COMMANDS)
                 else:
-                    matches = [c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())]
+                    matches = [
+                        c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())
+                    ]
                 if len(matches) == 1:
                     completed_val = f"/{matches[0]}"
                     inp.value = completed_val
                     self.post_message(Key("end", None))
 
-            elif value.startswith('?'):
+            elif value.startswith("?"):
                 prefix = value[1:].strip()
                 known = list(self._introspect_map.keys())
                 if not prefix:
@@ -546,14 +611,16 @@ class RdsAdapter(App):
                     inp.value = completed_val
                     self.post_message(Key("end", None))
 
-
     # ------------------------------------------------------------------
     # Slash-command handlers
     # ------------------------------------------------------------------
 
     def _handle_help(self) -> str:
         """Return formatted help text covering all command categories."""
-        cmd_list = "\n".join(f"  /{cmd:<12} {self._cmd_descriptions[cmd]}" for cmd in self._SLASH_COMMANDS)
+        cmd_list = "\n".join(
+            f"  /{cmd:<12} {self._cmd_descriptions[cmd]}"
+            for cmd in self._SLASH_COMMANDS
+        )
         return (
             "[bold]TUI Commands[/bold] (prefix with /):\n"
             f"{cmd_list}\n"
@@ -584,30 +651,32 @@ class RdsAdapter(App):
             return
         cmd = parts[0].lower()
         if cmd not in self._SLASH_COMMANDS:
-            self._log_error(f"Unknown TUI command: /{cmd}. Type /help or ? for available commands.")
+            self._log_error(
+                f"Unknown TUI command: /{cmd}. Type /help or ? for available commands."
+            )
             return
-        args = parts[1] if len(parts) > 1 else ''
-        if cmd == 'help':
+        args = parts[1] if len(parts) > 1 else ""
+        if cmd == "help":
             self._log_info(self._handle_help())
-        elif cmd == 'load':
+        elif cmd == "load":
             self._cmd_load(args)
-        elif cmd == 'exec':
+        elif cmd == "exec":
             self._cmd_exec(args)
-        elif cmd == 'clear':
+        elif cmd == "clear":
             self._cmd_clear()
-        elif cmd == 'quit':
+        elif cmd == "quit":
             self._cmd_quit()
-        elif cmd == 'log':
+        elif cmd == "log":
             self._cmd_log(args)
-        elif cmd == 'head':
+        elif cmd == "head":
             self._cmd_head(args)
-        elif cmd == 'tail':
+        elif cmd == "tail":
             self._cmd_tail(args)
-        elif cmd == 'list':
+        elif cmd == "list":
             self._cmd_list(args)
-        elif cmd == 'save':
+        elif cmd == "save":
             self._cmd_save(args)
-        elif cmd == 'stop':
+        elif cmd == "stop":
             self._cmd_stop(args)
 
     def _cmd_load(self, path: str) -> None:
@@ -617,9 +686,9 @@ class RdsAdapter(App):
             return
         path = os.path.expanduser(path)
         try:
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 content = f.read()
-            lines = [l for l in content.splitlines() if l.strip()]
+            lines = [line for line in content.splitlines() if line.strip()]
             if not lines:
                 self._log_error(f"File is empty or contains only blank lines: {path}")
                 return
@@ -641,9 +710,9 @@ class RdsAdapter(App):
             return
         path = os.path.expanduser(path)
         try:
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 content = f.read()
-            lines = [l for l in content.splitlines() if l.strip()]
+            lines = [line for line in content.splitlines() if line.strip()]
             if not lines:
                 self._log_error(f"File is empty or contains only blank lines: {path}")
                 return
@@ -665,9 +734,9 @@ class RdsAdapter(App):
             return
         path = os.path.expanduser(path)
         try:
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 content = f.read()
-            lines = [l for l in content.splitlines() if l.strip()]
+            lines = [line for line in content.splitlines() if line.strip()]
             if not lines:
                 self._log_error(f"File is empty or contains only blank lines: {path}")
                 return
@@ -682,7 +751,7 @@ class RdsAdapter(App):
         except Exception as e:
             self._log_error(f"Error reading {path}: {type(e).__name__}: {e}")
 
-    def _cmd_exec(self, args: str = '') -> None:
+    def _cmd_exec(self, args: str = "") -> None:
         """Execute the loaded script.
 
         If args is 'job', execute only commands from START_PROCESS to EOF.
@@ -692,13 +761,15 @@ class RdsAdapter(App):
             self._log_error("No script loaded. Use /load <path> first.")
             return
         if self._ruida_driver is None:
-            self._log_error("No active session. Use 'session start udp=<IP> usb=<device>' first.")
+            self._log_error(
+                "No active session. Use 'session start udp=<IP> usb=<device>' first."
+            )
             return
         action = args.strip().lower()
-        if action == '':
+        if action == "":
             self._log_info(f"Executing {len(self._loaded_script)} lines...")
             self.run_script(self._loaded_script)
-        elif action == 'job':
+        elif action == "job":
             script = self._build_job_script(self._loaded_script)
             if not script:
                 self._log_error("No job commands found (no START_PROCESS/EOF markers).")
@@ -718,14 +789,16 @@ class RdsAdapter(App):
         result: list[str] = []
         for line in lines:
             stripped = line.strip().upper()
-            if stripped == 'START_PROCESS' or stripped.startswith('START_PROCESS '):
+            if stripped == "START_PROCESS" or stripped.startswith("START_PROCESS "):
                 in_job = True
             if in_job:
                 # Skip GET_SETTING and NEW_PACKET — not part of the job
-                if stripped.startswith('GET_SETTING') or stripped.startswith('NEW_PACKET'):
+                if stripped.startswith("GET_SETTING") or stripped.startswith(
+                    "NEW_PACKET"
+                ):
                     continue
                 result.append(line)
-            if stripped == 'EOF' or stripped.startswith('EOF '):
+            if stripped == "EOF" or stripped.startswith("EOF "):
                 break
         return result
 
@@ -756,22 +829,22 @@ class RdsAdapter(App):
 
     def action_stop(self) -> None:
         """Handle Escape key: stop current operation."""
-        self._cmd_stop('')
+        self._cmd_stop("")
 
     def _cmd_log(self, args: str) -> None:
         """Handle /log subcommands: on, off, status, or toggle."""
         action = args.strip().lower()
-        if action in ('', 'toggle'):
+        if action in ("", "toggle"):
             self._logging_enabled = not self._logging_enabled
             state = "ON" if self._logging_enabled else "OFF"
             self._log_info(f"Logging is {state}")
-        elif action == 'on':
+        elif action == "on":
             self._logging_enabled = True
             self._log_info("Logging enabled")
-        elif action == 'off':
+        elif action == "off":
             self._logging_enabled = False
             self._log_info("Logging disabled (status/reply suppressed)")
-        elif action == 'status':
+        elif action == "status":
             state = "ON" if self._logging_enabled else "OFF"
             self._log_info(f"Logging is {state}")
         else:
@@ -780,14 +853,14 @@ class RdsAdapter(App):
     def _cmd_list(self, args: str) -> None:
         """Handle /list subcommands: script, job, head, or tail."""
         action = args.strip().lower()
-        if action == 'script':
+        if action == "script":
             if not self._loaded_script:
                 self._log_info("No script loaded. Use /load <path> first.")
                 return
             self._log_info(f"Loaded script ({len(self._loaded_script)} lines):")
             for line in self._loaded_script:
                 self._log_widget.write(f"  {line}")
-        elif action == 'job':
+        elif action == "job":
             if not self._loaded_script:
                 self._log_info("No script loaded. Use /load <path> first.")
                 return
@@ -798,14 +871,14 @@ class RdsAdapter(App):
             self._log_info(f"Composed job ({len(composed)} lines):")
             for line in composed:
                 self._log_widget.write(f"  {line}")
-        elif action == 'head':
+        elif action == "head":
             if not self._head_script:
                 self._log_info("No head script loaded. Use /head <path> first.")
                 return
             self._log_info(f"Head script ({len(self._head_script)} lines):")
             for line in self._head_script:
                 self._log_widget.write(f"  {line}")
-        elif action == 'tail':
+        elif action == "tail":
             if not self._tail_script:
                 self._log_info("No tail script loaded. Use /tail <path> first.")
                 return
@@ -818,7 +891,7 @@ class RdsAdapter(App):
     def _cmd_save(self, args: str) -> None:
         """Handle /save subcommands: job <path>."""
         parts = args.strip().split(None, 1)
-        if not parts or parts[0] != 'job' or len(parts) < 2:
+        if not parts or parts[0] != "job" or len(parts) < 2:
             self._log_error("Usage: /save job <path>")
             return
         path = parts[1]
@@ -831,8 +904,8 @@ class RdsAdapter(App):
             return
         path = os.path.expanduser(path)
         try:
-            with open(path, 'w') as f:
-                f.write('\n'.join(composed) + '\n')
+            with open(path, "w") as f:
+                f.write("\n".join(composed) + "\n")
             self._log_info(f"Job saved to {path} ({len(composed)} lines)")
         except PermissionError:
             self._log_error(f"Permission denied: {path}")
@@ -865,7 +938,9 @@ class RdsAdapter(App):
     # Session lifecycle
     # ------------------------------------------------------------------
 
-    async def _start_session(self, udp: str = '', usb: str | None = None, to: str | None = None) -> None:
+    async def _start_session(
+        self, udp: str = "", usb: str | None = None, to: str | None = None
+    ) -> None:
         """Connect to a Ruida controller and start the script runner.
 
         Opens the transport (non-fatal if it fails — the status monitor retries
@@ -877,7 +952,7 @@ class RdsAdapter(App):
             self._log_error("Session already active. Use 'session end' first.")
             return
 
-        usb_device = usb if usb else ''
+        usb_device = usb if usb else ""
 
         timeout: float | None = None
         if to is not None:
@@ -903,7 +978,9 @@ class RdsAdapter(App):
         if udp:
             resolved = await loop.run_in_executor(None, _resolve_hostname, udp, 50200)
             if resolved is None:
-                self._log_error(f"Unable to resolve '{udp}'. Check the address and try again.")
+                self._log_error(
+                    f"Unable to resolve '{udp}'. Check the address and try again."
+                )
                 return
             udp = resolved
 
@@ -1028,43 +1105,52 @@ class RdsAdapter(App):
         Called from the driver's background thread. Bridges to the asyncio
         event loop thread via call_from_thread for safe widget updates.
         """
+
         def _update() -> None:
             if isinstance(event, dict):
                 # StatusDict received — update tracked values
                 for key, value in event.items():
-                    if key == 'MEM_CURRENT_POSITION_X':
+                    if key == "MEM_CURRENT_POSITION_X":
                         raw, formatted = value
-                        self._position['X'] = (raw, formatted)
-                        self._last_coord_change['X'] = time.time()
-                    elif key == 'MEM_CURRENT_POSITION_Y':
+                        self._position["X"] = (raw, formatted)
+                        self._last_coord_change["X"] = time.time()
+                    elif key == "MEM_CURRENT_POSITION_Y":
                         raw, formatted = value
-                        self._position['Y'] = (raw, formatted)
-                        self._last_coord_change['Y'] = time.time()
-                    elif key == 'MEM_CURRENT_POSITION_Z':
+                        self._position["Y"] = (raw, formatted)
+                        self._last_coord_change["Y"] = time.time()
+                    elif key == "MEM_CURRENT_POSITION_Z":
                         raw, formatted = value
-                        self._position['Z'] = (raw, formatted)
-                        self._last_coord_change['Z'] = time.time()
-                    elif key == 'MEM_CURRENT_POSITION_U':
+                        self._position["Z"] = (raw, formatted)
+                        self._last_coord_change["Z"] = time.time()
+                    elif key == "MEM_CURRENT_POSITION_U":
                         raw, formatted = value
-                        self._position['U'] = (raw, formatted)
-                        self._last_coord_change['U'] = time.time()
-                    elif key == 'MEM_CARD_ID':
+                        self._position["U"] = (raw, formatted)
+                        self._last_coord_change["U"] = time.time()
+                    elif key == "MEM_CARD_ID":
                         raw, formatted = value
-                        self._position['Card'] = (raw, formatted)
-                    elif key == 'MEM_BED_SIZE_X':
+                        self._position["Card"] = (raw, formatted)
+                    elif key == "MEM_BED_SIZE_X":
                         raw, formatted = value
-                        self._position['BedX'] = (raw, formatted)
-                    elif key == 'MEM_BED_SIZE_Y':
+                        self._position["BedX"] = (raw, formatted)
+                    elif key == "MEM_BED_SIZE_Y":
                         raw, formatted = value
-                        self._position['BedY'] = (raw, formatted)
-                    elif key == 'MEM_MACHINE_STATUS':
+                        self._position["BedY"] = (raw, formatted)
+                    elif key == "MEM_MACHINE_STATUS":
                         raw, formatted = value
                         self._machine_status = int(raw)
                         self._machine_status_formatted = formatted
-                    elif key in ('MACHINE_STATUS_MOVING', 'MACHINE_STATUS_PART_END', 'MACHINE_STATUS_JOB_RUNNING'):
-                        bitmask = MACHINE_STATUS_MOVING[0] if key == 'MACHINE_STATUS_MOVING' else \
-                                  MACHINE_STATUS_PART_END[0] if key == 'MACHINE_STATUS_PART_END' else \
-                                  MACHINE_STATUS_JOB_RUNNING[0]
+                    elif key in (
+                        "MACHINE_STATUS_MOVING",
+                        "MACHINE_STATUS_PART_END",
+                        "MACHINE_STATUS_JOB_RUNNING",
+                    ):
+                        bitmask = (
+                            MACHINE_STATUS_MOVING[0]
+                            if key == "MACHINE_STATUS_MOVING"
+                            else MACHINE_STATUS_PART_END[0]
+                            if key == "MACHINE_STATUS_PART_END"
+                            else MACHINE_STATUS_JOB_RUNNING[0]
+                        )
                         if value:
                             self._machine_status |= bitmask
                         else:
@@ -1090,6 +1176,7 @@ class RdsAdapter(App):
                 self._session_disconnected = False
                 self._session_connected.set()
             self._update_status_bar()
+
         self.call_from_thread(_update)
 
     def on_reply_data(self, replies: list[bytearray]) -> None:
@@ -1099,6 +1186,7 @@ class RdsAdapter(App):
         event loop thread via call_from_thread for safe widget updates.
         Decodes raw reply bytearrays to MEM_ mnemonics with decoded values.
         """
+
         def _update() -> None:
             decoder = RdDecoder()
             for raw in replies:
@@ -1109,15 +1197,20 @@ class RdsAdapter(App):
                     # decoded reply in the main log pane
                     if self._last_cmd_was_get_setting:
                         self._log_widget.write(f"  ← {formatted}")
-                        self._last_cmd_was_get_setting = False  # reset — only log the first reply
+                        self._last_cmd_was_get_setting = (
+                            False  # reset — only log the first reply
+                        )
             self._reply_count += len(replies)
             self._update_status_bar()
+
         self.call_from_thread(_update)
 
     def on_error(self, message: str) -> None:
         """Handle an error condition. Thread-safe via call_from_thread."""
+
         def _update() -> None:
             self._log_error(message)
+
         self.call_from_thread(_update)
 
     def run_script(self, script: list[str]) -> None:
@@ -1126,8 +1219,10 @@ class RdsAdapter(App):
         Thread-safe: can be called from any thread.
         """
         if self._ruida_driver is None:
+
             def _error() -> None:
                 self._log_error("No active session to run script.")
+
             if threading.get_ident() == self._thread_id:
                 _error()
             else:
@@ -1159,26 +1254,26 @@ class RdsAdapter(App):
         On failure, resolved_object is None and error_message describes the issue.
         """
         # Handle 'self.' prefix for RdsAdapter itself
-        if path.startswith('self.'):
+        if path.startswith("self."):
             obj = self
             remaining = path[5:]
-        elif path == 'self':
+        elif path == "self":
             return (self, None)
         else:
             # Split off the root object name
-            parts = path.split('.', 1)
+            parts = path.split(".", 1)
             root_name = parts[0]
             try:
                 obj = self._introspect_map[root_name]()
             except KeyError:
-                known = ', '.join(sorted(self._introspect_map.keys()))
+                known = ", ".join(sorted(self._introspect_map.keys()))
                 return (None, f"Unknown object: {root_name}. Known: {known}")
-            remaining = parts[1] if len(parts) > 1 else ''
+            remaining = parts[1] if len(parts) > 1 else ""
 
         # Walk the attribute chain
         if remaining:
             try:
-                obj = functools.reduce(getattr, remaining.split('.'), obj)
+                obj = functools.reduce(getattr, remaining.split("."), obj)
             except AttributeError as e:
                 return (None, f"No such attribute: {path} ({e})")
 
@@ -1195,12 +1290,12 @@ class RdsAdapter(App):
             return "Usage: !<object>[.<attribute>] [args...]"
 
         # Split on first '(' to detect method call
-        paren_idx = expr.find('(')
+        paren_idx = expr.find("(")
         if paren_idx == -1:
             # No parens: split on space for potential args
             parts = expr.split(None, 1)
             path = parts[0]
-            args_raw = parts[1] if len(parts) > 1 else ''
+            args_raw = parts[1] if len(parts) > 1 else ""
 
             obj, err = self._resolve_path(path)
             if err:
@@ -1224,10 +1319,10 @@ class RdsAdapter(App):
 
         # Method call with parens
         path = expr[:paren_idx].strip()
-        args_part = expr[paren_idx+1:]
+        args_part = expr[paren_idx + 1 :]
 
         # Find matching close paren
-        if not args_part.endswith(')'):
+        if not args_part.endswith(")"):
             return "Syntax error: unclosed parenthesis"
         args_str = args_part[:-1].strip()
 
@@ -1274,14 +1369,14 @@ class RdsAdapter(App):
             lines = ["{"]
             for k, v in value.items():
                 v_fmt = self._format_value(v)
-                if '\n' in v_fmt:
+                if "\n" in v_fmt:
                     lines.append(f"  {repr(k)}:")
-                    for sub in v_fmt.split('\n'):
+                    for sub in v_fmt.split("\n"):
                         lines.append(f"    {sub}")
                 else:
                     lines.append(f"  {repr(k)}: {v_fmt}")
             lines.append("}")
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
         if isinstance(value, (list, tuple)):
             if not value:
@@ -1291,13 +1386,13 @@ class RdsAdapter(App):
             lines = [bracket_open]
             for item in value:
                 item_fmt = self._format_value(item)
-                for sub in item_fmt.split('\n'):
+                for sub in item_fmt.split("\n"):
                     lines.append(f"  {sub}")
                 lines[-1] += ","
             lines.append(bracket_close)
-            return '\n'.join(lines)
+            return "\n".join(lines)
 
-        if isinstance(value, str) and '\n' in value:
+        if isinstance(value, str) and "\n" in value:
             # Multi-line string (docstring) — display with literal line breaks
             return value
 
@@ -1313,7 +1408,7 @@ class RdsAdapter(App):
             return []
 
         result = []
-        for arg in args_str.split(','):
+        for arg in args_str.split(","):
             arg = arg.strip()
             if not arg:
                 continue
@@ -1327,11 +1422,14 @@ class RdsAdapter(App):
                 pass
 
             # Try hex→bytearray conversion (starts with 0x, contains only hex chars)
-            clean = arg[2:] if arg.startswith('0x') else arg
+            clean = arg[2:] if arg.startswith("0x") else arg
             if not clean:
                 continue
             try:
-                if all(c in '0123456789abcdefABCDEF' for c in clean) and len(clean) % 2 == 0:
+                if (
+                    all(c in "0123456789abcdefABCDEF" for c in clean)
+                    and len(clean) % 2 == 0
+                ):
                     val = bytearray.fromhex(clean)
                     result.append(val)
                     continue
@@ -1383,14 +1481,15 @@ class RdsAdapter(App):
             d.rd_type = spec[2]
             d.data = bytearray([])
             d.value = None
-            d.cstring = d.rd_type == 'cstring'
+            d.cstring = d.rd_type == "cstring"
 
             # Set _length for to_int/to_uint
             from protocols.ruida.ruida_protocol import RD_TYPES, RDT_BYTES
+
             d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
 
             # Call the decoder method directly by name
-            decoder_method = getattr(d, f'rd_{spec[1]}')
+            decoder_method = getattr(d, f"rd_{spec[1]}")
             data_bytes = reply[4:9]
 
             try:
@@ -1413,7 +1512,11 @@ class RdsAdapter(App):
         # Connection info
         if self._session_disconnected:
             conn = "[red]Disconnected[/red]"
-        elif self._ruida_driver is not None and self._session is not None and self._session.is_connected:
+        elif (
+            self._ruida_driver is not None
+            and self._session is not None
+            and self._session.is_connected
+        ):
             conn = "[green]Connected[/green]"
         elif self._session is not None:
             conn = "[yellow]Connecting[/yellow]"
@@ -1437,19 +1540,19 @@ class RdsAdapter(App):
 
         # Machine info (Card, BedX, BedY) — use pre-formatted values from StatusDict
         machine_parts = []
-        card = self._position.get('Card')
+        card = self._position.get("Card")
         if card is not None:
             _, formatted = card
             machine_parts.append(f"Card: {formatted}")
         else:
             machine_parts.append("Card: —")
-        bedx = self._position.get('BedX')
+        bedx = self._position.get("BedX")
         if bedx is not None:
             _, formatted = bedx
             machine_parts.append(f"BedX: [bold]{formatted}[/bold]")
         else:
             machine_parts.append("BedX: —")
-        bedy = self._position.get('BedY')
+        bedy = self._position.get("BedY")
         if bedy is not None:
             _, formatted = bedy
             machine_parts.append(f"BedY: [bold]{formatted}[/bold]")
@@ -1477,7 +1580,7 @@ class RdsAdapter(App):
         # Position — use pre-formatted values from StatusDict
         now = time.time()
         pos_parts = []
-        for axis in ('X', 'Y', 'Z', 'U'):
+        for axis in ("X", "Y", "Z", "U"):
             v = self._position[axis]
             if v is not None:
                 _, formatted = v
@@ -1489,7 +1592,9 @@ class RdsAdapter(App):
                 pos_parts.append(f"{axis}: —")
         pos = "  ".join(pos_parts)
 
-        self._status_bar.update(f"{conn}  {transport_info}  |  {indicators}  |  {machine}  |  {counters}  |  {pos}")
+        self._status_bar.update(
+            f"{conn}  {transport_info}  |  {indicators}  |  {machine}  |  {counters}  |  {pos}"
+        )
 
     # ------------------------------------------------------------------
     # AppAdapter-compatible no-ops (TUI creates sessions on demand)
@@ -1538,7 +1643,7 @@ class RdsAdapter(App):
         """Load command history from disk. Silently handles missing/corrupt files."""
         path = self._history_path()
         try:
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 data = json.load(f)
             if isinstance(data, list) and all(isinstance(item, str) for item in data):
                 self._command_history = data[-500:]
@@ -1550,7 +1655,7 @@ class RdsAdapter(App):
         path = self._history_path()
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 json.dump(self._command_history[-500:], f)
         except (OSError, PermissionError):
             pass  # Non-fatal if we can't save history
@@ -1574,6 +1679,7 @@ class RdsAdapter(App):
 # Module-level entry point
 # ------------------------------------------------------------------
 
+
 def _resolve_hostname(host: str, port: int = 50200) -> str | None:
     """Resolve a hostname to an IP address. Returns IP string or None on failure.
 
@@ -1585,7 +1691,7 @@ def _resolve_hostname(host: str, port: int = 50200) -> str | None:
     import socket
 
     if not host:
-        return ''  # Empty is OK (USB mode)
+        return ""  # Empty is OK (USB mode)
 
     # Already an IP? No DNS needed.
     try:
@@ -1595,7 +1701,7 @@ def _resolve_hostname(host: str, port: int = 50200) -> str | None:
         pass
 
     # Has spaces? Can't be a valid hostname.
-    if ' ' in host:
+    if " " in host:
         return None
 
     # Resolve hostname via DNS with timeout

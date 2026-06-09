@@ -1,23 +1,23 @@
-'''Top-level Bokeh application: server launcher, tab container, and thread-safe updates.
+"""Top-level Bokeh application: server launcher, tab container, and thread-safe updates.
 
 Manages BokehView instances, launches Bokeh server with port auto-selection,
-and handles thread-safe data updates via queue.Queue + add_periodic_callback.'''
+and handles thread-safe data updates via queue.Queue + add_periodic_callback."""
 
-import queue
 import logging
+import queue
 import threading
 
 # Fail-fast import check for Bokeh and Tornado dependencies.
 try:
-    from bokeh.models import ColumnDataSource, Tabs, Div
-    from bokeh.layouts import column
-    from bokeh.server.server import Server
     from bokeh.application import Application
     from bokeh.application.handlers import FunctionHandler
+    from bokeh.layouts import column
+    from bokeh.models import ColumnDataSource, Div, Tabs
+    from bokeh.server.server import Server
 except ImportError:
     raise ImportError(
-        'Bokeh and Tornado are required for plotting. '
-        'Install with: pip install bokeh')
+        "Bokeh and Tornado are required for plotting. Install with: pip install bokeh"
+    )
 
 from rpalib.bokeh_view import BokehView
 
@@ -27,8 +27,8 @@ log = logging.getLogger(__name__)
 _SENTINEL = object()
 
 
-class BokehApp():
-    '''Top-level Bokeh application managing views, tab container, and server.
+class BokehApp:
+    """Top-level Bokeh application managing views, tab container, and server.
 
     Combines server lifecycle (port selection, background IO loop), a tabbed
     UI container, and a thread-safe update pipeline using queue.Queue and
@@ -37,18 +37,18 @@ class BokehApp():
     The start/shutdown flow:
         start() -> background IO loop thread -> browser connects
         shutdown() -> sentinel -> drain_queue stops server
-    '''
+    """
 
     DEFAULT_PORT = 5006
     MAX_PORT_ATTEMPTS = 5
 
     def __init__(self, args, plotter):
-        '''Initialise the Bokeh application.
+        """Initialise the Bokeh application.
 
         Parameters:
             args        Command line arguments for the rpa program.
             plotter  A BokehPlotter instance providing to_column_data().
-        '''
+        """
         self.args = args
         self.plotter = plotter
 
@@ -72,7 +72,7 @@ class BokehApp():
         self._doc = None
 
     def _make_document(self, doc):
-        '''Create the Bokeh document served by the Bokeh server.
+        """Create the Bokeh document served by the Bokeh server.
 
         Called by FunctionHandler when a new session starts.  Sets up the tab
         container, the first view, and the periodic callback that drains the
@@ -80,7 +80,7 @@ class BokehApp():
 
         Parameters:
             doc  The Bokeh Document to populate.
-        '''
+        """
         # ColumnDataSource populated with data decoded before server start.
         _source = ColumnDataSource(data=self._initial_data)
 
@@ -89,9 +89,13 @@ class BokehApp():
         if self.plotter.out.args.output_file:
             _out_stem = str(self.plotter.out.out_stem)
         # Create the primary tab holding the XY plot and histograms.
-        _view = BokehView(self.args, source=_source, title='All Vectors',
-                          color_lut=self.plotter.color_lut,
-                          out_stem=_out_stem)
+        _view = BokehView(
+            self.args,
+            source=_source,
+            title="All Vectors",
+            color_lut=self.plotter.color_lut,
+            out_stem=_out_stem,
+        )
         _view.set_app(self)
         _view.update_histograms()
         self.views.append(_view)
@@ -102,15 +106,15 @@ class BokehApp():
 
         # Status banner shown above the plot area.
         _status = Div(
-            text='Now plotting moves. Press Ctrl+C in the terminal to exit.',
-            styles={'font-size': '14px', 'margin': '10px 0'},
+            text="Now plotting moves. Press Ctrl+C in the terminal to exit.",
+            styles={"font-size": "14px", "margin": "10px 0"},
         )
 
         # Set the browser window/tab title.
-        doc.title = 'Ruida Protocol Analyzer'
+        doc.title = "Ruida Protocol Analyzer"
 
         # Assemble the root layout.
-        doc.add_root(column(_status, self.tabs, sizing_mode='stretch_width'))
+        doc.add_root(column(_status, self.tabs, sizing_mode="stretch_width"))
 
         # Periodic callback to drain the data queue (every 100 ms).
         doc.add_periodic_callback(self._drain_queue, 100)
@@ -119,12 +123,12 @@ class BokehApp():
         self._doc = doc
 
     def _drain_queue(self):
-        '''Drain the data queue and update the ColumnDataSource.
+        """Drain the data queue and update the ColumnDataSource.
 
         Called periodically via add_periodic_callback on the Bokeh server
         thread.  This is the thread-safe mechanism for pushing data from
         the decoder thread to the Bokeh UI.
-        '''
+        """
         # Collect all pending items from the queue.
         _updates = []
         try:
@@ -160,13 +164,13 @@ class BokehApp():
         self._first_view.update_histograms(_source)
 
         # Update command search completions on the first view
-        if hasattr(self._first_view, '_update_cmd_completions'):
+        if hasattr(self._first_view, "_update_cmd_completions"):
             self._first_view._update_cmd_completions()
 
     # ---- Tab Management (Phase 5a.3) ----
 
     def add_view(self, source_data: dict, title: str):
-        '''Create a new BokehView and append its tab to the container.
+        """Create a new BokehView and append its tab to the container.
 
         Each new view receives its own ColumnDataSource so that filtering
         and range-scrolling in one tab does not affect others.
@@ -180,9 +184,9 @@ class BokehApp():
 
         Returns:
             The newly created BokehView.
-        '''
+        """
         # Guard clause: ensure document is initialised.
-        if not hasattr(self, 'tabs'):
+        if not hasattr(self, "tabs"):
             return None
 
         # Resolve output stem for save filenames
@@ -190,9 +194,13 @@ class BokehApp():
         if self.plotter.out.args.output_file:
             _out_stem = str(self.plotter.out.out_stem)
         _source = ColumnDataSource(data=source_data)
-        _view = BokehView(self.args, source=_source, title=title,
-                          color_lut=self.plotter.color_lut,
-                          out_stem=_out_stem)
+        _view = BokehView(
+            self.args,
+            source=_source,
+            title=title,
+            color_lut=self.plotter.color_lut,
+            out_stem=_out_stem,
+        )
         _view.set_app(self)
         _view.update_histograms()
         self.views.append(_view)
@@ -200,14 +208,14 @@ class BokehApp():
         return _view
 
     def remove_view(self, tab_index: int):
-        '''Remove the tab and view at the given index.
+        """Remove the tab and view at the given index.
 
         The first tab (index 0, "All Vectors") is protected and cannot
         be removed.
 
         Parameters:
             tab_index  Index of the tab to remove.
-        '''
+        """
         # Guard clause: protect the first (All Vectors) tab.
         if tab_index <= 0 or tab_index >= len(self.tabs.tabs):
             return
@@ -219,7 +227,7 @@ class BokehApp():
         self.tabs.tabs = _tabs
 
     def add_tab_from_cmd_id(self, cmd_id: int, source_view) -> BokehView:
-        '''Create a new view starting from the vector with the given cmd_id.
+        """Create a new view starting from the vector with the given cmd_id.
 
         Filters source_view's data to include only vectors from the
         matching cmd_id onward.
@@ -230,11 +238,11 @@ class BokehApp():
 
         Returns:
             The newly created BokehView.
-        '''
+        """
         _data = source_view.source.data
 
         # Guard clause: no data to filter.
-        _cmd_ids = _data.get('cmd_id', [])
+        _cmd_ids = _data.get("cmd_id", [])
         if not _cmd_ids:
             return self.duplicate_view(source_view)
 
@@ -254,45 +262,45 @@ class BokehApp():
         for _key in _data:
             _subset[_key] = _data[_key][_start_idx:]
 
-        _title = f'View from Cmd #{cmd_id}'
+        _title = f"View from Cmd #{cmd_id}"
         return self.add_view(_subset, _title)
 
     def duplicate_view(self, source_view) -> BokehView:
-        '''Create a new view with an independent copy of source_view's data.
+        """Create a new view with an independent copy of source_view's data.
 
         Parameters:
             source_view  The BokehView to duplicate.
 
         Returns:
             The newly created BokehView.
-        '''
+        """
         _data = {}
         for _key in source_view.source.data:
             # Copy the list to avoid sharing references.
             _data[_key] = list(source_view.source.data[_key])
 
-        _title = f'Copy of {source_view.title}'
+        _title = f"Copy of {source_view.title}"
         return self.add_view(_data, _title)
 
     def push_data(self, data: dict):
-        '''Push vector data to the Bokeh server in a thread-safe manner.
+        """Push vector data to the Bokeh server in a thread-safe manner.
 
         Parameters:
             data  A dict with keys matching ColumnDataSource columns
                   (cmd_id, command, start_x, start_y, end_x, end_y,
                    length, speed, power, width, style, color, annotation).
-        '''
+        """
         # Guard clause: silently drop data if the server is not running.
         if not self._running:
             return
         self.data_queue.put(data)
 
     def shutdown(self):
-        '''Signal the Bokeh server to shut down gracefully.'''
+        """Signal the Bokeh server to shut down gracefully."""
         self.data_queue.put(_SENTINEL)
 
     def start(self, port: int = None) -> bool:
-        '''Start the Bokeh server in a background thread.
+        """Start the Bokeh server in a background thread.
 
         Attempts to bind to *port* (default 5006).  If the port is already in
         use, the method tries the next port, and so on up to
@@ -303,7 +311,7 @@ class BokehApp():
 
         Returns:
             True if the server started successfully, False otherwise.
-        '''
+        """
         if port is not None:
             self.port = port
 
@@ -312,9 +320,9 @@ class BokehApp():
         for _attempt in range(self.MAX_PORT_ATTEMPTS):
             try:
                 self.server = Server(
-                    {'/': _app},
+                    {"/": _app},
                     port=self.port,
-                    allow_websocket_origin=['*'],
+                    allow_websocket_origin=["*"],
                     session_token_expiration=86400,  # 24 hours
                 )
                 self.server.start()
@@ -328,23 +336,22 @@ class BokehApp():
                 )
                 self._thread.start()
 
-                log.info('Bokeh server started on port %d', self.port)
+                log.info("Bokeh server started on port %d", self.port)
                 return True
 
             except OSError as e:
-                if 'Address already in use' in str(e):
+                if "Address already in use" in str(e):
                     self.port += 1
                     continue
-                log.error('Failed to start Bokeh server: %s', e)
+                log.error("Failed to start Bokeh server: %s", e)
                 return False
 
             except Exception as e:
-                log.error('Failed to start Bokeh server: %s', e)
+                log.error("Failed to start Bokeh server: %s", e)
                 return False
 
         log.error(
-            'Could not find an available port after %d attempts. '
-            'Last tried: %d',
+            "Could not find an available port after %d attempts. Last tried: %d",
             self.MAX_PORT_ATTEMPTS,
             self.port,
         )

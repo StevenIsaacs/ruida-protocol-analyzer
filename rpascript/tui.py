@@ -9,41 +9,45 @@ import argparse
 import sys
 
 from rpa import __version__
-from rpascript.interpreter import ScriptParser, ScriptInterpreter
+from rpascript.interpreter import ScriptInterpreter, ScriptParser
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the argument parser for rpa-script."""
     parser = argparse.ArgumentParser(
-        prog='rpa-script',
-        description='Generate Ruida protocol output from .rds scripts or launch interactive TUI.',
-        epilog='Examples: rpa-script myscript.rds | python rpa.py -   |   rpa-script --tui',
+        prog="rpa-script",
+        description="Generate Ruida protocol output from .rds scripts or launch interactive TUI.",
+        epilog="Examples: rpa-script myscript.rds | python rpa.py -   |   rpa-script --tui",
     )
     parser.add_argument(
-        'script',
-        nargs='?',
+        "script",
+        nargs="?",
         default=None,
-        help='.rds script file to process (optional with --tui)',
+        help=".rds script file to process (optional with --tui)",
     )
     parser.add_argument(
-        '-o', '--output',
-        help='Output file (default: stdout)',
+        "-o",
+        "--output",
+        help="Output file (default: stdout)",
         default=None,
     )
     parser.add_argument(
-        '-n', '--dry-run',
-        help='Parse only, show parsed commands without generating output',
-        action='store_true',
+        "-n",
+        "--dry-run",
+        help="Parse only, show parsed commands without generating output",
+        action="store_true",
     )
     parser.add_argument(
-        '-t', '--tui',
-        help='Launch interactive TUI (Textual-based terminal interface)',
-        action='store_true',
+        "-t",
+        "--tui",
+        help="Launch interactive TUI (Textual-based terminal interface)",
+        action="store_true",
     )
     parser.add_argument(
-        '-v', '--version',
-        action='version',
-        version=f'%(prog)s {__version__}',
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     return parser
 
@@ -56,9 +60,12 @@ def main() -> None:
     # TUI mode: launch interactive terminal interface
     if args.tui:
         from rpascript.rds_adapter import run_tui
+
         if args.script:
-            print(f'Note: script argument "{args.script}" ignored in TUI mode. '
-                  'Use Ctrl+L to load scripts within the TUI.')
+            print(
+                f'Note: script argument "{args.script}" ignored in TUI mode. '
+                "Use Ctrl+L to load scripts within the TUI."
+            )
         run_tui()
         return
 
@@ -74,17 +81,19 @@ def main() -> None:
     # Dry run: show parsed commands
     if args.dry_run:
         for cmd in commands:
-            if cmd['type'] == 'NEW_PACKET':
-                print('  NEW_PACKET')
+            if cmd["type"] == "NEW_PACKET":
+                print("  NEW_PACKET")
                 continue
-            params_str = ' '.join(cmd['params'])
-            expected_str = f'= {cmd["expected"]}' if cmd['expected'] else ''
-            print(f"  {cmd['type']:8s} {cmd['mnemonic']:20s} "
-                  f"{params_str:30s} {expected_str}")
+            params_str = " ".join(cmd["params"])
+            expected_str = f"= {cmd['expected']}" if cmd["expected"] else ""
+            print(
+                f"  {cmd['type']:8s} {cmd['mnemonic']:20s} "
+                f"{params_str:30s} {expected_str}"
+            )
         return
 
     # Generate tshark output
-    out_stream = open(args.output, 'w') if args.output else sys.stdout
+    out_stream = open(args.output, "w") if args.output else sys.stdout
     try:
         interpreter = ScriptInterpreter(out_stream)
         interpreter.interpret(commands)
@@ -93,5 +102,5 @@ def main() -> None:
             out_stream.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,17 +1,19 @@
-'''A state machine for parsing an input stream byte by byte.
+"""A state machine for parsing an input stream byte by byte.
 
 This state machine must be driven by repeatedly calling "step" with a single
 byte and whether the current byte is part of a reply or not.
 
 NOTE: This does not verify the host/controller packet handshake.
-'''
-from rpalib.ruida_transcoder import RdDecoder
-from rpalib.rpa_emitter import RpaEmitter
-import protocols.ruida.ruida_protocol as rdap
-import protocols.ruida.rpa_plotter as rpa_plotter
+"""
 
-class RdParser():
-    '''This is a state machine for parsing and decoding an Ruida protocol
+import protocols.ruida.rpa_plotter as rpa_plotter
+import protocols.ruida.ruida_protocol as rdap
+from rpalib.rpa_emitter import RpaEmitter
+from rpalib.ruida_transcoder import RdDecoder
+
+
+class RdParser:
+    """This is a state machine for parsing and decoding an Ruida protocol
     input stream.
 
     The parser is driven by repeated calls to "step" with a single byte.
@@ -51,14 +53,15 @@ class RdParser():
         checksum        When True bytes from the host will be included in the
                         checksum.
         verbose         The method to call when emitting verbose messages.
-    '''
+    """
+
     def __init__(self, output: RpaEmitter, title: str):
-        '''Initialize the parsing state machine.
+        """Initialize the parsing state machine.
 
         Parameters:
             output      The output stream for emitting verbose messages.
             label       The label to associate with the parsing and plot.
-        '''
+        """
         self.out = output
         self.title = title
         self.state = None
@@ -86,33 +89,33 @@ class RdParser():
         self.host_bytes: bytearray = bytearray([])
         self.controller_bytes: bytearray = bytearray([])
         self.decoder = RdDecoder(output)
-        self.label = ''
-        self.decoded = ''
+        self.label = ""
+        self.decoded = ""
         self.on_command = None  # Optional callback for script generation
         self.checksum_enabled = False
 
         self._ct = rdap.CT  # The command table to use for parsing. This changes
-                            # for sub-commands and for expected replies.
-        self._it = None     # For indexing into memory or index table.
-        self._stepper = None        # For commands.
-        self._sub_stepper = None    # For parameters.
+        # for sub-commands and for expected replies.
+        self._it = None  # For indexing into memory or index table.
+        self._stepper = None  # For commands.
+        self._sub_stepper = None  # For parameters.
         self._transition = None
-        self._enter_state('sync')   # Setup the sync state.
+        self._enter_state("sync")  # Setup the sync state.
         self._transition()
         self._skip = 0
         self.plot = rpa_plotter.RpaPlotter(self.out, self.title)
 
     def _format_decoded(self, message: str, param=None):
-        '''Accumulate decoded messages one by one.
+        """Accumulate decoded messages one by one.
 
         The sections of messages are accumulated by appending strings to
-        the decoded string.'''
+        the decoded string."""
         if param is not None:
             self.decoded += message.format(param)
         else:
             self.decoded += message
 
-    #+++++++++++++++ State Machine
+    # +++++++++++++++ State Machine
     # Internal states. Every state is required to have two handlers identified
     # by the following prefixes:
     #  _tr_... State transition handler.
@@ -126,10 +129,10 @@ class RdParser():
     #           another state is required.
     #  _h_...   A state or transition helper. This handles logic that is common
     #           across commands or transitions.
-    #+++++++++++++++ Helpers
+    # +++++++++++++++ Helpers
 
     def _enter_state(self, state: str):
-        '''Enter a state.
+        """Enter a state.
 
         This uses the state name to derive the names of the state transition
         and stepper methods to set the state reference and call its corresponding
@@ -138,40 +141,40 @@ class RdParser():
 
         Parameter:
             state   The name of the state.
-        '''
+        """
         if self.state is not None:
-            self.out.verbose(f'Exiting state: {self.state}')
-        self.out.verbose(f'Entering state: {state}')
-        self._transition = getattr(self, f'_tr_{state}')
-        self._stepper = getattr(self, f'_st_{state}')
+            self.out.verbose(f"Exiting state: {self.state}")
+        self.out.verbose(f"Entering state: {state}")
+        self._transition = getattr(self, f"_tr_{state}")
+        self._stepper = getattr(self, f"_st_{state}")
         self.state = state
 
     def _next_state(self):
-        '''Transition to the next state.'''
+        """Transition to the next state."""
         if self._transition is not None:
             self._transition()
             self._transition = None
 
     def _forward_to_state(self, state: str):
-        '''Enter the state and pass the current datum to the state for
+        """Enter the state and pass the current datum to the state for
         immediate parsing.
 
         This calls the state after entering it and returns the result of
         parsing the current datum.
-        '''
-        self.out.verbose(f'Forwarding 0x{self.datum:02X} to state {state}')
+        """
+        self.out.verbose(f"Forwarding 0x{self.datum:02X} to state {state}")
         self._enter_state(state)
         return self._stepper(self.datum)
 
-    #++++ Helpers
+    # ++++ Helpers
     def _h_is_command(self, datum):
-        '''Return True if the datum is a command byte.'''
-        return ((datum & rdap.CMD_MASK) == rdap.CMD_MASK)
+        """Return True if the datum is a command byte."""
+        return (datum & rdap.CMD_MASK) == rdap.CMD_MASK
 
     def _h_is_known_command(self, datum):
-        '''Check the datum to see if it is a member of the current command
-        table. This works for normal commands and sub-commands.'''
-        return (datum in self._ct)
+        """Check the datum to see if it is a member of the current command
+        table. This works for normal commands and sub-commands."""
+        return datum in self._ct
 
     def _h_prepare_for_command(self):
         self.data = []
@@ -179,7 +182,7 @@ class RdParser():
         self.command = None
         self.command_number += 1
         self.out.set_cmd_n(self.command_number)
-        self.out.info('Next command...')
+        self.out.info("Next command...")
         self.last_sub_command = self.sub_command
         self.sub_command = None
         self.cmd_values = []
@@ -195,91 +198,89 @@ class RdParser():
             # A reply is expected to be atomic. Therefore all remaining
             # bytes in the reply packet are captured for decode.
             self.decoder.prime(self.param_list[self.which_param])
-            self.out.verbose(f'Decoding parameter {self.which_param}.')
+            self.out.verbose(f"Decoding parameter {self.which_param}.")
         elif _t is int:
             # Action marker.
             if _param == rdap.REPLY:
                 # Advance to the next parameter -- skip the rdap.REPLY marker.
                 _next = self.which_param + 1
                 if _next > len(self.param_list):
-                    self.out.protocol(
-                        'No reply type following reply marker.')
-                    self._enter_state('sync')
+                    self.out.protocol("No reply type following reply marker.")
+                    self._enter_state("sync")
                 else:
                     self.which_param = _next
-                    self._enter_state('expect_reply')
+                    self._enter_state("expect_reply")
             else:
-                self.out.protocol(
-                    'Invalid action marker in parameter list.')
+                self.out.protocol("Invalid action marker in parameter list.")
         else:
-            self.out.protocol('Unexpected type in parameter list.')
+            self.out.protocol("Unexpected type in parameter list.")
 
     def _h_show_parse_data(self):
-        self.out.write(f'Spec:{self.param_list}')
-        self.out.write(f'-->:{self.host_bytes.hex()}')
-        self.out.write(f'<--:{self.controller_bytes.hex()}')
+        self.out.write(f"Spec:{self.param_list}")
+        self.out.write(f"-->:{self.host_bytes.hex()}")
+        self.out.write(f"<--:{self.controller_bytes.hex()}")
 
     def _h_data_error(self, message):
-        '''Display and error with incoming data and bytes leading up to
-        the error.'''
+        """Display and error with incoming data and bytes leading up to
+        the error."""
         self._h_show_parse_data()
         self.out.error(message)
 
     def _h_protocol_error(self, message):
-        '''Display and error with incoming data and bytes leading up to
-        the error.'''
+        """Display and error with incoming data and bytes leading up to
+        the error."""
         self._h_show_parse_data()
         self.out.protocol(message)
 
     def _h_end_decode(self):
-        '''Terminate a decode when a problem occurs while decoding data.
+        """Terminate a decode when a problem occurs while decoding data.
 
         This completes a decode and transitions to the sync state. The
-        decode result and the result from the transition are returned. '''
+        decode result and the result from the transition are returned."""
         if self.decoder.is_tbd:
             _rd = self.decoder.step(rdap.EOD)
             if _rd is not None:
-                _r = self.decoded + ':' + _rd
+                _r = self.decoded + ":" + _rd
         else:
             _rd = None
-        _rs = self._forward_to_state('sync')
+        _rs = self._forward_to_state("sync")
         if _rd is None and _rs is None:
             return None
         if _rd is None:
-            _r = ''
+            _r = ""
         if _rs is not None:
-            _r += '\n' + _rs
+            _r += "\n" + _rs
         return _r
 
     def _enable_checksum(self):
-        '''When enabled every byte from the host is added to an overall
+        """When enabled every byte from the host is added to an overall
         checksum.
 
         This is used to start a file checksum.
 
         Only data from the host is included in the checksum.
-        '''
+        """
         self.checksum_enabled = True
-        self.out.verbose('Checksum: ENABLED')
+        self.out.verbose("Checksum: ENABLED")
 
     def _disable_checksum(self):
-        '''Disable checksum calculation.
+        """Disable checksum calculation.
 
         This is used to disable checksum calculation.
-        '''
+        """
         self.checksum_enabled = False
-        self.out.verbose('Checksum: disabled')
+        self.out.verbose("Checksum: disabled")
 
     def _reset_checksum(self):
-        '''Disable the checksum and reset the overall checksum to 0.'''
+        """Disable the checksum and reset the overall checksum to 0."""
         self.checksum_enabled = True
         self.decoder.file_checksum = 0
         self.decoder.checksum = 0
 
     def _add_to_checksum(self, chk):
-        '''Add the datum to the checksum when enabled.'''
+        """Add the datum to the checksum when enabled."""
         if self.checksum_enabled:
-            self.out.verbose(f'Adding {chk} to checksum.')
+            self.out.verbose(f"Adding {chk} to checksum.")
             self.decoder.file_checksum += chk
 
     def _backout_checksum(self, data):
@@ -288,40 +289,38 @@ class RdParser():
                 self.decoder.file_checksum -= _d
         else:
             self.decoder.file_checksum -= data
-        self.out.verbose(f'Backed out: {data}')
+        self.out.verbose(f"Backed out: {data}")
 
     def _verify_checksum(self):
-        '''Returns True if the checksums match.'''
+        """Returns True if the checksums match."""
         return self.decoder.file_checksum == self.decoder.checksum
 
-    #---- Helpers
+    # ---- Helpers
 
-    #++++ MEMORY reply
-    #++++
+    # ++++ MEMORY reply
+    # ++++
     def _st_mt_decode_reply(self, datum):
         if self.is_reply:
             _r = self.decoder.step(datum)
             if _r is not None:
                 self.mt_values.append(self.decoder.value)
                 # Parameter has been decoded.
-                self.out.verbose(
-                    f'Decoded reply parameter {self.which_param}={_r}.')
-                self.decoded += (':Reply:' + _r)
+                self.out.verbose(f"Decoded reply parameter {self.which_param}={_r}.")
+                self.decoded += ":Reply:" + _r
                 # Advance to the next parameter.
                 _next = self.which_param + 1
                 if _next >= len(self.param_list):
                     self.plot.mt_update(
-                        self.mt_address_msb,
-                        self.mt_address_lsb,
-                        self.mt_values)
-                    self.out.verbose('Reply decoded.')
-                    self._enter_state('expect_command')
+                        self.mt_address_msb, self.mt_address_lsb, self.mt_values
+                    )
+                    self.out.verbose("Reply decoded.")
+                    self._enter_state("expect_command")
                     return self.decoded
                 else:
                     self.which_param = _next
                     self.decoder.prime(self.param_list[self.which_param])
         else:
-            self.out.error('Packet from host when decoding reply data.')
+            self.out.error("Packet from host when decoding reply data.")
             return self._h_end_decode()
         return None
 
@@ -332,63 +331,60 @@ class RdParser():
         else:
             _msb = self.mt_address_msb
             _lsb = self.mt_address_lsb
-            self.out.verbose(f'Memory reference: {_msb:02X}{_lsb:02X}')
-            if not _lsb in self._it[_msb]:
+            self.out.verbose(f"Memory reference: {_msb:02X}{_lsb:02X}")
+            if _lsb not in self._it[_msb]:
                 # Setup a generic decode for an unknown address.
                 _reply = rdap.UNKNOWN_ADDRESS
             else:
                 _reply = self._it[_msb][_lsb]
         self.param_list = _reply
-        self.decoded += ':' + _reply[0]
+        self.decoded += ":" + _reply[0]
         self.which_param = 1
-        if 'tbd' in _reply[1]:
+        if "tbd" in _reply[1]:
             self.decoder.prime(_reply[1], length=self.remaining)
         else:
             self.decoder.prime(_reply[1])
         self.mt_values = []
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_mt_address_lsb(self, datum):
         if self.is_reply:
             if self.mt_address_msb not in self._it:
                 # Setup a generic decode for an unknown address.
-                self.decoded += ':' + rdap.UNKNOWN_ADDRESS[0]
+                self.decoded += ":" + rdap.UNKNOWN_ADDRESS[0]
             else:
                 if datum not in self._it[self.mt_address_msb]:
-                    self.out.protocol(
-                        f'Unknown MT address LSB (0x{datum:02X}).')
+                    self.out.protocol(f"Unknown MT address LSB (0x{datum:02X}).")
             self.mt_address_lsb = datum
-            self.decoded += f'{datum:02X}'
-            self._enter_state('mt_decode_reply')
+            self.decoded += f"{datum:02X}"
+            self._enter_state("mt_decode_reply")
         else:
-            self.out.error(
-                'Packet from host when expecting reply memory address.')
-            return self._forward_to_state('sync')
+            self.out.error("Packet from host when expecting reply memory address.")
+            return self._forward_to_state("sync")
 
     def _tr_mt_address_lsb(self):
         self.mt_address_lsb = None
 
-    #----
-    #++++
+    # ----
+    # ++++
     def _st_mt_address_msb(self, datum):
         if self.is_reply:
             if datum not in self._it:
-                self.out.protocol(
-                    f'Unknown MT address MSB (0x{datum:02X}.)')
+                self.out.protocol(f"Unknown MT address MSB (0x{datum:02X}.)")
             self.mt_address_msb = datum
-            self.decoded += f' Addr:{datum:02X}'
-            self._enter_state('mt_address_lsb')
+            self.decoded += f" Addr:{datum:02X}"
+            self._enter_state("mt_address_lsb")
         else:
-            self.out.error(
-                'Packet from host when expecting reply memory address.')
-            return self._forward_to_state('sync')
+            self.out.error("Packet from host when expecting reply memory address.")
+            return self._forward_to_state("sync")
 
     def _tr_mt_address_msb(self):
         self.mt_address_msb = None
 
-    #----
-    #++++
+    # ----
+    # ++++
     def _st_mt_sub_command(self, datum):
         if self.is_reply:
             # A reply to a memory access always has a sub-command.
@@ -396,24 +392,25 @@ class RdParser():
                 if type(self._ct[datum]) is tuple:
                     self.reply_sub_command = datum
                     self.decoded = self.label = self._ct[datum][0]
-                    self._enter_state('mt_address_msb')
+                    self._enter_state("mt_address_msb")
                 else:
-                    self.out.protocol(
-                        f'A reply data type should be a tuple.')
-                    self._enter_state('sync')
+                    self.out.protocol("A reply data type should be a tuple.")
+                    self._enter_state("sync")
             else:
                 self.out.error(
-                    f'Datum (0x{datum:02X} is not a known reply sub_command)')
-                self._enter_state('sync')
+                    f"Datum (0x{datum:02X} is not a known reply sub_command)"
+                )
+                self._enter_state("sync")
         else:
-            self.out.error('Packet from host when expecting reply sub_command.')
-            return self._forward_to_state('sync')
+            self.out.error("Packet from host when expecting reply sub_command.")
+            return self._forward_to_state("sync")
 
     def _tr_mt_sub_command(self):
         self._ct = rdap.RT[self.reply_command]
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_mt_command(self, datum):
         if self.is_reply:
             if self._h_is_command(datum):
@@ -421,121 +418,131 @@ class RdParser():
                 if self._h_is_known_command(datum):
                     if type(self._ct[datum]) is dict:
                         self.reply_command = datum
-                        self._enter_state('mt_sub_command')
+                        self._enter_state("mt_sub_command")
                     else:
                         self.out.protocol(
-                            f'A reply sub-command type should be a dictionary.')
-                        self._enter_state('sync')
+                            "A reply sub-command type should be a dictionary."
+                        )
+                        self._enter_state("sync")
                 else:
                     self.out.error(
-                        f'Datum (0x{datum:02X} is not a known reply command)')
-                    self._enter_state('sync')
+                        f"Datum (0x{datum:02X} is not a known reply command)"
+                    )
+                    self._enter_state("sync")
             else:
-                self.out.error(
-                    f'Datum (0x{datum:02X} is not a reply command byte.)')
-                self._enter_state('sync')
+                self.out.error(f"Datum (0x{datum:02X} is not a reply command byte.)")
+                self._enter_state("sync")
         else:
-            self.out.error('Current packet is NOT a reply packet.')
-            return self._forward_to_state('sync')
+            self.out.error("Current packet is NOT a reply packet.")
+            return self._forward_to_state("sync")
 
     def _tr_mt_command(self):
-        '''Setup to parse a reply to a memory read command.
+        """Setup to parse a reply to a memory read command.
 
         This state is triggered when the command parameter list contains
-        a MEMORY spec and the memory command has been decoded.'''
-        if self.command == 0xDA: # Reading from controller.
+        a MEMORY spec and the memory command has been decoded."""
+        if self.command == 0xDA:  # Reading from controller.
             self.reply_command = None
             self._ct = rdap.RT
             self._it = rdap.MT
         else:
             self.out.protocol(
-                f'Memory reference with wrong command: 0x{self.command:02X}')
+                f"Memory reference with wrong command: 0x{self.command:02X}"
+            )
 
     # An index is handled identically to an mt.
     def _st_index_command(self, datum):
         return self._st_mt_command(datum)
 
     def _tr_index_command(self):
-        '''Setup to parse a reply to a indexed read command.
+        """Setup to parse a reply to a indexed read command.
 
         This state is triggered when the command parameter list contains
-        a INDEX spec and the index command has been decoded.'''
-        if self.command == 0xDA: # Reading from controller.
+        a INDEX spec and the index command has been decoded."""
+        if self.command == 0xDA:  # Reading from controller.
             self.reply_command = None
             self._ct = rdap.RT
             self._it = rdap.IDXT
         else:
             self.out.protocol(
-                f'Indexed reference with wrong command: 0x{self.command:02X}')
-    #----
+                f"Indexed reference with wrong command: 0x{self.command:02X}"
+            )
 
-    #---- MEMORY reply states
-    #++++
+    # ----
+
+    # ---- MEMORY reply states
+    # ++++
     def _st_expect_reply(self, datum):
-        '''Expect and decode reply data from the controller.
+        """Expect and decode reply data from the controller.
 
         Reply packets are atomic responses meaning: one command, one reply.
 
-        The reply data is appended to the parameter list.'''
+        The reply data is appended to the parameter list."""
         if not self.is_reply:
             # If the reply type is TBD then reached the end of the reply.
             if self.decoder.is_tbd:
                 _r = self.decoder(rdap.CMD_MASK)
                 if _r is None:
-                    _r = ''
+                    _r = ""
             else:
-                self.out.error('Packet from host when expecting reply.')
-            return _r + self._forward_to_state('sync')
+                self.out.error("Packet from host when expecting reply.")
+            return _r + self._forward_to_state("sync")
         else:
             if self._h_is_command(datum):
                 self._h_data_error(
-                    f'Datum 0x{datum:02X} is a command -- expected data.')
-                return self._forward_to_state('sync')
+                    f"Datum 0x{datum:02X} is a command -- expected data."
+                )
+                return self._forward_to_state("sync")
             else:
                 _r = self.decoder.step(datum, self.remaining)
                 if _r is not None:
                     # Parameter has been decoded.
-                    self.out.verbose(f'Decoded reply.')
-                    self.decoded += ('Reply=' + _r)
+                    self.out.verbose("Decoded reply.")
+                    self.decoded += "Reply=" + _r
                     return self.decoded
         return None
 
     def _tr_expect_reply(self):
         if self.decoded is None:
-            self.decoded = ''
+            self.decoded = ""
         else:
-            self.decoded += '\n'
+            self.decoded += "\n"
         self.decoder.prime(self.param_list[self.which_param])
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_decode_parameters(self, datum):
         if self.is_reply:
-            self.out.error('Reply packet when expecting parameters.')
-            self._forward_to_state('mt_command')
+            self.out.error("Reply packet when expecting parameters.")
+            self._forward_to_state("mt_command")
         else:
             if self._h_is_command(datum):
                 # This can either be a problem with the incoming data or
                 # the definition in the protocol table.
                 if not self.decoder.is_tbd:
                     self._h_data_error(
-                        f'Datum 0x{datum:02X} is a command -- expected data.')
+                        f"Datum 0x{datum:02X} is a command -- expected data."
+                    )
                 return self._h_end_decode()
             else:
                 _r = self.decoder.step(datum)
                 if _r is not None:
                     # Parameter has been decoded.
-                    self.out.verbose(
-                        f'Decoded parameter {self.which_param}={_r}.')
-                    self.decoded += (' ' + _r)
+                    self.out.verbose(f"Decoded parameter {self.which_param}={_r}.")
+                    self.decoded += " " + _r
                     # A controller memory reference requires special handling.
-                    if ('mt' in self.param_list[self.which_param] and
-                        self.sub_command == 0x00):
-                        self._enter_state('mt_command')
+                    if (
+                        "mt" in self.param_list[self.which_param]
+                        and self.sub_command == 0x00
+                    ):
+                        self._enter_state("mt_command")
                         return self.decoded
-                    elif ('index' in self.param_list[self.which_param] and
-                        self.sub_command == 0x05):
-                        self._enter_state('index_command')
+                    elif (
+                        "index" in self.param_list[self.which_param]
+                        and self.sub_command == 0x05
+                    ):
+                        self._enter_state("index_command")
                         return self.decoded
                     else:
                         # Advance to the next parameter.
@@ -547,10 +554,10 @@ class RdParser():
                                 self.label,
                                 self.command,
                                 self.sub_command,
-                                self.cmd_values
-                                )
-                            self.out.verbose('Parameters decoded.')
-                            self._enter_state('expect_command')
+                                self.cmd_values,
+                            )
+                            self.out.verbose("Parameters decoded.")
+                            self._enter_state("expect_command")
                             return self.decoded
                         else:
                             self.which_param = _next
@@ -558,92 +565,96 @@ class RdParser():
         return None
 
     def _tr_decode_parameters(self):
-        '''Prepare to parse a parameter. Prime the parameter decoder
-        state machine.'''
+        """Prepare to parse a parameter. Prime the parameter decoder
+        state machine."""
         self.which_param = 1
-        if 'mt' in self.param_list:
-            self._enter_state('mt_command')
+        if "mt" in self.param_list:
+            self._enter_state("mt_command")
             return
         self.cmd_values = []
         self._h_check_for_reply()
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_decode_option(self, datum):
-        '''Get the option name from a lookup table.'''
+        """Get the option name from a lookup table."""
         if self._h_is_command(datum):
-            self.out.error('Datum is command when should be an option.')
-            self._forward_to_state('sync')
+            self.out.error("Datum is command when should be an option.")
+            self._forward_to_state("sync")
         if datum in self._options_lut:
             self.decoded = (
-                f'0x{self.command:02X}{self.sub_command:02X}:{self._options_lut[datum]}')
+                f"0x{self.command:02X}{self.sub_command:02X}:{self._options_lut[datum]}"
+            )
             self.label = self._options_lut[datum]
         else:
-            self.out.error(f'Option 0x{datum:02X} is unknown.')
-            self.decoded = f'Unknown option: {datum:02X}'
-            self.label = f'OPT_{datum:02X}'
+            self.out.error(f"Option 0x{datum:02X} is unknown.")
+            self.decoded = f"Unknown option: {datum:02X}"
+            self.label = f"OPT_{datum:02X}"
         self.param_list = None
         self.cmd_values = []
-        self._enter_state('expect_command')
+        self._enter_state("expect_command")
         return self.decoded
 
     def _tr_decode_option(self):
-        '''Prepare to lookup an option for a sub-command.'''
+        """Prepare to lookup an option for a sub-command."""
         self._options_lut = self._ct[self.sub_command]
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_expect_sub_command(self, datum):
-        '''A command has been received which has a sub-command list.'''
+        """A command has been received which has a sub-command list."""
         if self.is_reply:
-            self.out.error('Reply packet when expecting sub_command.')
-            self._forward_to_state('mt_command')
+            self.out.error("Reply packet when expecting sub_command.")
+            self._forward_to_state("mt_command")
         else:
             if self._h_is_command(datum):
-                self.out.error('Datum is command when should be sub_command.')
-                self._forward_to_state('sync')
+                self.out.error("Datum is command when should be sub_command.")
+                self._forward_to_state("sync")
             else:
                 # Is it a known command for this state?
                 if self._h_is_known_command(datum):
                     self.sub_command = datum
-                    if (self.command == rdap.SETTING and
-                        datum == rdap.SETTING_WRITE):
+                    if self.command == rdap.SETTING and datum == rdap.SETTING_WRITE:
                         self._enable_checksum()
                     # Setting the file checksum signals the end of the checksum region.
-                    if (self.command == 0xE5 and self.sub_command is not None
-                            and self.sub_command == 0x05):
+                    if (
+                        self.command == 0xE5
+                        and self.sub_command is not None
+                        and self.sub_command == 0x05
+                    ):
                         self._disable_checksum()
                     _t = type(self._ct[datum])
                     if _t is str:
                         self.decoded = self.label = self._ct[datum]
-                        self._enter_state('expect_command')
+                        self._enter_state("expect_command")
                         return self.decoded
                     elif _t is dict:
                         # A sub-command can select options.
-                        self._enter_state('decode_option')
+                        self._enter_state("decode_option")
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
                         self.decoded = self.label = self.param_list[0]
                         if self.param_list[1] == rdap.SKIP:
                             self._skip = self.param_list[2]
                         else:
-                            self._enter_state('decode_parameters')
+                            self._enter_state("decode_parameters")
                     else:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
                         self.out.protocol(
-                            f'Unsupported or unexpected type ({_t}) in command.')
+                            f"Unsupported or unexpected type ({_t}) in command."
+                        )
                 else:
-                    self.out.critical(
-                        f'Datum 0x{datum:02X} is not a known command.')
-                    self._forward_to_state('sync')
+                    self.out.critical(f"Datum 0x{datum:02X} is not a known command.")
+                    self._forward_to_state("sync")
         return None
 
-
     def _tr_expect_sub_command(self):
-        '''Setup for a sub-command.
+        """Setup for a sub-command.
 
-        NOTE: The data type MUST be a dict.'''
+        NOTE: The data type MUST be a dict."""
         _t = type(self._ct[self.command])
         if _t is dict:
             self._ct = self._ct[self.command]
@@ -651,17 +662,19 @@ class RdParser():
             # This is a problem with the protocol table -- not the incoming
             # data.
             self.out.protocol(
-                f'Command table at 0x{self.command:02X} incorrect type {_t}.')
-            self._enter_state('sync')
-    #----
+                f"Command table at 0x{self.command:02X} incorrect type {_t}."
+            )
+            self._enter_state("sync")
 
-    #++++
+    # ----
+
+    # ++++
     def _st_expect_command(self, datum):
-        '''Expect the incoming byte to be a command byte. If it is not then
-        generate a protocol error and return to scanning for a command byte.'''
+        """Expect the incoming byte to be a command byte. If it is not then
+        generate a protocol error and return to scanning for a command byte."""
         if self.is_reply:
-            self.out.error('Reply packet when expecting command.')
-            self._forward_to_state('mt_command')
+            self.out.error("Reply packet when expecting command.")
+            self._forward_to_state("mt_command")
         else:
             if self._h_is_command(datum):
                 # Is it a known command for this state?
@@ -677,83 +690,82 @@ class RdParser():
                             _i = self.decoder.checksum
                             _c = self.decoder.file_checksum
                             _d = self.decoder.checksum - self.decoder.file_checksum
-                            _is = f'\n    decoded={self.decoder.checksum}'
-                            _cs = f'\naccumulated={self.decoder.file_checksum}'
-                            _ds = f'\ndifference ={_d}'
+                            _is = f"\n    decoded={self.decoder.checksum}"
+                            _cs = f"\naccumulated={self.decoder.file_checksum}"
+                            _ds = f"\ndifference ={_d}"
                             if not self._verify_checksum():
-                                self.out.error(
-                                    f'Checksum mismatch: {_is} {_cs} {_ds}')
+                                self.out.error(f"Checksum mismatch: {_is} {_cs} {_ds}")
                             else:
-                                self.out.info(
-                                    f'Checksum OK: {_i} {_c}')
+                                self.out.info(f"Checksum OK: {_i} {_c}")
                             self._reset_checksum()
-                        self._enter_state('expect_command')
+                        self._enter_state("expect_command")
                         return self.decoded
                     elif _t is dict:
-                        self._enter_state('expect_sub_command')
+                        self._enter_state("expect_sub_command")
                     elif _t is tuple:
                         self.param_list = self._ct[datum]
                         self.decoded = self.label = self.param_list[0]
                         if self.param_list[1] == rdap.SKIP:
                             self._skip = self.param_list[2]
                         else:
-                            self._enter_state('decode_parameters')
+                            self._enter_state("decode_parameters")
                     else:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
                         self.out.error(
-                            f'Unsupprted or unexpected type ({_t}) in command.')
-                        self._enter_state('sync')
+                            f"Unsupprted or unexpected type ({_t}) in command."
+                        )
+                        self._enter_state("sync")
                 else:
-                    self.out.critical(
-                        f'Datum 0x{datum:02X} is not a known command.')
-                    self._enter_state('sync')
+                    self.out.critical(f"Datum 0x{datum:02X} is not a known command.")
+                    self._enter_state("sync")
             else:
                 # Did not receive the expected command. This is either a problem
                 # with the incoming stream or the protocol definition.
-                self._enter_state('sync')
+                self._enter_state("sync")
 
         return None
 
     def _tr_expect_command(self):
         self._h_prepare_for_command()
-    #----
 
-    #++++
+    # ----
+
+    # ++++
     def _st_sync(self, datum):
-        '''Scan for a command byte to synchronize the parser with the input
+        """Scan for a command byte to synchronize the parser with the input
         data.
 
         Once a command byte has been found normal command/reply processing
         begins.
 
         A command byte is the only byte which will have the most significant
-        bit set.'''
+        bit set."""
         if not self.is_reply:
             if self._h_is_command(datum):
                 if self._h_is_known_command(datum):
-                    self._forward_to_state('expect_command')
+                    self._forward_to_state("expect_command")
         return None
 
     def _tr_sync(self):
         self._h_prepare_for_command()
-    #----
 
-    #---------------
+    # ----
 
-    def _report_parse(self, result: str, take: int=0, remaining: int=0):
+    # ---------------
+
+    def _report_parse(self, result: str, take: int = 0, remaining: int = 0):
         # Call here because the decoder decides when checksum is disabled.
         self._add_to_checksum(sum(self.host_bytes))
         # A command has been decoded.
         self.out.parser(
-            f'T={take:04d} R={remaining:04d}' +
-            f' SUM={self.decoder.file_checksum:08d}:\n{result}\n')
+            f"T={take:04d} R={remaining:04d}"
+            + f" SUM={self.decoder.file_checksum:08d}:\n{result}\n"
+        )
+        self.out.parser(f"cmd:{self.host_bytes.hex()}" + f" SUM={sum(self.host_bytes)}")
         self.out.parser(
-            f'cmd:{self.host_bytes.hex()}' +
-            f' SUM={sum(self.host_bytes)}')
-        self.out.parser(
-            f'rep:{self.controller_bytes.hex()}' +
-            f' SUM={sum(self.controller_bytes)}')
+            f"rep:{self.controller_bytes.hex()}" + f" SUM={sum(self.controller_bytes)}"
+        )
         self.controller_bytes = bytearray([])
         self.host_bytes = bytearray([])
 
@@ -769,7 +781,7 @@ class RdParser():
                 cmd_n=self.command_number,
             )
 
-    def step(self, datum: int, is_reply=False, take: int=0, remaining=0):
+    def step(self, datum: int, is_reply=False, take: int = 0, remaining=0):
         """Step the state machine for the latest byte.
 
         Parameter:
@@ -794,11 +806,10 @@ class RdParser():
         if self._skip > 0:
             self._add_to_checksum(datum)
             self._skip -= 1
-            self.out.warn(
-                f'Skipping: 0x{datum:02X}')
+            self.out.warn(f"Skipping: 0x{datum:02X}")
             if self._skip <= 0:
-                self._report_parse('End skip.', take, remaining)
-                self._enter_state('expect_command')
+                self._report_parse("End skip.", take, remaining)
+                self._enter_state("expect_command")
         else:
             # Step the machine.
             _r = self._stepper(datum)

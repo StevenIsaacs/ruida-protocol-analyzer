@@ -1,6 +1,6 @@
 from .rd_session import RdSession
-from .rd_transport import RdTransport
 from .rd_status import RdStatus, RdStatusEvent
+from .rd_transport import RdTransport
 from .ruida_driver import RdDriver
 from .transport_events import TransportEvent
 

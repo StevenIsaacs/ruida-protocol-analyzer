@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import threading
 
-from ruidadriver.rd_transport import RdTransport
 from ruidadriver.rd_status import RdStatus
+from ruidadriver.rd_transport import RdTransport
 
 
 class RdSession:

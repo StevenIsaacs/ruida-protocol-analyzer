@@ -15,43 +15,43 @@ from rpalib.ruida_transcoder import RdEncoder
 
 # Decoder function name (DDEC from param spec) → RdEncoder method name.
 _ENCODER_MAP: dict[str, str | None] = {
-    'int7':       'encode_int7',
-    'uint7':      'encode_uint7',
-    'int14':      'encode_int14',
-    'uint14':     'encode_uint14',
-    'int35':      'encode_int35',
-    'uint35':     'encode_uint35',
-    'coord':      'encode_coord',
-    'cstring':    'encode_cstring',
-    'string8':    'encode_string8',
-    'power':      'encode_power',
-    'frequency':  'encode_frequency',
-    'speed':      'encode_speed',
-    'time':       'encode_time',
-    'bool':       'encode_bool',
-    'on_off':     'encode_bool',
-    'rapid':      'encode_uint7',
-    'mt':         'encode_mt',
-    'index':      'encode_index',
-    'checksum':   'encode_uint35',
-    'card_id':    'encode_uint35',
-    'tbd':        None,
+    "int7": "encode_int7",
+    "uint7": "encode_uint7",
+    "int14": "encode_int14",
+    "uint14": "encode_uint14",
+    "int35": "encode_int35",
+    "uint35": "encode_uint35",
+    "coord": "encode_coord",
+    "cstring": "encode_cstring",
+    "string8": "encode_string8",
+    "power": "encode_power",
+    "frequency": "encode_frequency",
+    "speed": "encode_speed",
+    "time": "encode_time",
+    "bool": "encode_bool",
+    "on_off": "encode_bool",
+    "rapid": "encode_uint7",
+    "mt": "encode_mt",
+    "index": "encode_index",
+    "checksum": "encode_uint35",
+    "card_id": "encode_uint35",
+    "tbd": None,
 }
 
 # Fallback: ruida type name (DTYP from param spec) → encoder method.
 _RDTYPE_ENCODER_MAP: dict[str, str | None] = {
-    'int_7':    'encode_int7',
-    'uint_7':   'encode_uint7',
-    'int_14':   'encode_int14',
-    'uint_14':  'encode_uint14',
-    'int_35':   'encode_int35',
-    'uint_35':  'encode_uint35',
-    'cstring':  'encode_cstring',
-    'string8':  'encode_string8',
-    'on_off':   'encode_bool',
-    'bool_7':   'encode_bool',
-    'mt':       'encode_mt',
-    'index':    'encode_index',
+    "int_7": "encode_int7",
+    "uint_7": "encode_uint7",
+    "int_14": "encode_int14",
+    "uint_14": "encode_uint14",
+    "int_35": "encode_int35",
+    "uint_35": "encode_uint35",
+    "cstring": "encode_cstring",
+    "string8": "encode_string8",
+    "on_off": "encode_bool",
+    "bool_7": "encode_bool",
+    "mt": "encode_mt",
+    "index": "encode_index",
 }
 
 
@@ -62,7 +62,7 @@ _RDTYPE_ENCODER_MAP: dict[str, str | None] = {
 
 def _get_prefix_byte(cmd: dict, mnemonic_map: dict) -> int | None:
     """Extract the command prefix byte from the mnemonic map, or None if unknown."""
-    info = mnemonic_map.get(cmd['mnemonic'])
+    info = mnemonic_map.get(cmd["mnemonic"])
     if info is None:
         return None
     return info[0]
@@ -74,7 +74,7 @@ def should_include_in_checksum(cmd: dict, mnemonic_map: dict) -> bool:
     Excludes commands that the parser skips (CHK_DISABLES: 0xA7 KEYPRESS, 0xDA SETTING)
     and the SET_FILE_SUM command itself (0xE5→0x05).
     """
-    info = mnemonic_map.get(cmd['mnemonic'])
+    info = mnemonic_map.get(cmd["mnemonic"])
     if info is None:
         return False
     prefix = info[0]
@@ -104,7 +104,7 @@ def is_eof_command(cmd: dict, mnemonic_map: dict) -> bool:
 
 def is_set_file_sum(cmd: dict, mnemonic_map: dict) -> bool:
     """Return True if this command is SET_FILE_SUM (0xE5 → 0x05)."""
-    info = mnemonic_map.get(cmd['mnemonic'])
+    info = mnemonic_map.get(cmd["mnemonic"])
     if info is None:
         return False
     prefix = info[0]
@@ -141,12 +141,10 @@ def encode_command(
     Returns:
         bytearray of encoded command bytes
     """
-    mnemonic = cmd['mnemonic']
+    mnemonic = cmd["mnemonic"]
     info = mnemonic_map.get(mnemonic)
     if info is None:
-        raise ValueError(
-            f'{cmd["line_num"]}: Unknown mnemonic "{mnemonic}"'
-        )
+        raise ValueError(f'{cmd["line_num"]}: Unknown mnemonic "{mnemonic}"')
 
     prefix_byte = info[0]
     raw = bytearray([prefix_byte])
@@ -159,10 +157,12 @@ def encode_command(
         raw.append(info[1] & 0x7F)
 
     cmd_entry = _get_cmd_entry(info)
-    if cmd_entry is not None and len(cmd_entry) > 1 and cmd['params']:
+    if cmd_entry is not None and len(cmd_entry) > 1 and cmd["params"]:
         param_specs = cmd_entry[1:]  # Skip command name at index 0
-        param_values = cmd['params']
-        raw.extend(encode_params(param_specs, param_values, cmd, mnemonic_map, mt_map, encoder))
+        param_values = cmd["params"]
+        raw.extend(
+            encode_params(param_specs, param_values, cmd, mnemonic_map, mt_map, encoder)
+        )
 
     return raw
 
@@ -189,7 +189,9 @@ def encode_params(
         decoder_fn = spec[1]  # DDEC — e.g. 'coord', 'mt', 'int35'
         rd_type = spec[2] if len(spec) >= 3 else None
 
-        encoded = encode_single_param(decoder_fn, rd_type, value_token, cmd, mnemonic_map, mt_map, encoder)
+        encoded = encode_single_param(
+            decoder_fn, rd_type, value_token, cmd, mnemonic_map, mt_map, encoder
+        )
         result.extend(encoded)
 
     return result
@@ -206,12 +208,12 @@ def encode_single_param(
 ) -> bytearray:
     """Encode a single parameter value to binary."""
     # --- MT / Index special handling ---
-    if decoder_fn in ('mt', 'index'):
+    if decoder_fn in ("mt", "index"):
         return encode_mt_param(value_token, mt_map)
 
     # --- Named-param split: 'X=200.000mm' → '200.000mm' ---
-    if '=' in value_token:
-        _, value_token = value_token.split('=', 1)
+    if "=" in value_token:
+        _, value_token = value_token.split("=", 1)
 
     # --- Parse the value token to a Python value ---
     parsed = parse_value(value_token, decoder_fn, rd_type)
@@ -225,8 +227,10 @@ def encode_single_param(
         return bytearray()
 
     # Special handling for coord which needs rd_type to select byte count
-    if decoder_fn == 'coord':
-        coord_nbytes = {'int_14': 2, 'uint_14': 2, 'int_35': 5, 'uint_35': 5}.get(rd_type, 5)
+    if decoder_fn == "coord":
+        coord_nbytes = {"int_14": 2, "uint_14": 2, "int_35": 5, "uint_35": 5}.get(
+            rd_type, 5
+        )
         return encoder.encode_coord(parsed, coord_nbytes)
 
     # Resolve method on RdEncoder instance
@@ -267,7 +271,7 @@ def parse_value(
     raw = token.strip()
 
     # --- Unescape \# → # (from rds comment escaping) ---
-    raw = raw.replace('\\#', '#')
+    raw = raw.replace("\\#", "#")
 
     # --- Strip format-string label prefix ---
     # Parameters from format strings like 'Speed:{:.3f}mm/S' or 'State: {}'
@@ -275,73 +279,74 @@ def parse_value(
     # be removed before parsing.  Skip strings with '=' which are already
     # split by encode_single_param, and skip strings where the part before
     # ':' is not a plain label.
-    if ':' in raw and '=' not in raw:
-        maybe_label, after = raw.split(':', 1)
+    if ":" in raw and "=" not in raw:
+        maybe_label, after = raw.split(":", 1)
         if maybe_label.isalpha():
             raw = after.strip()
 
     # --- Boolean ---
-    if raw.upper() in ('ON', 'TRUE', '1'):
+    if raw.upper() in ("ON", "TRUE", "1"):
         return True
-    if raw.upper() in ('OFF', 'FALSE', '0'):
+    if raw.upper() in ("OFF", "FALSE", "0"):
         return False
 
     # --- Typed suffix parsing ---
-    if decoder_fn == 'coord':
+    if decoder_fn == "coord":
         clean = raw
-        if '=' in clean:
-            clean = clean.split('=', 1)[1].strip()
-        for suffix in ('mm', 'MM'):
+        if "=" in clean:
+            clean = clean.split("=", 1)[1].strip()
+        for suffix in ("mm", "MM"):
             if clean.lower().endswith(suffix):
-                clean = clean[:-len(suffix)]
+                clean = clean[: -len(suffix)]
                 break
         return float(clean)
 
-    if decoder_fn == 'power':
-        if raw.endswith('%'):
+    if decoder_fn == "power":
+        if raw.endswith("%"):
             return float(raw[:-1])
         return float(raw)
 
-    if decoder_fn == 'frequency':
+    if decoder_fn == "frequency":
         clean = raw
-        for suffix in ('KHz', 'khz', 'KHz', 'kHz'):
+        for suffix in ("KHz", "khz", "KHz", "kHz"):
             if clean.endswith(suffix):
-                clean = clean[:-len(suffix)]
+                clean = clean[: -len(suffix)]
                 break
         return float(clean)
 
-    if decoder_fn == 'speed':
+    if decoder_fn == "speed":
         clean = raw
-        for suffix in ('mm/S', 'mm/s', 'MM/S'):
+        for suffix in ("mm/S", "mm/s", "MM/S"):
             if clean.endswith(suffix):
-                clean = clean[:-len(suffix)]
+                clean = clean[: -len(suffix)]
                 break
         return float(clean)
 
-    if decoder_fn == 'time':
+    if decoder_fn == "time":
         clean = raw
-        for suffix in ('mS', 'ms', 'MS'):
+        for suffix in ("mS", "ms", "MS"):
             if clean.endswith(suffix):
-                clean = clean[:-len(suffix)]
+                clean = clean[: -len(suffix)]
                 break
         return float(clean)
 
-    if decoder_fn == 'cstring':
-        if (raw.startswith('"') and raw.endswith('"')) or \
-           (raw.startswith("'") and raw.endswith("'")):
+    if decoder_fn == "cstring":
+        if (raw.startswith('"') and raw.endswith('"')) or (
+            raw.startswith("'") and raw.endswith("'")
+        ):
             return raw[1:-1]
         return raw
 
     # --- Numeric ---
     # Handle hex prefixed with # (e.g. Color:#FF00FFFF)
-    if raw.startswith('#'):
+    if raw.startswith("#"):
         try:
             return int(raw[1:], 16)
         except ValueError:
             pass
 
     # Handle 0x/0X prefixed hex (e.g. 0x0000048216 from Sum:0x{...} format strings)
-    if raw.startswith(('0x', '0X')):
+    if raw.startswith(("0x", "0X")):
         try:
             return int(raw, 0)
         except ValueError:
@@ -358,7 +363,7 @@ def parse_value(
         pass
 
     # --- Rapid option table (ROT) resolution ---
-    if decoder_fn == 'rapid':
+    if decoder_fn == "rapid":
         rev_rot = {v: k for k, v in rdap.ROT.items()}
         if raw in rev_rot:
             return rev_rot[raw]
@@ -367,9 +372,9 @@ def parse_value(
     # When the decoded reply is a human-readable label (e.g. 'Job Running')
     # instead of a hex number, map it back to its numeric bitmask so the
     # encoder can produce the correct binary value.
-    if decoder_fn == 'm_stat':
+    if decoder_fn == "m_stat":
         label_to_bit = {lbl: bit for bit, lbl in rdap.MST}
-        parts = [p.strip() for p in raw.split(',')]
+        parts = [p.strip() for p in raw.split(",")]
         result = 0
         for part in parts:
             if part in label_to_bit:
@@ -382,7 +387,7 @@ def parse_value(
                 pass
         # If at least one label was resolved, return the bitmask;
         # otherwise fall through to the string fallback below.
-        if result or parts == ['']:
+        if result or parts == [""]:
             return result
 
     # --- Fallback: return as string ---

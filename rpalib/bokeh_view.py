@@ -1,42 +1,61 @@
-'''Bokeh view/tab visualization for laser head movements.
+"""Bokeh view/tab visualization for laser head movements.
 
 A single tab containing XY plot, power histogram, and speed histogram
 with interactive tools (zoom, pan, box select, hover), menu bar,
-and right-click context menu.'''
+and right-click context menu."""
 
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 
 # Fail-fast import check
 try:
-    from bokeh.plotting import figure
-    from bokeh.models import (
-        ColumnDataSource, HoverTool, SaveTool, WheelZoomTool, PanTool, BoxZoomTool,
-        TabPanel, CustomJS, Dropdown, Button, Spinner, Paragraph,
-        TextInput, Div, CheckboxButtonGroup, RangeSlider, TapTool,
-    )
-    from bokeh.layouts import row, column
     from bokeh.embed import file_html
+    from bokeh.layouts import column, row
+    from bokeh.models import (
+        BoxZoomTool,
+        Button,
+        CheckboxButtonGroup,
+        ColumnDataSource,
+        CustomJS,
+        Div,
+        Dropdown,  # noqa: F401
+        HoverTool,
+        PanTool,
+        Paragraph,
+        RangeSlider,
+        SaveTool,
+        Spinner,
+        TabPanel,
+        TapTool,
+        TextInput,
+        WheelZoomTool,
+    )
+    from bokeh.plotting import figure
     from bokeh.resources import CDN
 
 except ImportError:
-    raise ImportError(
-        'Bokeh is required for plotting. Install with: pip install bokeh')
+    raise ImportError("Bokeh is required for plotting. Install with: pip install bokeh")
 
 
-class BokehView():
-    '''A single tab view with XY plot, power histogram, and speed histogram.
+class BokehView:
+    """A single tab view with XY plot, power histogram, and speed histogram.
 
     Each BokehView represents one tab containing:
     - XY scatter/line plot (top, large) with interactive tools
     - Power histogram (bottom-left)
     - Speed histogram (bottom-right)
-    '''
+    """
 
-    def __init__(self, args, source: ColumnDataSource, title: str = 'All Vectors',
-                 color_lut: list = None, out_stem: str = None):
-        '''Create a new view tab.
+    def __init__(
+        self,
+        args,
+        source: ColumnDataSource,
+        title: str = "All Vectors",
+        color_lut: list = None,
+        out_stem: str = None,
+    ):
+        """Create a new view tab.
 
         Parameters:
             args      Command line arguments for the rpa program.
@@ -48,14 +67,14 @@ class BokehView():
             out_stem  Output file stem for save filenames (e.g. the decoded
                       text file base name).  Falls back to old naming when
                       None.
-        '''
+        """
         self.args = args
         self.title = title
         self.source = source
 
         # Ensure alpha column exists for filter opacity control
-        if 'alpha' not in self.source.data:
-            self.source.data['alpha'] = [1.0] * len(self.source.data.get('cmd_id', []))
+        if "alpha" not in self.source.data:
+            self.source.data["alpha"] = [1.0] * len(self.source.data.get("cmd_id", []))
 
         # Backup for reset view
         self._initial_source_data = dict(source.data)
@@ -84,12 +103,13 @@ class BokehView():
         self._wheel_zoom = WheelZoomTool()
 
         self.xy_plot = figure(
-            title=f'{self.args.input_file}: {self.title}\nLaser Head Movement',
-            width=800, height=800,
-            tools=[self._box_zoom, self._pan, self._wheel_zoom, 'reset'],
+            title=f"{self.args.input_file}: {self.title}\nLaser Head Movement",
+            width=800,
+            height=800,
+            tools=[self._box_zoom, self._pan, self._wheel_zoom, "reset"],
             active_drag=self._box_zoom,
             active_scroll=self._wheel_zoom,
-            output_backend='canvas',
+            output_backend="canvas",
         )
 
         # 1:1 aspect ratio to prevent distortion of CNC toolpaths
@@ -97,35 +117,46 @@ class BokehView():
         self.xy_plot.aspect_scale = 1
 
         # Axis labels
-        self.xy_plot.xaxis.axis_label = 'Bed X (mm)'
-        self.xy_plot.yaxis.axis_label = 'Bed Y (mm)'
+        self.xy_plot.xaxis.axis_label = "Bed X (mm)"
+        self.xy_plot.yaxis.axis_label = "Bed Y (mm)"
 
         # Grid
         self.xy_plot.grid.grid_line_alpha = self._grid_line_alpha
 
         # Render vector segments using the segment glyph
         self.xy_renderer = self.xy_plot.segment(
-            x0='start_x', y0='start_y',
-            x1='end_x', y1='end_y',
+            x0="start_x",
+            y0="start_y",
+            x1="end_x",
+            y1="end_y",
             source=source,
-            line_color='color',
-            line_width='width',
-            line_dash='style',
-            line_alpha='alpha',
+            line_color="color",
+            line_width="width",
+            line_dash="style",
+            line_alpha="alpha",
         )
 
         # Highlight overlay: empty initially, populated on command search/context menu
-        self._highlight_source = ColumnDataSource(data={
-            'x0': [], 'y0': [], 'x1': [], 'y1': [],
-            'color': [], 'width': [],
-        })
+        self._highlight_source = ColumnDataSource(
+            data={
+                "x0": [],
+                "y0": [],
+                "x1": [],
+                "y1": [],
+                "color": [],
+                "width": [],
+            }
+        )
         self.xy_plot.segment(
-            x0='x0', y0='y0', x1='x1', y1='y1',
+            x0="x0",
+            y0="y0",
+            x1="x1",
+            y1="y1",
             source=self._highlight_source,
-            line_color='color',
-            line_width='width',
+            line_color="color",
+            line_width="width",
             line_alpha=1.0,
-            line_dash='solid',
+            line_dash="solid",
         )
 
         # HoverTool formatted to match RpaLine.annotation format.
@@ -142,13 +173,13 @@ Length=@{length}mm
 Power=@{power}{f.1}%
 Speed=@{speed}{f.03}mm/S
 """,
-            point_policy='snap_to_data',
-            mode='mouse',
+            point_policy="snap_to_data",
+            mode="mouse",
         )
         self.xy_plot.add_tools(hover)
 
         # SaveTool: native Bokeh save icon in the plot toolbar.
-        _f = Path(self.args.input_file).with_suffix('')
+        _f = Path(self.args.input_file).with_suffix("")
         self._save_tool = SaveTool(filename=str(_f))
         self.xy_plot.add_tools(self._save_tool)
 
@@ -157,10 +188,8 @@ Speed=@{speed}{f.03}mm/S
         # PanTool and WheelZoomTool are also available via the toolbar.
 
         # Backup initial ranges for reset
-        self._initial_x_range = (
-            self.xy_plot.x_range.start, self.xy_plot.x_range.end)
-        self._initial_y_range = (
-            self.xy_plot.y_range.start, self.xy_plot.y_range.end)
+        self._initial_x_range = (self.xy_plot.x_range.start, self.xy_plot.x_range.end)
+        self._initial_y_range = (self.xy_plot.y_range.start, self.xy_plot.y_range.end)
 
         # Guard to prevent re-entrant range-slider updates.
         self._updating_range = False
@@ -172,108 +201,141 @@ Speed=@{speed}{f.03}mm/S
 
         # ---- Power Histogram ----
         self.power_hist = figure(
-            title='Power Distribution',
-            width=400, height=250,
-            tools='',
-            output_backend='svg',
+            title="Power Distribution",
+            width=400,
+            height=250,
+            tools="",
+            output_backend="svg",
         )
-        self.power_hist.xaxis.axis_label = 'Power %'
-        self.power_hist.yaxis.axis_label = 'Frequency'
+        self.power_hist.xaxis.axis_label = "Power %"
+        self.power_hist.yaxis.axis_label = "Frequency"
         self.power_hist.grid.grid_line_alpha = self._grid_line_alpha
 
         # ---- Speed Histogram ----
         self.speed_hist = figure(
-            title='Speed Distribution',
-            width=400, height=250,
-            tools='',
-            output_backend='svg',
+            title="Speed Distribution",
+            width=400,
+            height=250,
+            tools="",
+            output_backend="svg",
         )
-        self.speed_hist.xaxis.axis_label = 'Speed (mm/S)'
-        self.speed_hist.yaxis.axis_label = 'Frequency'
+        self.speed_hist.xaxis.axis_label = "Speed (mm/S)"
+        self.speed_hist.yaxis.axis_label = "Frequency"
         self.speed_hist.grid.grid_line_alpha = self._grid_line_alpha
 
         # ---- Persistent Histogram Sources (Phase 5e) ----
         # Persistent ColumnDataSources prevent UnknownReferenceError by avoiding
         # destruction/recreation of renderer models.  Data is updated in-place.
-        self._power_hist_source = ColumnDataSource(data={
-            'top': [], 'center': [], 'width': [], 'color': [],
-        })
+        self._power_hist_source = ColumnDataSource(
+            data={
+                "top": [],
+                "center": [],
+                "width": [],
+                "color": [],
+            }
+        )
         self.power_hist.vbar(
-            x='center', top='top', width='width',
-            source=self._power_hist_source, fill_color='color', alpha=0.7,
+            x="center",
+            top="top",
+            width="width",
+            source=self._power_hist_source,
+            fill_color="color",
+            alpha=0.7,
         )
 
-        self._speed_hist_source = ColumnDataSource(data={
-            'top': [], 'center': [], 'width': [],
-        })
+        self._speed_hist_source = ColumnDataSource(
+            data={
+                "top": [],
+                "center": [],
+                "width": [],
+            }
+        )
         self.speed_hist.vbar(
-            x='center', top='top', width='width',
-            source=self._speed_hist_source, fill_color='green', alpha=0.7,
+            x="center",
+            top="top",
+            width="width",
+            source=self._speed_hist_source,
+            fill_color="green",
+            alpha=0.7,
         )
 
         # ---- Menu Bar ----
         # View presets and toggles (Settings menu saved for app integration).
 
         # Vector range slider (start index + count).
-        _total = len(self._full_data.get('cmd_id', []))
+        _total = len(self._full_data.get("cmd_id", []))
         self._start_spinner = Spinner(
-            title='Start:', low=0, high=max(0, _total - 1),
-            value=0, step=1, width=80,
+            title="Start:",
+            low=0,
+            high=max(0, _total - 1),
+            value=0,
+            step=1,
+            width=80,
         )
-        self._start_spinner.on_change('value', lambda attr, old, new: self._on_range_change('start', old, new))
+        self._start_spinner.on_change(
+            "value", lambda attr, old, new: self._on_range_change("start", old, new)
+        )
 
         self._count_spinner = Spinner(
-            title='Count:', low=1, high=max(1, _total),
-            value=max(1, _total), step=1, width=80,
+            title="Count:",
+            low=1,
+            high=max(1, _total),
+            value=max(1, _total),
+            step=1,
+            width=80,
         )
-        self._count_spinner.on_change('value', lambda attr, old, new: self._on_range_change('count', old, new))
-
-
+        self._count_spinner.on_change(
+            "value", lambda attr, old, new: self._on_range_change("count", old, new)
+        )
 
         # ---- Phase 5c.2: Advanced Filter Controls ----
         # Vector type filter: Move vs Cut
         self._type_filter = CheckboxButtonGroup(
-            labels=['Moves', 'Cuts'],
+            labels=["Moves", "Cuts"],
             active=[0, 1],  # Both selected by default
             width=120,
         )
-        self._type_filter.on_change('active', self._on_filter_change)
+        self._type_filter.on_change("active", self._on_filter_change)
 
         # Power range slider
         self._power_filter = RangeSlider(
-            title='Power %',
-            start=0, end=100,
+            title="Power %",
+            start=0,
+            end=100,
             value=(0, 100),
             step=1,
             width=200,
             show_value=True,
         )
-        self._power_filter.on_change('value', self._on_filter_change)
+        self._power_filter.on_change("value", self._on_filter_change)
 
         # Speed range slider
-        _speeds = self.source.data.get('speed', [])
+        _speeds = self.source.data.get("speed", [])
         _speed_min = min(_speeds) if _speeds else 0
         _speed_max = max(_speeds) if _speeds else 100
         self._speed_filter = RangeSlider(
-            title='Speed mm/S',
-            start=_speed_min, end=max(_speed_max, _speed_min + 1),
+            title="Speed mm/S",
+            start=_speed_min,
+            end=max(_speed_max, _speed_min + 1),
             value=(_speed_min, max(_speed_max, _speed_min + 1)),
             step=1,
             width=200,
             show_value=True,
         )
-        self._speed_filter.on_change('value', self._on_filter_change)
+        self._speed_filter.on_change("value", self._on_filter_change)
 
         # ---- CustomJS callbacks for standalone HTML export ----
         # These replicate the Python filter logic in JavaScript so
         # that the Moves/Cuts, Power, and Speed filters work in
         # exported standalone HTML (no Bokeh server).
-        _filter_cb = CustomJS(args=dict(
-            source=self.source,
-            type_filter=self._type_filter,
-            power_filter=self._power_filter,
-            speed_filter=self._speed_filter,
-        ), code="""
+        _filter_cb = CustomJS(
+            args=dict(
+                source=self.source,
+                type_filter=self._type_filter,
+                power_filter=self._power_filter,
+                speed_filter=self._speed_filter,
+            ),
+            code="""
             const data = source.data;
             const total = data.cmd_id.length;
             if (total === 0) return;
@@ -305,24 +367,27 @@ Speed=@{speed}{f.03}mm/S
             }
             data.alpha = new_alpha;
             source.change.emit();
-        """)
+        """,
+        )
 
-        self._type_filter.js_on_change('active', _filter_cb)
-        self._power_filter.js_on_change('value', _filter_cb)
-        self._speed_filter.js_on_change('value', _filter_cb)
+        self._type_filter.js_on_change("active", _filter_cb)
+        self._power_filter.js_on_change("value", _filter_cb)
+        self._speed_filter.js_on_change("value", _filter_cb)
 
         # ---- CustomJS callbacks for Start/Count range spinners ----
         # Replicates the Python _on_range_change logic in JavaScript so
         # that the Start and Count spinners work in exported standalone HTML.
-        _range_cb = CustomJS(args=dict(
-            full_source=self._full_source,
-            source=self.source,
-            start_spinner=self._start_spinner,
-            count_spinner=self._count_spinner,
-            type_filter=self._type_filter,
-            power_filter=self._power_filter,
-            speed_filter=self._speed_filter,
-        ), code="""
+        _range_cb = CustomJS(
+            args=dict(
+                full_source=self._full_source,
+                source=self.source,
+                start_spinner=self._start_spinner,
+                count_spinner=self._count_spinner,
+                type_filter=self._type_filter,
+                power_filter=self._power_filter,
+                speed_filter=self._speed_filter,
+            ),
+            code="""
             // One-shot: attach keyup → blur on Enter for spinner inputs.
             // Bokeh Spinner's <input type="number"> only fires the `change`
             // event on blur (clicking outside), not on Enter keypress.
@@ -426,34 +491,40 @@ Speed=@{speed}{f.03}mm/S
             source.change.emit();
 
             window._rangeUpdating = false;
-        """)
+        """,
+        )
 
-        self._start_spinner.js_on_change('value', _range_cb)
-        self._count_spinner.js_on_change('value', _range_cb)
+        self._start_spinner.js_on_change("value", _range_cb)
+        self._count_spinner.js_on_change("value", _range_cb)
 
         # ---- Phase 5c.1: Command Search ----
         # TextInput search box: type `cmd_id:command_name` to highlight a vector.
         self._cmd_search = TextInput(
-            value='',
-            placeholder='Search command (cmd_id:name)...',
+            value="",
+            placeholder="Search command (cmd_id:name)...",
             width=250,
         )
-        self._cmd_search.on_change('value', self._on_cmd_search)
+        self._cmd_search.on_change("value", self._on_cmd_search)
 
         # Command summary display area
         self._cmd_summary = Div(
-            text='Hover or select a command to see details',
-            width=300, height=100,
-            styles={'font-size': '12px', 'overflow-y': 'auto'},
+            text="Hover or select a command to see details",
+            width=300,
+            height=100,
+            styles={"font-size": "12px", "overflow-y": "auto"},
         )
 
         # CustomJS for command search in standalone HTML export.
         # Highlights the matching vector and updates the summary display.
-        self._cmd_search.js_on_change('value', CustomJS(args=dict(
-            source=self.source,
-            hl_source=self._highlight_source,
-            summary=self._cmd_summary,
-        ), code="""
+        self._cmd_search.js_on_change(
+            "value",
+            CustomJS(
+                args=dict(
+                    source=self.source,
+                    hl_source=self._highlight_source,
+                    summary=self._cmd_summary,
+                ),
+                code="""
             const value = cb_obj.value;
             if (!value) {
                 hl_source.data = {
@@ -554,17 +625,21 @@ Speed=@{speed}{f.03}mm/S
                 'end=(' + ex + 'mm, ' + ey + 'mm)<br>' +
                 'Length: ' + len + 'mm | Power: ' + pwr + '% | ' +
                 'Speed: ' + spd + 'mm/S | Type: ' + data.style[i];
-        """))
+        """,
+            ),
+        )
         # ---- Tap-to-populate search bar ----
         # When the user taps/clicks on a vector segment in the plot,
         # the TapTool hit-tests the nearest segment and sets the
         # source's selected indices.  We read those indices and
         # populate the search bar with the selected vector's info.
         # CustomJS for standalone HTML export:
-        _tap_cb = CustomJS(args=dict(
-            source=self.source,
-            search_input=self._cmd_search,
-        ), code="""
+        _tap_cb = CustomJS(
+            args=dict(
+                source=self.source,
+                search_input=self._cmd_search,
+            ),
+            code="""
             if (window._tapGuard) return;
             window._tapGuard = true;
             const indices = source.selected.indices;
@@ -579,16 +654,19 @@ Speed=@{speed}{f.03}mm/S
             // Clear selection to avoid visual indicator.
             source.selected.indices = [];
             window._tapGuard = false;
-        """)
-        self.source.selected.js_on_change('indices', _tap_cb)
+        """,
+        )
+        self.source.selected.js_on_change("indices", _tap_cb)
         # Python callback for server mode:
-        self.source.selected.on_change('indices', self._on_tap_select)
+        self.source.selected.on_change("indices", self._on_tap_select)
 
         # Add TapTool to the plot (hit-tests against main vector segments).
         self.xy_plot.add_tools(TapTool(renderers=[self.xy_renderer]))
 
         # "Open in new tab" button for the search result
-        self._cmd_open_tab_btn = Button(label='Open Tab', button_type='primary', width=80)
+        self._cmd_open_tab_btn = Button(
+            label="Open Tab", button_type="primary", width=80
+        )
         self._cmd_open_tab_btn.on_click(self._on_cmd_open_tab)
         self._cmd_open_tab_btn.disabled = True
 
@@ -598,13 +676,16 @@ Speed=@{speed}{f.03}mm/S
 
         # Status Div for save confirmation messages
         self._save_status = Div(
-            text='',
-            width=140, height=20,
-            styles={'font-size': '12px', 'color': '#666', 'margin-left': '8px'},
+            text="",
+            width=140,
+            height=20,
+            styles={"font-size": "12px", "color": "#666", "margin-left": "8px"},
         )
 
         # Save HTML button: exports current view as standalone interactive HTML
-        self._save_html_btn = Button(label='Save HTML', button_type='success', width=100)
+        self._save_html_btn = Button(
+            label="Save HTML", button_type="success", width=100
+        )
         self._save_html_btn.on_click(self._on_save_html)
 
         # Menu bar row.
@@ -618,7 +699,7 @@ Speed=@{speed}{f.03}mm/S
             self._cmd_open_tab_btn,
             self._save_html_btn,
             self._save_status,
-            sizing_mode='stretch_width',
+            sizing_mode="stretch_width",
         )
 
         # ---- Context Menu (Phase 5b.2 / 5b.3) ----
@@ -627,9 +708,13 @@ Speed=@{speed}{f.03}mm/S
         # string here; the on_change handler deserialises and dispatches the
         # requested action (new_tab or duplicate).
         self._ctx_store = Paragraph(
-            text='', visible=False, width=0, height=0, margin=0,
+            text="",
+            visible=False,
+            width=0,
+            height=0,
+            margin=0,
         )
-        self._ctx_store.on_change('text', self._on_ctx_action)
+        self._ctx_store.on_change("text", self._on_ctx_action)
 
         # Right-click context menu overlay via native DOM listener.
         #
@@ -641,11 +726,13 @@ Speed=@{speed}{f.03}mm/S
         # The native listener is attached once per plot (guarded by a
         # plot-scoped window flag).  The coordinate capture runs on every
         # press to keep the stored values current.
-        _ctx_menu_js = CustomJS(args=dict(
-            source=self.source,
-            store=self._ctx_store,
-            plot=self.xy_plot,
-        ), code=r"""
+        _ctx_menu_js = CustomJS(
+            args=dict(
+                source=self.source,
+                store=self._ctx_store,
+                plot=self.xy_plot,
+            ),
+            code=r"""
             // ---- Right-click context menu (Phase 5b) ----
             // One-time setup: attach native contextmenu listener to the
             // plot canvas (fires only on right-click).
@@ -754,33 +841,33 @@ Speed=@{speed}{f.03}mm/S
             window._rt_ctx_cy = cb_obj.y;
             window._rt_ctx_sx = cb_obj.sx;
             window._rt_ctx_sy = cb_obj.sy;
-        """)
-        self.xy_plot.js_on_event('press', _ctx_menu_js)
+        """,
+        )
+        self.xy_plot.js_on_event("press", _ctx_menu_js)
 
         # ---- Layout ----
-        self._plots = (
-                row(
-                    column(
-                        self.power_hist,
-                        self.speed_hist,
-                        self._cmd_summary,
-                        ),
-                    self.xy_plot)
-            )
+        self._plots = row(
+            column(
+                self.power_hist,
+                self.speed_hist,
+                self._cmd_summary,
+            ),
+            self.xy_plot,
+        )
 
         self.layout = column(
             self._menu_bar,
             self._plots,
-            sizing_mode='stretch_width',
+            sizing_mode="stretch_width",
         )
 
     @property
     def tab(self) -> TabPanel:
-        '''Return a Bokeh TabPanel for use in a Tabs widget.'''
+        """Return a Bokeh TabPanel for use in a Tabs widget."""
         return TabPanel(child=self.layout, title=self.title)
 
     def reset_view(self):
-        '''Restore the original view settings from backup.'''
+        """Restore the original view settings from backup."""
         (sx, ex) = self._initial_x_range
         (sy, ey) = self._initial_y_range
         if sx is not None:
@@ -794,11 +881,11 @@ Speed=@{speed}{f.03}mm/S
 
     @staticmethod
     def _compute_histogram(values, bins=20, range_min=0, range_max=100):
-        '''Compute histogram bins without numpy.
+        """Compute histogram bins without numpy.
 
         Returns (hist, edges) where hist has `bins` counts and
         edges has `bins + 1` boundary values.
-        '''
+        """
         if not values:
             return [], []
         _bin_width = (range_max - range_min) / bins
@@ -812,24 +899,25 @@ Speed=@{speed}{f.03}mm/S
         return _hist, _edges
 
     def update_histograms(self, source: ColumnDataSource = None):
-        '''Rebuild power and speed histograms from source data.
+        """Rebuild power and speed histograms from source data.
 
         Uses persistent ColumnDataSources to avoid destroying and recreating
         renderer models, which causes UnknownReferenceError on the server.
 
         Parameters:
             source  Optional override source. Defaults to self.source.
-        '''
+        """
         if source is None:
             source = self.source
 
         # Power histogram — update persistent source data in-place.
-        if len(source.data.get('power', [])) > 0:
+        if len(source.data.get("power", [])) > 0:
             _p_hist, _p_edges = self._compute_histogram(
-                source.data['power'], bins=20, range_min=0, range_max=100)
+                source.data["power"], bins=20, range_min=0, range_max=100
+            )
             _p_centers = [
-                (_p_edges[i] + _p_edges[i + 1]) / 2
-                for i in range(len(_p_edges) - 1)]
+                (_p_edges[i] + _p_edges[i + 1]) / 2 for i in range(len(_p_edges) - 1)
+            ]
             # Map each bin's center power to a color from the LUT
             if self._color_lut:
                 _p_colors = []
@@ -837,59 +925,67 @@ Speed=@{speed}{f.03}mm/S
                     _idx = min(100, max(0, round(_c)))
                     _p_colors.append(self._color_lut[_idx])
             else:
-                _p_colors = ['navy'] * len(_p_hist)
+                _p_colors = ["navy"] * len(_p_hist)
             self._power_hist_source.data = {
-                'top': _p_hist,
-                'center': _p_centers,
-                'width': [_p_edges[1] - _p_edges[0]] * len(_p_hist),
-                'color': _p_colors,
+                "top": _p_hist,
+                "center": _p_centers,
+                "width": [_p_edges[1] - _p_edges[0]] * len(_p_hist),
+                "color": _p_colors,
             }
         else:
             self._power_hist_source.data = {
-                'top': [], 'center': [], 'width': [], 'color': [],
+                "top": [],
+                "center": [],
+                "width": [],
+                "color": [],
             }
 
         # Speed histogram — update persistent source data in-place.
-        if len(source.data.get('speed', [])) > 0:
-            _s_vals = source.data['speed']
+        if len(source.data.get("speed", [])) > 0:
+            _s_vals = source.data["speed"]
             _s_min = min(_s_vals)
             _s_max = max(_s_vals)
             if _s_max > _s_min:
                 _s_hist, _s_edges = self._compute_histogram(
-                    _s_vals, bins=20,
-                    range_min=_s_min, range_max=_s_max)
+                    _s_vals, bins=20, range_min=_s_min, range_max=_s_max
+                )
                 if _s_hist:
                     _s_centers = [
                         (_s_edges[i] + _s_edges[i + 1]) / 2
-                        for i in range(len(_s_edges) - 1)]
+                        for i in range(len(_s_edges) - 1)
+                    ]
                     self._speed_hist_source.data = {
-                        'top': _s_hist,
-                        'center': _s_centers,
-                        'width': [_s_edges[1] - _s_edges[0]] * len(_s_hist),
+                        "top": _s_hist,
+                        "center": _s_centers,
+                        "width": [_s_edges[1] - _s_edges[0]] * len(_s_hist),
                     }
             else:
                 self._speed_hist_source.data = {
-                    'top': [], 'center': [], 'width': [],
+                    "top": [],
+                    "center": [],
+                    "width": [],
                 }
         else:
             self._speed_hist_source.data = {
-                'top': [], 'center': [], 'width': [],
+                "top": [],
+                "center": [],
+                "width": [],
             }
 
     # ---- App Integration ----
 
     def set_app(self, app):
-        '''Store a reference to the BokehApp for creating new tabs.
+        """Store a reference to the BokehApp for creating new tabs.
 
         Parameters:
             app  The BokehApp instance that owns this view.
-        '''
+        """
         self._app = app
 
     # ---- Range Slider ----
 
     def _on_range_change(self, source: str, old, new):
-        '''Handle changes to the start/count spinners.
+        """Handle changes to the start/count spinners.
 
         Filters the full dataset to show only vectors in the range
         [start:start+count].  Silently clamps values to valid bounds.
@@ -902,7 +998,7 @@ Speed=@{speed}{f.03}mm/S
             source  Which spinner triggered: 'start' or 'count'.
             old     Previous value of the spinner that changed.
             new     New value of the spinner that changed.
-        '''
+        """
         if self._updating_range:
             return
 
@@ -920,7 +1016,7 @@ Speed=@{speed}{f.03}mm/S
             _start = int(self._start_spinner.value)
             _count = int(self._count_spinner.value)
 
-            _total = len(self._full_data.get('cmd_id', []))
+            _total = len(self._full_data.get("cmd_id", []))
             if _total == 0:
                 return
 
@@ -940,8 +1036,8 @@ Speed=@{speed}{f.03}mm/S
             for _key in self._full_data:
                 _filtered[_key] = self._full_data[_key][_start:_end]
             # Ensure alpha column exists for filter compatibility
-            if 'alpha' not in _filtered:
-                _filtered['alpha'] = [1.0] * len(_filtered.get('cmd_id', []))
+            if "alpha" not in _filtered:
+                _filtered["alpha"] = [1.0] * len(_filtered.get("cmd_id", []))
 
             self.source.data = _filtered
             self.update_histograms(self.source)
@@ -951,7 +1047,7 @@ Speed=@{speed}{f.03}mm/S
     # ---- Context Menu Callbacks ----
 
     def _on_ctx_action(self, attr: str, old, new):
-        '''Handle context menu actions dispatched from CustomJS.
+        """Handle context menu actions dispatched from CustomJS.
 
         Reads a JSON payload from _ctx_store.text and dispatches the
         requested action (new_tab or duplicate) to the owning BokehApp.
@@ -960,35 +1056,35 @@ Speed=@{speed}{f.03}mm/S
             attr  The property name that changed ('text').
             old   Previous value.
             new   New value (JSON string).
-        '''
+        """
         # Guard clause: ignore empty/initial text.
         if not new:
             return
 
         # Reset the store immediately to prevent re-triggering.
-        self._ctx_store.text = ''
+        self._ctx_store.text = ""
 
         try:
             _payload = json.loads(new)
         except json.JSONDecodeError:
             return
 
-        _action = _payload.get('action')
-        if _action == 'new_tab':
-            _cmd_id = _payload.get('cmd_id', -1)
+        _action = _payload.get("action")
+        if _action == "new_tab":
+            _cmd_id = _payload.get("cmd_id", -1)
             if _cmd_id >= 0 and self._app is not None:
                 self._app.add_tab_from_cmd_id(_cmd_id, self)
             elif self._app is not None:
                 # No valid cmd_id found — duplicate instead.
                 self._app.duplicate_view(self)
-        elif _action == 'duplicate':
+        elif _action == "duplicate":
             if self._app is not None:
                 self._app.duplicate_view(self)
 
     # ---- Command Search & Filtering (Phase 5c) ----
 
     def _on_cmd_search(self, attr, old, new):
-        '''Handle command search selection.
+        """Handle command search selection.
 
         Parses the "cmd_id:command_name" format and highlights the
         matching vector. Uses nearest-match logic:
@@ -1000,7 +1096,7 @@ Speed=@{speed}{f.03}mm/S
             attr  The property that changed ('value').
             old   Previous value.
             new   New value string.
-        '''
+        """
         # Guard clause: empty input clears highlight
         if not new:
             self._clear_highlight()
@@ -1009,14 +1105,14 @@ Speed=@{speed}{f.03}mm/S
 
         # Parse cmd_id from "cmd_id:command_name" format at boundary
         try:
-            _target = int(new.split(':')[0])
+            _target = int(new.split(":")[0])
         except (ValueError, IndexError):
             return
 
         _data = self.source.data
-        _cmd_ids = _data.get('cmd_id', [])
+        _cmd_ids = _data.get("cmd_id", [])
         if not _cmd_ids:
-            self._cmd_summary.text = 'No commands in current view'
+            self._cmd_summary.text = "No commands in current view"
             self._clear_highlight()
             self._cmd_open_tab_btn.disabled = True
             return
@@ -1045,7 +1141,7 @@ Speed=@{speed}{f.03}mm/S
         elif _lower_idx is not None:
             _match_idx = _lower_idx
         else:
-            self._cmd_summary.text = 'Command not found in current view'
+            self._cmd_summary.text = "Command not found in current view"
             self._clear_highlight()
             self._cmd_open_tab_btn.disabled = True
             return
@@ -1057,103 +1153,107 @@ Speed=@{speed}{f.03}mm/S
         self._searched_cmd_id = _cmd_ids[_match_idx]
 
     def _on_tap_select(self, attr, old, new):
-        '''Handle plot tap selection: populate search box with nearest vector.
+        """Handle plot tap selection: populate search box with nearest vector.
 
         Parameters:
             attr  The property that changed ('indices').
             old   Previous indices list.
             new   New indices list (should have one index on tap).
-        '''
+        """
         if not new:  # empty selection (cleared by guard)
             return
         idx = new[0]
         _data = self.source.data
-        _cid = _data.get('cmd_id', [])[idx]
-        _cmd = _data.get('command', [])[idx]
+        _cid = _data.get("cmd_id", [])[idx]
+        _cmd = _data.get("command", [])[idx]
         if _cid is not None and _cmd is not None:
             self._cmd_search.value = f"{_cid}:{_cmd}"
         # Clear selection to avoid persistent visual indicator.
         self.source.selected.indices = []
 
     def _build_command_summary(self, idx: int) -> str:
-        '''Build an HTML summary string for the vector at index idx.
+        """Build an HTML summary string for the vector at index idx.
 
         Parameters:
             idx  Index into the ColumnDataSource data arrays.
 
         Returns:
             An HTML string with command details for display in _cmd_summary.
-        '''
+        """
         _data = self.source.data
-        _cmd_id = _data['cmd_id'][idx]
-        _cmd_name = _data['command'][idx]
-        _start_x = _data['start_x'][idx]
-        _start_y = _data['start_y'][idx]
-        _end_x = _data['end_x'][idx]
-        _end_y = _data['end_y'][idx]
-        _len = _data['length'][idx]
-        _power = _data['power'][idx]
-        _speed = _data['speed'][idx]
-        _style = _data['style'][idx]
+        _cmd_id = _data["cmd_id"][idx]
+        _cmd_name = _data["command"][idx]
+        _start_x = _data["start_x"][idx]
+        _start_y = _data["start_y"][idx]
+        _end_x = _data["end_x"][idx]
+        _end_y = _data["end_y"][idx]
+        _len = _data["length"][idx]
+        _power = _data["power"][idx]
+        _speed = _data["speed"][idx]
+        _style = _data["style"][idx]
 
         return (
-            f'<b>{_cmd_id}:{_cmd_name}</b><br>'
-            f'start=({_start_x:.3f}mm, {_start_y:.3f}mm) \u2192 '
-            f'end=({_end_x:.3f}mm, {_end_y:.3f}mm)<br>'
-            f'Length: {_len:.3f}mm | Power: {_power:.1f}% | '
-            f'Speed: {_speed:.1f}mm/S | Type: {_style}'
+            f"<b>{_cmd_id}:{_cmd_name}</b><br>"
+            f"start=({_start_x:.3f}mm, {_start_y:.3f}mm) \u2192 "
+            f"end=({_end_x:.3f}mm, {_end_y:.3f}mm)<br>"
+            f"Length: {_len:.3f}mm | Power: {_power:.1f}% | "
+            f"Speed: {_speed:.1f}mm/S | Type: {_style}"
         )
 
     def _on_cmd_open_tab(self):
-        '''Open a new tab for the searched command.
+        """Open a new tab for the searched command.
 
         Delegates to BokehApp.add_tab_from_cmd_id and clears the
         search input on success.
-        '''
+        """
         # Guard clause: verify searched cmd_id and app reference
-        if not hasattr(self, '_searched_cmd_id') or self._searched_cmd_id < 0:
+        if not hasattr(self, "_searched_cmd_id") or self._searched_cmd_id < 0:
             return
         if self._app is None:
             return
 
         self._app.add_tab_from_cmd_id(self._searched_cmd_id, self)
-        self._cmd_search.value = ''
+        self._cmd_search.value = ""
 
     def _highlight_vector(self, idx: int):
-        '''Highlight the vector at the given index using overlay renderer.
+        """Highlight the vector at the given index using overlay renderer.
 
         Draws a thick red segment over the target vector. The overlay
         renderer sits above the main segments for visual prominence.
 
         Parameters:
             idx  Index of the vector to highlight in the source data.
-        '''
+        """
         _data = self.source.data
         # Guard clause: out-of-bounds index
-        if idx < 0 or idx >= len(_data.get('cmd_id', [])):
+        if idx < 0 or idx >= len(_data.get("cmd_id", [])):
             return
         self._highlight_source.data = {
-            'x0': [_data['start_x'][idx]],
-            'y0': [_data['start_y'][idx]],
-            'x1': [_data['end_x'][idx]],
-            'y1': [_data['end_y'][idx]],
-            'color': ['#FF0000'],  # Red highlight
-            'width': [3],  # Thicker line
+            "x0": [_data["start_x"][idx]],
+            "y0": [_data["start_y"][idx]],
+            "x1": [_data["end_x"][idx]],
+            "y1": [_data["end_y"][idx]],
+            "color": ["#FF0000"],  # Red highlight
+            "width": [3],  # Thicker line
         }
 
     def _clear_highlight(self):
-        '''Clear the vector highlight overlay.
+        """Clear the vector highlight overlay.
 
         Resets the highlight source to empty arrays, effectively
         removing the red overlay from the plot.
-        '''
+        """
         self._highlight_source.data = {
-            'x0': [], 'y0': [], 'x1': [], 'y1': [],
-            'color': [], 'width': [],
+            "x0": [],
+            "y0": [],
+            "x1": [],
+            "y1": [],
+            "color": [],
+            "width": [],
         }
 
     def _on_filter_change(self, attr, old, new):
-        '''Apply filters and update vector alpha values.
+        """Apply filters and update vector alpha values.
 
         Evaluates the type filter (Moves/Cuts), power range, and
         speed range to compute visibility for each vector.  Invisible
@@ -1164,9 +1264,9 @@ Speed=@{speed}{f.03}mm/S
             attr  The property that changed.
             old   Previous value.
             new   New value.
-        '''
+        """
         _data = dict(self.source.data)
-        _total = len(_data.get('cmd_id', []))
+        _total = len(_data.get("cmd_id", []))
         # Guard clause: no data to filter
         if _total == 0:
             return
@@ -1182,70 +1282,70 @@ Speed=@{speed}{f.03}mm/S
             _visible = True
 
             # Type filter
-            _style = _data['style'][i] if 'style' in _data else 'solid'
-            _is_move = (_style == 'dashed')
-            _is_cut = (_style == 'solid')
+            _style = _data["style"][i] if "style" in _data else "solid"
+            _is_move = _style == "dashed"
+            _is_cut = _style == "solid"
             if 0 not in _active_types and _is_move:
                 _visible = False
             if 1 not in _active_types and _is_cut:
                 _visible = False
 
             # Power filter
-            _power = _data['power'][i]
+            _power = _data["power"][i]
             if _power < _power_min or _power > _power_max:
                 _visible = False
 
             # Speed filter
-            _speed = _data['speed'][i]
+            _speed = _data["speed"][i]
             if _speed < _speed_min or _speed > _speed_max:
                 _visible = False
 
             _new_alpha.append(1.0 if _visible else 0.2)
 
-        _data['alpha'] = _new_alpha
+        _data["alpha"] = _new_alpha
         self.source.data = _data
         self._clear_highlight()
 
     def _update_cmd_completions(self):
-        '''No-op: TextInput search has no completions to maintain.'''
+        """No-op: TextInput search has no completions to maintain."""
 
     # ---- Save HTML Callback ----
 
     def _on_save_html(self):
-        '''Export the current view layout as a standalone interactive HTML file.
+        """Export the current view layout as a standalone interactive HTML file.
 
         Guard clause prevents concurrent saves.  Delegates to file_html() to
         generate the full Bokeh document with all interactive tools embedded.
         Writes the output alongside the input file with a -view.html suffix.
-        '''
+        """
         # Guard: prevent concurrent saves from rapid clicks
         if self._saving:
             return
         self._saving = True
         self._save_html_btn.disabled = True
-        self._save_status.text = 'Saving...'
+        self._save_status.text = "Saving..."
 
         try:
             # Resolve output filename
             if self._out_stem:
-                _out = Path(self._out_stem).with_suffix('')
-                _path = _out.parent / f'{_out.stem}-view.html'
+                _out = Path(self._out_stem).with_suffix("")
+                _path = _out.parent / f"{_out.stem}-view.html"
             elif self.args.input_file:
-                _in = Path(self.args.input_file).with_suffix('')
-                _path = _in.parent / f'{_in.stem}-view.html'
+                _in = Path(self.args.input_file).with_suffix("")
+                _path = _in.parent / f"{_in.stem}-view.html"
             else:
-                _path = Path('ruida-session-view.html')
+                _path = Path("ruida-session-view.html")
 
             # Generate standalone HTML from the current view layout
             _html = file_html(self.layout, CDN, title=self.title)
 
             # Write to file
-            _path.write_text(_html, encoding='utf-8')
+            _path.write_text(_html, encoding="utf-8")
 
-            self._save_status.text = f'Saved → {_path.name}'
+            self._save_status.text = f"Saved → {_path.name}"
 
         except Exception as _exc:
-            self._save_status.text = f'Save failed: {_exc}'
+            self._save_status.text = f"Save failed: {_exc}"
 
         finally:
             self._save_html_btn.disabled = False

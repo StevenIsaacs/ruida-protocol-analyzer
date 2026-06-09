@@ -20,6 +20,7 @@ from ruidadriver.transport_events import TransportEvent
 
 class RdStatusEvent(Enum):
     """Session-layer events fired by RdStatus to registered listeners."""
+
     CONNECTED = "CONNECTED"
     DISCONNECTED = "DISCONNECTED"
     RECONNECTED = "RECONNECTED"
@@ -48,9 +49,9 @@ class RdStatus:
     """
 
     # Class-level constants
-    PING_RETRY_COUNT = 5       # max consecutive ping failures
-    PING_RETRY_DELAY = 1.0     # seconds between ping retries
-    POLL_INTERVAL = 0.5        # seconds; default query_interval if not set
+    PING_RETRY_COUNT = 5  # max consecutive ping failures
+    PING_RETRY_DELAY = 1.0  # seconds between ping retries
+    POLL_INTERVAL = 0.5  # seconds; default query_interval if not set
     CONNECT_RETRY_DELAY = 1.0  # seconds between connect attempts
 
     def __init__(
@@ -82,7 +83,9 @@ class RdStatus:
         # Thread synchronization
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
-        self._block: threading.Event = threading.Event()  # set()=unblocked, clear()=blocked
+        self._block: threading.Event = (
+            threading.Event()
+        )  # set()=unblocked, clear()=blocked
         self._block.set()  # Start unblocked
 
         # First ping optimization — send immediately on fresh connection
@@ -167,7 +170,9 @@ class RdStatus:
     def set_ping_interval(self, interval_ms: int) -> None:
         """Set ping interval in ms. Clamped to minimum 100ms. Thread-safe."""
         if interval_ms < 100:
-            raise ValueError(f"ping_interval too small: {interval_ms}ms (minimum 100ms)")
+            raise ValueError(
+                f"ping_interval too small: {interval_ms}ms (minimum 100ms)"
+            )
         with self._config_lock:
             self._ping_interval = interval_ms
 
@@ -204,7 +209,7 @@ class RdStatus:
         # Create and start monitor thread
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop,
-            name='rdstatus-monitor',
+            name="rdstatus-monitor",
             daemon=True,
         )
         self._monitor_thread.start()
@@ -216,7 +221,9 @@ class RdStatus:
         deregisters transport listener, and notifies TERMINATED.
         Idempotent — safe to call multiple times.
         """
-        was_running = self._monitor_thread is not None and self._monitor_thread.is_alive()
+        was_running = (
+            self._monitor_thread is not None and self._monitor_thread.is_alive()
+        )
         self._shutdown.set()
         self._transport_event.set()  # Unblock any wait in _wait_for_event
 
@@ -311,31 +318,31 @@ class RdStatus:
         All states check _shutdown and exit thread if set.
         Any transport drop/close (DROPPED or CLOSED event) transitions to CONNECTING.
         """
-        state = 'CONNECTING'
+        state = "CONNECTING"
         # State-local variables
         retries = 0
 
         while not self._shutdown.is_set():
-            if state == 'CONNECTING':
+            if state == "CONNECTING":
                 state = self._run_connecting()
-            elif state == 'WAIT_TO_PING':
+            elif state == "WAIT_TO_PING":
                 retries = self.PING_RETRY_COUNT
                 state = self._run_wait_to_ping()
-            elif state == 'SEND_PING':
+            elif state == "SEND_PING":
                 state = self._run_send_ping()
-            elif state == 'PING_REPLY':
+            elif state == "PING_REPLY":
                 state, retries = self._run_ping_reply(retries)
-            elif state == 'RESYNC':
+            elif state == "RESYNC":
                 state = self._run_resync()
-            elif state == 'WAIT_TO_POLL':
+            elif state == "WAIT_TO_POLL":
                 state = self._run_wait_to_poll()
-            elif state == 'SEND_QUERY':
+            elif state == "SEND_QUERY":
                 state = self._run_send_query()
-            elif state == 'REPLY_PENDING':
+            elif state == "REPLY_PENDING":
                 state = self._run_reply_pending()
             else:
                 # Unknown state — fall back to CONNECTING
-                state = 'CONNECTING'
+                state = "CONNECTING"
 
     def _run_connecting(self) -> str:
         """CONNECTING state: establish transport connection.
@@ -362,9 +369,9 @@ class RdStatus:
                 # Wait reconnect interval (responds to transport drops)
                 self._wait_for_event(self._connect_interval / 1000.0)
                 if self._shutdown.is_set():
-                    return 'CONNECTING'
+                    return "CONNECTING"
                 self._first_ping = True
-                return 'WAIT_TO_PING'
+                return "WAIT_TO_PING"
 
             # Normal open path for closed transport (USB reconnect, etc.)
             self.transport.open()
@@ -373,12 +380,12 @@ class RdStatus:
                 [TransportEvent.OPENED],
             )
             if self._shutdown.is_set():
-                return 'CONNECTING'
+                return "CONNECTING"
             if event is TransportEvent.OPENED:
                 self._first_ping = True
-                return 'WAIT_TO_PING'
+                return "WAIT_TO_PING"
             # Timeout — retry
-        return 'CONNECTING'
+        return "CONNECTING"
 
     def _run_wait_to_ping(self) -> str:
         """WAIT_TO_PING state: wait for ping interval before sending next ping.
@@ -393,19 +400,19 @@ class RdStatus:
         # Send first ping immediately for fast initial connection
         if self._first_ping:
             self._first_ping = False
-            return 'SEND_PING'
+            return "SEND_PING"
 
         if self._shutdown.is_set():
-            return 'WAIT_TO_PING'
+            return "WAIT_TO_PING"
         event = self._wait_for_event(
             self._ping_interval / 1000.0,
         )
         if self._shutdown.is_set():
-            return 'WAIT_TO_PING'
+            return "WAIT_TO_PING"
         if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
-            return 'CONNECTING'
+            return "CONNECTING"
         # Timeout — no disconnect, proceed to send ping
-        return 'SEND_PING'
+        return "SEND_PING"
 
     def _run_send_ping(self) -> str:
         """SEND_PING state: send the ping command to the controller.
@@ -415,11 +422,11 @@ class RdStatus:
         Notify PING_SENT. Transition to PING_REPLY.
         """
         if not self.transport.is_open:
-            return 'CONNECTING'
+            return "CONNECTING"
         if self._ping_cmd is not None:
             self.transport.write([self._ping_cmd])
         self._notify_listeners(RdStatusEvent.PING_SENT)
-        return 'PING_REPLY'
+        return "PING_REPLY"
 
     def _run_ping_reply(self, retries: int) -> tuple[str, int]:
         """PING_REPLY state: wait for reply to the ping command with retry.
@@ -440,14 +447,14 @@ class RdStatus:
                 ],
             )
             if self._shutdown.is_set():
-                return ('CONNECTING', retries)
+                return ("CONNECTING", retries)
             if event is TransportEvent.REPLY_FORWARDED:
                 self._notify_listeners(RdStatusEvent.PING_REPLIED)
                 self._notify_listeners(RdStatusEvent.CONNECTED)
                 self._disconnect_fired = False
-                return ('WAIT_TO_POLL', retries)
+                return ("WAIT_TO_POLL", retries)
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
-                return ('CONNECTING', retries)
+                return ("CONNECTING", retries)
             # Timeout
             retries -= 1
             if retries > 0:
@@ -455,8 +462,8 @@ class RdStatus:
             else:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
                 self._disconnect_fired = True
-                return ('RESYNC', retries)
-        return ('CONNECTING', retries)
+                return ("RESYNC", retries)
+        return ("CONNECTING", retries)
 
     def _run_resync(self) -> str:
         """RESYNC state: drain transport after ping failure.
@@ -467,7 +474,7 @@ class RdStatus:
         """
         if not self._shutdown.is_set():
             self.transport.drain()
-        return 'CONNECTING'
+        return "CONNECTING"
 
     def _run_wait_to_poll(self) -> str:
         """WAIT_TO_POLL state: wait for query interval and unblock before sending queries.
@@ -482,21 +489,21 @@ class RdStatus:
             while self.is_blocked and not self._shutdown.is_set():
                 self.wait_until_unblocked(self.POLL_INTERVAL)
             if self._shutdown.is_set():
-                return 'WAIT_TO_POLL'
+                return "WAIT_TO_POLL"
 
             event = self._wait_for_event(
                 self._query_interval / 1000.0,
                 [TransportEvent.DROPPED, TransportEvent.CLOSED, TransportEvent.TIMEOUT],
             )
             if self._shutdown.is_set():
-                return 'WAIT_TO_POLL'
+                return "WAIT_TO_POLL"
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
-                return 'CONNECTING'
+                return "CONNECTING"
             if event is TransportEvent.TIMEOUT:
-                return 'CONNECTING'
+                return "CONNECTING"
             # Timeout — proceed to send queries
-            return 'SEND_QUERY'
-        return 'WAIT_TO_POLL'
+            return "SEND_QUERY"
+        return "WAIT_TO_POLL"
 
     def _run_send_query(self) -> str:
         """SEND_QUERY state: send all status query commands.
@@ -506,11 +513,11 @@ class RdStatus:
         Transition to REPLY_PENDING.
         """
         if not self.transport.is_open:
-            return 'CONNECTING'
+            return "CONNECTING"
         if self._query_cmds:
             self.transport.write(self._query_cmds)
             self._notify_listeners(RdStatusEvent.QUERY_SENT)
-        return 'REPLY_PENDING'
+        return "REPLY_PENDING"
 
     def _run_reply_pending(self) -> str:
         """REPLY_PENDING state: wait for replies to status query commands.
@@ -521,7 +528,7 @@ class RdStatus:
         On timeout → notify DISCONNECTED, go to CONNECTING.
         """
         if not self._query_cmds:
-            return 'WAIT_TO_POLL'
+            return "WAIT_TO_POLL"
 
         while not self._shutdown.is_set():
             event = self._wait_for_event(
@@ -533,14 +540,14 @@ class RdStatus:
                 ],
             )
             if self._shutdown.is_set():
-                return 'WAIT_TO_POLL'
+                return "WAIT_TO_POLL"
             if event is TransportEvent.REPLY_FORWARDED:
                 self._notify_listeners(RdStatusEvent.QUERY_RECEIVED)
-                return 'WAIT_TO_POLL'
+                return "WAIT_TO_POLL"
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
-                return 'CONNECTING'
+                return "CONNECTING"
             # Timeout
             self._notify_listeners(RdStatusEvent.DISCONNECTED)
             self._disconnect_fired = True
-            return 'CONNECTING'
-        return 'WAIT_TO_POLL'
+            return "CONNECTING"
+        return "WAIT_TO_POLL"

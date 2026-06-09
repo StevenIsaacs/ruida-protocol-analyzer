@@ -32,12 +32,12 @@ class RdTransport:
         self._usb: UsbTransport | None = None
         self._transport: Transport | None = None
 
-        self._udp_host = ''
-        self._usb_device = ''
+        self._udp_host = ""
+        self._usb_device = ""
 
         self._swizzler = RpaSwizzler()
         self._chunk_size = 1024
-        self._timeout = 250       # ms per-call timeout
+        self._timeout = 250  # ms per-call timeout
         self._gross_timeout = 15000  # ms overall gross timeout
         self._use_gross_timeout = False
 
@@ -55,9 +55,15 @@ class RdTransport:
 
     # ---- Configuration and Connection ----
 
-    def configure(self, udp_host: str = '', usb_device: str = '',
-                  magic: int = 0x88, chunk_size: int = 1024,
-                  timeout: int = 250, gross_timeout: int = 15000) -> None:
+    def configure(
+        self,
+        udp_host: str = "",
+        usb_device: str = "",
+        magic: int = 0x88,
+        chunk_size: int = 1024,
+        timeout: int = 250,
+        gross_timeout: int = 15000,
+    ) -> None:
         """Configure transport parameters. Must be called before open()."""
         if udp_host:
             self._udp = UdpTransport()
@@ -133,7 +139,7 @@ class RdTransport:
         replies: list[bytearray] = []
         # Each GET_SETTING reply is 9 bytes: 0xDA + 0x01 + msb + lsb + 5 data bytes
         for i in range(0, len(raw), 9):
-            chunk = raw[i:i+9]
+            chunk = raw[i : i + 9]
             if len(chunk) < 9:
                 break
             if chunk[0] != 0xDA:
@@ -162,58 +168,58 @@ class RdTransport:
 
     def _handshake_loop(self) -> None:
         """Main handshake loop: IDLE -> SEND -> ACK_PENDING/REPLY_PENDING -> IDLE."""
-        state = 'IDLE'
+        state = "IDLE"
         packet: bytearray | None = None
         expect_reply = False
 
         while not self._shutdown_event.is_set():
-            if state == 'IDLE':
+            if state == "IDLE":
                 try:
                     packet = self._send_queue.get(timeout=self._HANDSHAKE_TIMEOUT)
-                    state = 'SEND'
+                    state = "SEND"
                 except queue.Empty:
                     continue
 
-            elif state == 'SEND':
+            elif state == "SEND":
                 try:
                     self._transport.write(packet)
                 except OSError:
                     self._notify_status(TransportEvent.DROPPED)
-                    state = 'IDLE'
+                    state = "IDLE"
                     continue
                 if self._transport.is_udp:
-                    state = 'ACK_PENDING'
+                    state = "ACK_PENDING"
                 else:
                     # USB: no ACK; check if it contains GET_SETTING commands
                     expect_reply = self._has_get_setting(packet)
-                    state = 'REPLY_PENDING' if expect_reply else 'IDLE'
+                    state = "REPLY_PENDING" if expect_reply else "IDLE"
 
-            elif state == 'ACK_PENDING':
+            elif state == "ACK_PENDING":
                 data = self._wait_for_data(self._timeout)
                 if data is None:
                     self._notify_status(TransportEvent.TIMEOUT)
-                    state = 'IDLE'
+                    state = "IDLE"
                     continue
                 # Validate ACK (single byte 0xC6 after swizzle)
                 if len(data) == 1 and data[0] == 0xC6:
                     self._notify_status(TransportEvent.ACK_RECEIVED)
                     expect_reply = self._has_get_setting(packet)
-                    state = 'REPLY_PENDING' if expect_reply else 'IDLE'
+                    state = "REPLY_PENDING" if expect_reply else "IDLE"
                 else:
                     self._notify_status(TransportEvent.REPLY_ERROR)
-                    state = 'IDLE'
+                    state = "IDLE"
 
-            elif state == 'REPLY_PENDING':
+            elif state == "REPLY_PENDING":
                 data = self._wait_for_data(self._timeout)
                 if data is None:
                     self._notify_status(TransportEvent.TIMEOUT)
-                    state = 'IDLE'
+                    state = "IDLE"
                     continue
                 replies = self._unpack_replies(data)
                 if replies:
                     self._notify_reply_listeners(replies)
                     self._notify_status(TransportEvent.REPLY_FORWARDED)
-                    state = 'IDLE'
+                    state = "IDLE"
                 # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
 
     def _wait_for_data(self, timeout_ms: int) -> Optional[bytes]:

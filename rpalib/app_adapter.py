@@ -64,7 +64,9 @@ class AppAdapter(ABC):
         Args:
             script: List of rpascript-formatted command lines.
         """
-        raise RuntimeError("Adapter not initialized. Call create_driver_and_session() first.")
+        raise RuntimeError(
+            "Adapter not initialized. Call create_driver_and_session() first."
+        )
 
     def start(self) -> None:
         """Start the adapter. Default implementation is a no-op."""

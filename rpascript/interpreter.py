@@ -5,31 +5,37 @@ Parses human-readable script files into structured command tuples,
 supporting comment stripping and command/expected-reply directives.
 """
 
-import re
-
+from protocols.ruida.ruida_protocol import ACK, CT, MT
+from rpalib.rpa_swizzler import RpaSwizzler
+from rpalib.ruida_transcoder import RdEncoder
 from rpascript.encoding import (
-    encode_command,
-    encode_params,
-    encode_single_param,
-    encode_mt_param,
-    is_set_file_sum,
-    should_include_in_checksum,
-    parse_value,
     _ENCODER_MAP,
     _RDTYPE_ENCODER_MAP,
+    encode_command,
+    encode_mt_param,
+    encode_params,
+    encode_single_param,
+    is_set_file_sum,
+    parse_value,
+    should_include_in_checksum,
 )
-from protocols.ruida.ruida_protocol import CT, MT, IDXT, ACK
-from rpalib.ruida_transcoder import RdEncoder
-from rpalib.rpa_swizzler import RpaSwizzler
-
 
 # Type group names recognized in .rds script files.
 # These are purely informational labels in the script format and map to
 # the underlying hex-prefix command categories in CT.
-TYPE_NAMES = frozenset({
-    'CORE', 'MOVE', 'LASER', 'CONFIG', 'QUERY', 'ENGRAVE', 'CUT',
-    'FILE', 'SYSTEM',
-})
+TYPE_NAMES = frozenset(
+    {
+        "CORE",
+        "MOVE",
+        "LASER",
+        "CONFIG",
+        "QUERY",
+        "ENGRAVE",
+        "CUT",
+        "FILE",
+        "SYSTEM",
+    }
+)
 
 
 def reconstruct_script_line(cmd: dict) -> str:
@@ -45,50 +51,50 @@ def reconstruct_script_line(cmd: dict) -> str:
     Returns:
         rpascript-formatted command line string suitable for driver.run().
     """
-    cmd_type = cmd.get('type')
+    cmd_type = cmd.get("type")
 
     # Session commands
-    if cmd_type == 'SESSION_START':
-        params = cmd.get('params', {})
-        tokens = ['session', 'start']
+    if cmd_type == "SESSION_START":
+        params = cmd.get("params", {})
+        tokens = ["session", "start"]
         for k, v in params.items():
-            tokens.append(f'{k}={v}' if v is not None else f'{k}=none')
-        return ' '.join(tokens)
+            tokens.append(f"{k}={v}" if v is not None else f"{k}=none")
+        return " ".join(tokens)
 
-    if cmd_type == 'SESSION_END':
-        return 'session end'
+    if cmd_type == "SESSION_END":
+        return "session end"
 
-    if cmd_type == 'DELAY':
-        params = cmd.get('params', [])
+    if cmd_type == "DELAY":
+        params = cmd.get("params", [])
         return f"delay {params[0]}" if params else "delay 0s"
 
-    if cmd_type == 'WAIT':
-        parts = ['wait']
-        params = cmd.get('params', [])
+    if cmd_type == "WAIT":
+        parts = ["wait"]
+        params = cmd.get("params", [])
         if params:
             parts.append(params[0])
-        to_val = cmd.get('to')
+        to_val = cmd.get("to")
         if to_val is not None:
-            parts.append(f'to={to_val}')
-        return ' '.join(parts)
+            parts.append(f"to={to_val}")
+        return " ".join(parts)
 
     # NEW_PACKET directive
-    if cmd_type == 'NEW_PACKET':
-        return 'NEW_PACKET'
+    if cmd_type == "NEW_PACKET":
+        return "NEW_PACKET"
 
     # Regular command: [TYPE] MNEMONIC param1 param2 [= expected]
     tokens = []
     if cmd_type:
         tokens.append(cmd_type)
-    mnemonic = cmd.get('mnemonic')
+    mnemonic = cmd.get("mnemonic")
     if mnemonic and mnemonic != cmd_type:
         tokens.append(mnemonic)
-    tokens.extend(cmd.get('params', []))
-    expected = cmd.get('expected')
+    tokens.extend(cmd.get("params", []))
+    expected = cmd.get("expected")
     if expected is not None:
-        tokens.append('=')
+        tokens.append("=")
         tokens.append(str(expected))
-    return ' '.join(tokens)
+    return " ".join(tokens)
 
 
 def _strip_inline_comment(line: str) -> str:
@@ -99,7 +105,7 @@ def _strip_inline_comment(line: str) -> str:
     while i < len(line):
         ch = line[i]
         # Track escaped hash: \# — skip it as a literal hash
-        if ch == '\\' and i + 1 < len(line) and line[i + 1] == '#' and not in_quote:
+        if ch == "\\" and i + 1 < len(line) and line[i + 1] == "#" and not in_quote:
             i += 2  # skip both \ and #
             continue
         if ch in ('"', "'") and not in_quote:
@@ -108,7 +114,7 @@ def _strip_inline_comment(line: str) -> str:
         elif ch == quote_char and in_quote:
             in_quote = False
             quote_char = None
-        elif ch == '#' and not in_quote:
+        elif ch == "#" and not in_quote:
             return line[:i].rstrip()
         i += 1
     return line
@@ -159,7 +165,7 @@ class ScriptParser:
 
         Returns a list of command dicts.
         """
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             content = f.read()
         lines = content.splitlines()
         return self.parse_lines(lines)
@@ -169,7 +175,7 @@ class ScriptParser:
 
         Strips block comments, then processes each non-empty line.
         """
-        text = '\n'.join(lines)
+        text = "\n".join(lines)
         text = _remove_block_comments(text)
         stripped_lines = text.splitlines()
 
@@ -206,38 +212,38 @@ class ScriptParser:
         idx = 0
 
         # --- Session meta-commands (live controller testing) ---
-        if tokens[0].lower() == 'session':
+        if tokens[0].lower() == "session":
             if len(tokens) < 2:
                 raise ValueError(
                     f'{line_num}: "session" requires an action: start or end'
                 )
             action = tokens[1].lower()
-            if action == 'start':
+            if action == "start":
                 kwargs = {}
                 for token in tokens[2:]:
-                    key, _, val = token.partition('=')
-                    kwargs[key.lower()] = None if val.lower() == 'none' else val
+                    key, _, val = token.partition("=")
+                    kwargs[key.lower()] = None if val.lower() == "none" else val
                 # Validate: at least one of udp= or usb= must be provided
-                if 'udp' not in kwargs and 'usb' not in kwargs:
+                if "udp" not in kwargs and "usb" not in kwargs:
                     raise ValueError(
-                        f'{line_num}: session start requires at least one of udp= or usb='
+                        f"{line_num}: session start requires at least one of udp= or usb="
                     )
                 return {
-                    'type': 'SESSION_START',
-                    'mnemonic': 'SESSION_START',
-                    'params': kwargs,
-                    'expected': None,
-                    'line_num': line_num,
-                    'raw': raw,
+                    "type": "SESSION_START",
+                    "mnemonic": "SESSION_START",
+                    "params": kwargs,
+                    "expected": None,
+                    "line_num": line_num,
+                    "raw": raw,
                 }
-            elif action == 'end':
+            elif action == "end":
                 return {
-                    'type': 'SESSION_END',
-                    'mnemonic': 'SESSION_END',
-                    'params': [],
-                    'expected': None,
-                    'line_num': line_num,
-                    'raw': raw,
+                    "type": "SESSION_END",
+                    "mnemonic": "SESSION_END",
+                    "params": [],
+                    "expected": None,
+                    "line_num": line_num,
+                    "raw": raw,
                 }
             else:
                 raise ValueError(
@@ -245,60 +251,60 @@ class ScriptParser:
                 )
 
         # --- NEW_PACKET directive (per-packet boundary marker) ---
-        if tokens[0] == 'NEW_PACKET':
+        if tokens[0] == "NEW_PACKET":
             return {
-                'type': 'NEW_PACKET',
-                'mnemonic': 'NEW_PACKET',
-                'params': [],
-                'expected': None,
-                'line_num': line_num,
-                'raw': raw,
+                "type": "NEW_PACKET",
+                "mnemonic": "NEW_PACKET",
+                "params": [],
+                "expected": None,
+                "line_num": line_num,
+                "raw": raw,
             }
 
         # --- Flow-control: delay ---
-        if tokens[0].lower() == 'delay':
+        if tokens[0].lower() == "delay":
             if len(tokens) < 2:
                 raise ValueError(
                     f'{line_num}: "delay" requires a time argument (e.g. 5s, 500ms)'
                 )
             return {
-                'type': 'DELAY',
-                'mnemonic': 'DELAY',
-                'params': tokens[1:],
-                'expected': None,
-                'line_num': line_num,
-                'raw': raw,
+                "type": "DELAY",
+                "mnemonic": "DELAY",
+                "params": tokens[1:],
+                "expected": None,
+                "line_num": line_num,
+                "raw": raw,
             }
 
         # --- Flow-control: wait ---
-        if tokens[0].lower() == 'wait':
+        if tokens[0].lower() == "wait":
             if len(tokens) < 2:
                 raise ValueError(
                     f'{line_num}: "wait" requires a status argument '
-                    f'(e.g. MACHINE_STATUS_JOB_RUNNING)'
+                    f"(e.g. MACHINE_STATUS_JOB_RUNNING)"
                 )
             status = tokens[1]
             kwargs = {}
             for token in tokens[2:]:
-                key, _, val = token.partition('=')
-                kwargs[key.lower()] = None if val.lower() == 'none' else val
+                key, _, val = token.partition("=")
+                kwargs[key.lower()] = None if val.lower() == "none" else val
             # Validate recognized keyword parameters
-            valid_wait_keys = frozenset({'to'})
+            valid_wait_keys = frozenset({"to"})
             unknown = kwargs.keys() - valid_wait_keys
             if unknown:
                 raise ValueError(
-                    f'{line_num}: Unknown wait parameter(s): '
-                    f'{", ".join(sorted(unknown))}. '
-                    f'Valid parameters: to=<timeout>'
+                    f"{line_num}: Unknown wait parameter(s): "
+                    f"{', '.join(sorted(unknown))}. "
+                    f"Valid parameters: to=<timeout>"
                 )
             return {
-                'type': 'WAIT',
-                'mnemonic': 'WAIT',
-                'params': [status],
-                'to': kwargs.get('to'),
-                'expected': None,
-                'line_num': line_num,
-                'raw': raw,
+                "type": "WAIT",
+                "mnemonic": "WAIT",
+                "params": [status],
+                "to": kwargs.get("to"),
+                "expected": None,
+                "line_num": line_num,
+                "raw": raw,
             }
 
         # --- Type / mnemonic detection ---
@@ -313,7 +319,7 @@ class ScriptParser:
             idx = 1
             # Skip optional 'CMD' decorative keyword after type
             # e.g. "CORE CMD NOP" — 'CMD' is not the mnemonic
-            if len(tokens) > idx and tokens[idx].upper() == 'CMD':
+            if len(tokens) > idx and tokens[idx].upper() == "CMD":
                 idx += 1
             if idx >= len(tokens):
                 raise ValueError(
@@ -330,7 +336,7 @@ class ScriptParser:
         if mnemonic not in self._mnemonic_map:
             raise ValueError(
                 f'{line_num}: Unknown command mnemonic "{mnemonic}". '
-                f'Not found in any CT table entry.'
+                f"Not found in any CT table entry."
             )
 
         # --- Parameters and expected reply ---
@@ -340,24 +346,24 @@ class ScriptParser:
         remaining = tokens[idx:]
         eq_idx = None
         for i, tok in enumerate(remaining):
-            if tok == '=':
+            if tok == "=":
                 eq_idx = i
                 break
 
         if eq_idx is not None:
             params = remaining[:eq_idx]
-            expected_tokens = remaining[eq_idx + 1:]
-            expected = ' '.join(expected_tokens) if expected_tokens else ''
+            expected_tokens = remaining[eq_idx + 1 :]
+            expected = " ".join(expected_tokens) if expected_tokens else ""
         else:
             params = remaining
 
         return {
-            'type': type_name or '',
-            'mnemonic': mnemonic,
-            'params': params,
-            'expected': expected,
-            'line_num': line_num,
-            'raw': raw,
+            "type": type_name or "",
+            "mnemonic": mnemonic,
+            "params": params,
+            "expected": expected,
+            "line_num": line_num,
+            "raw": raw,
         }
 
     # ------------------------------------------------------------------
@@ -370,7 +376,7 @@ class ScriptParser:
         if token in TYPE_NAMES:
             return token
         # Try stripping _CMD suffix (e.g., CORE_CMD → CORE)
-        if token.endswith('_CMD') and token[:-4] in TYPE_NAMES:
+        if token.endswith("_CMD") and token[:-4] in TYPE_NAMES:
             return token[:-4]
         return None
 
@@ -404,7 +410,7 @@ class ScriptParser:
             if isinstance(entry, str):
                 name = entry.strip()
                 # Skip non-command strings like '\n ---- EOF ----'
-                if name and not name.startswith('\n') and len(name) < 40:
+                if name and not name.startswith("\n") and len(name) < 40:
                     _map[name] = (prefix_byte, None, None)
                 continue
 
@@ -429,7 +435,12 @@ class ScriptParser:
                                 _map[nested] = (prefix_byte, opcode, opcode2, None)
                             elif isinstance(nested, tuple):
                                 if len(nested) >= 1 and isinstance(nested[0], str):
-                                    _map[nested[0]] = (prefix_byte, opcode, opcode2, nested)
+                                    _map[nested[0]] = (
+                                        prefix_byte,
+                                        opcode,
+                                        opcode2,
+                                        nested,
+                                    )
 
         return _map
 
@@ -467,6 +478,7 @@ class ScriptParser:
 # ═══════════════════════════════════════════════════════════════════════
 # ScriptInterpreter
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class ScriptInterpreter:
     """Interprets parsed script commands and generates tshark-compatible output.
@@ -508,8 +520,7 @@ class ScriptInterpreter:
         """
         # Check for session commands
         session_active = any(
-            cmd.get('type') in ('SESSION_START', 'SESSION_END')
-            for cmd in commands
+            cmd.get("type") in ("SESSION_START", "SESSION_END") for cmd in commands
         )
 
         if session_active:
@@ -522,22 +533,22 @@ class ScriptInterpreter:
         file_checksum = 0
         set_file_sum_value = None
         set_file_sum_offset = None
-        set_file_sum_batch = bytearray()   # reference to batch containing placeholder
+        set_file_sum_batch = bytearray()  # reference to batch containing placeholder
         for cmd in commands:
-            if cmd.get('type') == 'NEW_PACKET':
+            if cmd.get("type") == "NEW_PACKET":
                 # Flush current batch as a single combined packet,
                 # emit ACK immediately after the command packet,
                 # then emit synthetic replies for any commands with expected values.
                 if current_batch:
                     self._emit_packet(current_batch)
                     # Emit ACK immediately after the command packet
-                    self._out.write(self._encode_ack(self._timestamp) + '\n')
+                    self._out.write(self._encode_ack(self._timestamp) + "\n")
                     self._timestamp += 0.0003
                     # Then emit expected replies
                     for pending in pending_commands:
                         reply_line = self._encode_reply(pending)
                         if reply_line:
-                            self._out.write(reply_line + '\n')
+                            self._out.write(reply_line + "\n")
                     current_batch = bytearray()
                     pending_commands = []
                 continue
@@ -549,12 +560,16 @@ class ScriptInterpreter:
             if is_set_file_sum(cmd, self._parser.mnemonic_map):
                 if set_file_sum_value is not None:
                     raise ValueError("Duplicate SET_FILE_SUM — at most one per file")
-                if cmd['params']:
-                    set_file_sum_value = parse_value(cmd['params'][0], 'checksum', 'uint_35')
+                if cmd["params"]:
+                    set_file_sum_value = parse_value(
+                        cmd["params"][0], "checksum", "uint_35"
+                    )
                 else:
-                    raw.extend(b'\x00' * 5)  # placeholder; filled after EOF
+                    raw.extend(b"\x00" * 5)  # placeholder; filled after EOF
                     set_file_sum_offset = len(current_batch) + len(raw) - 5
-                    set_file_sum_batch = current_batch   # track which batch has the placeholder
+                    set_file_sum_batch = (
+                        current_batch  # track which batch has the placeholder
+                    )
                 # raw is added to current_batch below regardless
             elif should_include_in_checksum(cmd, self._parser.mnemonic_map):
                 file_checksum += sum(raw)
@@ -566,7 +581,7 @@ class ScriptInterpreter:
             current_batch.extend(raw)
 
             # Track commands that have an expected reply value
-            if cmd.get('expected'):
+            if cmd.get("expected"):
                 pending_commands.append(cmd)
 
         # === Patch placeholder BEFORE final emit ===
@@ -579,18 +594,18 @@ class ScriptInterpreter:
                     "SET_FILE_SUM without value must appear in the final batch "
                     "(cannot be before a NEW_PACKET directive)"
                 )
-            current_batch[set_file_sum_offset:set_file_sum_offset + 5] = encoded_sum
+            current_batch[set_file_sum_offset : set_file_sum_offset + 5] = encoded_sum
 
         # Flush the final batch (now with correct checksum bytes)
         if current_batch:
             self._emit_packet(current_batch)
             # Emit ACK for the final packet too
-            self._out.write(self._encode_ack(self._timestamp) + '\n')
+            self._out.write(self._encode_ack(self._timestamp) + "\n")
             self._timestamp += 0.0003
             for pending in pending_commands:
                 reply_line = self._encode_reply(pending)
                 if reply_line:
-                    self._out.write(reply_line + '\n')
+                    self._out.write(reply_line + "\n")
 
         # === Post-loop: verify SET_FILE_SUM ===
         if set_file_sum_value is not None:
@@ -614,15 +629,15 @@ class ScriptInterpreter:
         driver = None
 
         for cmd in commands:
-            if cmd['type'] == 'SESSION_START':
+            if cmd["type"] == "SESSION_START":
                 from ruidadriver.rd_session import RdSession
                 from ruidadriver.ruida_driver import RdDriver
 
                 session = RdSession()
-                params = cmd.get('params', {})
+                params = cmd.get("params", {})
                 session.transport.configure(
-                    udp_host=params.get('udp', ''),
-                    usb_device=params.get('usb', ''),
+                    udp_host=params.get("udp", ""),
+                    usb_device=params.get("usb", ""),
                 )
                 # Open transport (fast, non-blocking for UDP)
                 if not session.transport.open():
@@ -637,7 +652,7 @@ class ScriptInterpreter:
                 # order — so replies arrive to a fully-initialized driver.
                 driver.start_script_runner()
 
-            elif cmd['type'] == 'SESSION_END':
+            elif cmd["type"] == "SESSION_END":
                 if driver is not None:
                     driver.stop_script_runner()
                     driver = None
@@ -690,20 +705,22 @@ class ScriptInterpreter:
         chk = sum(swizzled) & 0xFFFF
 
         # Build final binary: checksum (2 bytes big-endian) + swizzled data
-        binary = bytearray([
-            (chk >> 8) & 0xFF,
-            chk & 0xFF,
-        ])
+        binary = bytearray(
+            [
+                (chk >> 8) & 0xFF,
+                chk & 0xFF,
+            ]
+        )
         binary.extend(swizzled)
 
         # Build tshark line
-        ts = f'{self._timestamp:.6f}'
-        src_dst = f'{self.DEFAULT_SRC_PORT},{self.DEFAULT_DST_PORT}'
+        ts = f"{self._timestamp:.6f}"
+        src_dst = f"{self.DEFAULT_SRC_PORT},{self.DEFAULT_DST_PORT}"
         pkt_len = len(binary) + 8  # UDP header is 8 bytes
         hex_data = binary.hex()
 
-        line = f'{ts}\t{src_dst}\t{pkt_len}\t{hex_data}'
-        self._out.write(line + '\n')
+        line = f"{ts}\t{src_dst}\t{pkt_len}\t{hex_data}"
+        self._out.write(line + "\n")
 
         self._timestamp += 0.001
 
@@ -714,9 +731,9 @@ class ScriptInterpreter:
         check_handshake() method. The raw byte is the swizzled form of
         0xCC (ACK) using magic 0x88.
         """
-        src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
+        src_dst = f"{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}"
         raw_ack = RpaSwizzler.swizzle_byte(ACK, 0x88)
-        return f'{ts:.6f}\t{src_dst}\t9\t{raw_ack:02x}'
+        return f"{ts:.6f}\t{src_dst}\t9\t{raw_ack:02x}"
 
     def _encode_reply(self, cmd: dict) -> str:
         """Generate a tshark-format reply packet for a command with expected value.
@@ -727,61 +744,62 @@ class ScriptInterpreter:
         Returns the tshark line string, or an empty string if no reply can be
         generated (unknown MEM mnemonic, unknown type, TBD types, etc.).
         """
-        expected = cmd.get('expected', '')
-        if not expected or expected in ('?', '*'):
-            return ''
+        expected = cmd.get("expected", "")
+        if not expected or expected in ("?", "*"):
+            return ""
 
-        params = cmd.get('params', [])
+        params = cmd.get("params", [])
         if not params:
-            return ''
+            return ""
 
         mem_mnemonic = params[0]
         mt_map = self._parser.mt_map
         if mem_mnemonic not in mt_map:
-            return ''
+            return ""
 
         msb, lsb = mt_map[mem_mnemonic]
 
         # Look up the MT entry to get the parameter spec tuple
         mt_entry = MT.get(msb, {}).get(lsb)
         if mt_entry is None or len(mt_entry) < 2:
-            return ''
+            return ""
 
         spec = mt_entry[1]  # Type spec, e.g. CARD_ID, XABSCOORD, TBDU35
         if not isinstance(spec, tuple) or len(spec) < 2:
-            return ''
+            return ""
 
         decoder_name = spec[1]
         rd_type = spec[2] if len(spec) >= 3 else None
 
         # Skip unknown / TBD types
-        if decoder_name in ('tbd',):
-            return ''
+        if decoder_name in ("tbd",):
+            return ""
 
         # Parse the expected value string into a Python value
         parsed = self._parse_value(expected, decoder_name, rd_type)
 
         # Choose and call the appropriate encoder
         raw: bytearray
-        if decoder_name == 'card_id':
+        if decoder_name == "card_id":
             raw = self._enc.encode_card_id(parsed)
-        elif decoder_name == 'coord':
-            coord_nbytes = {'int_14': 2, 'uint_14': 2,
-                            'int_35': 5, 'uint_35': 5}.get(rd_type, 5)
+        elif decoder_name == "coord":
+            coord_nbytes = {"int_14": 2, "uint_14": 2, "int_35": 5, "uint_35": 5}.get(
+                rd_type, 5
+            )
             raw = self._enc.encode_coord(parsed, coord_nbytes)
         else:
             method_name = _ENCODER_MAP.get(decoder_name)
             if method_name is None and rd_type is not None:
                 method_name = _RDTYPE_ENCODER_MAP.get(rd_type)
             if method_name is None:
-                return ''
+                return ""
             encoder = getattr(self._enc, method_name, None)
             if encoder is None:
-                return ''
+                return ""
             raw = encoder(parsed)
 
         if not raw:
-            return ''
+            return ""
 
         # Build reply framing + data bytes.
         # The parser's state machine expects:
@@ -797,15 +815,15 @@ class ScriptInterpreter:
         swizzled = self._swizzler.swizzle(full_reply)
 
         # Controller→host: no checksum, ports reversed
-        ts = f'{self._timestamp:.6f}'
-        src_dst = f'{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}'
+        ts = f"{self._timestamp:.6f}"
+        src_dst = f"{self.DEFAULT_DST_PORT},{self.DEFAULT_SRC_PORT}"
         pkt_len = len(swizzled) + 8
         hex_data = swizzled.hex()
 
         # Advance timestamp for the reply
         self._timestamp += 0.0002
 
-        return f'{ts}\t{src_dst}\t{pkt_len}\t{hex_data}'
+        return f"{ts}\t{src_dst}\t{pkt_len}\t{hex_data}"
 
     # ------------------------------------------------------------------
     # Parameter encoding
@@ -822,8 +840,12 @@ class ScriptInterpreter:
         Delegates to the standalone encode_params function.
         """
         return encode_params(
-            param_specs, param_values, cmd,
-            self._parser.mnemonic_map, self._parser.mt_map, self._enc
+            param_specs,
+            param_values,
+            cmd,
+            self._parser.mnemonic_map,
+            self._parser.mt_map,
+            self._enc,
         )
 
     def _encode_single_param(
@@ -838,8 +860,13 @@ class ScriptInterpreter:
         Delegates to the standalone encode_single_param function.
         """
         return encode_single_param(
-            decoder_fn, rd_type, value_token, cmd,
-            self._parser.mnemonic_map, self._parser.mt_map, self._enc
+            decoder_fn,
+            rd_type,
+            value_token,
+            cmd,
+            self._parser.mnemonic_map,
+            self._parser.mt_map,
+            self._enc,
         )
 
     def _encode_mt_param(self, value_token: str, cmd: dict) -> bytearray:

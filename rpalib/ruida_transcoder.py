@@ -4,11 +4,13 @@ Encoding and decoding of Ruida protocol binary data.
 This module provides the RdDecoder (moved from protocols/ruida/ruida_parser.py)
 and RdEncoder classes for converting between binary Ruida data and Python values.
 """
-from rpalib.rpa_emitter import RpaEmitter
-import protocols.ruida.ruida_protocol as rdap
 
-class RdDecoder():
-    '''A parameter or reply decoder.
+import protocols.ruida.ruida_protocol as rdap
+from rpalib.rpa_emitter import RpaEmitter
+
+
+class RdDecoder:
+    """A parameter or reply decoder.
 
     Data representing a command parameter or reply. This also includes a
     state machine for accumulating and decoding a parameter. The step machine
@@ -34,17 +36,18 @@ class RdDecoder():
         checksum
                 The result of the rd_checksum decoder. This is reset by the
                 parser.
-    '''
+    """
+
     def __init__(self, output: RpaEmitter | None = None):
         self.out = output
         self.accumulating = False
-        self.format: str = ''
-        self.decoder: str = ''
-        self.rd_type:str = ''
+        self.format: str = ""
+        self.decoder: str = ""
+        self.rd_type: str = ""
         self.datum = None
         self.data: bytearray = bytearray([])
-        self.value = None   # The actual type is not known until after decode.
-        self.cstring = False # True when accumulating a cstring.
+        self.value = None  # The actual type is not known until after decode.
+        self.cstring = False  # True when accumulating a cstring.
         self.checksum = 0
         self.file_checksum = 0
         self._rd_decoder = None
@@ -59,7 +62,7 @@ class RdDecoder():
     def raw(self) -> bytearray:
         return self.data
 
-    #++++++++++++++
+    # ++++++++++++++
     # Decoders
     # Basic Types
     def rd_int7(self, data: bytearray):
@@ -84,7 +87,7 @@ class RdDecoder():
 
         # TODO: This is a workaround and masks a problem with LightBurn.
         if _n == 5 and not data[0] & 0x40 and data[0] & 0x08:
-            self.out.warn('LightBurn 35 bit signed integer WORKAROUND.')
+            self.out.warn("LightBurn 35 bit signed integer WORKAROUND.")
             data[0] |= 0x70
 
         for _i in range(_n):
@@ -126,11 +129,11 @@ class RdDecoder():
 
     def rd_cstring(self, data: bytearray):
         _i = 0
-        _s = ''
+        _s = ""
         _na = False
         while True:
             if _i >= len(data):
-                self.out.error('End of string not found.')
+                self.out.error("End of string not found.")
                 break
             _c = data[_i]
             if _c == 0:
@@ -140,18 +143,17 @@ class RdDecoder():
                 _na = True
             _i += 1
         if _na:
-            self.out.error(
-                f'Non-printable characters in string: {data}')
+            self.out.error(f"Non-printable characters in string: {data}")
         self.value = _s
         return self.formatted
 
     def rd_string8(self, data: bytearray):
         _i1 = self.to_uint(data[:5], n_bytes=5)
         _i2 = self.to_uint(data[5:], n_bytes=5)
-        _ba1 = _i1.to_bytes(4, byteorder='big')
-        _ba2 = _i2.to_bytes(4, byteorder='big')
-        _s1 = _ba1.decode('utf-8')
-        _s2 = _ba2.decode('utf-8')
+        _ba1 = _i1.to_bytes(4, byteorder="big")
+        _ba2 = _i2.to_bytes(4, byteorder="big")
+        _s1 = _ba1.decode("utf-8")
+        _s2 = _ba2.decode("utf-8")
         self.value = _s1 + _s2
         return self.formatted
 
@@ -182,9 +184,9 @@ class RdDecoder():
 
     def rd_on_off(self, data: bytearray):
         if data[0]:
-            self.value = 'ON'
+            self.value = "ON"
         else:
-            self.value = 'OFF'
+            self.value = "OFF"
         return self.formatted
 
     def rd_card_id(self, data: bytearray):
@@ -192,7 +194,7 @@ class RdDecoder():
         if _id in rdap.CARD_IDS:
             self.value = rdap.CARD_IDS[_id]
         else:
-            self.value = f'Unknown: 0x{_id:08X}'
+            self.value = f"Unknown: 0x{_id:08X}"
         self.file_checksum = 0
         return self.formatted
 
@@ -202,7 +204,7 @@ class RdDecoder():
         for _bit, _lbl in rdap.MST:
             if _v & _bit:
                 _s.append(_lbl)
-        self.value = ', '.join(_s) if _s else f'0x{_v:08X}'
+        self.value = ", ".join(_s) if _s else f"0x{_v:08X}"
         return self.formatted
 
     def rd_mt(self, data: bytearray):
@@ -216,7 +218,7 @@ class RdDecoder():
         else:
             _lbl = rdap.UNKNOWN_MSB
         self.value = (_msb << 8) + _lsb
-        return self.formatted + ':' + _lbl
+        return self.formatted + ":" + _lbl
 
     def rd_index(self, data: bytearray):
         _msb = data[0]
@@ -229,7 +231,7 @@ class RdDecoder():
         else:
             _lbl = rdap.UNKNOWN_MSB
         self.value = (_msb << 8) + _lsb
-        return self.formatted + ':' + _lbl
+        return self.formatted + ":" + _lbl
 
     def rd_checksum(self, data: bytearray):
         self.value = self.to_uint(data)
@@ -240,18 +242,18 @@ class RdDecoder():
         self.value = self.to_int(data)
         return self.formatted
 
-    #--------------
+    # --------------
 
     def prime(self, spec: tuple, length=None):
-        self.out.verbose(f'Priming: {spec}')
+        self.out.verbose(f"Priming: {spec}")
         self.format: str = spec[rdap.DFMT]
         self.decoder: str = spec[rdap.DDEC]
-        self.rd_type:str = spec[rdap.DTYP]
+        self.rd_type: str = spec[rdap.DTYP]
         self.data: bytearray = bytearray([])
         self.value = None
         self.datum = None
-        self.cstring = self.rd_type == 'cstring'
-        self._rd_decoder = getattr(self, f'rd_{spec[1]}')
+        self.cstring = self.rd_type == "cstring"
+        self._rd_decoder = getattr(self, f"rd_{spec[1]}")
         if length is not None:
             self._length = length
         else:
@@ -260,7 +262,7 @@ class RdDecoder():
 
     @property
     def is_tbd(self):
-        return self.rd_type == 'tbd'
+        return self.rd_type == "tbd"
 
     def step(self, datum, remaining=None):
         if datum == 0 and self.cstring:
@@ -271,8 +273,7 @@ class RdDecoder():
             if self.is_tbd:
                 self.accumulating = False
                 return self._rd_decoder(self.data)
-            self.out.protocol(
-                f'datum={datum:02X}: Should not have bit 7 set.')
+            self.out.protocol(f"datum={datum:02X}: Should not have bit 7 set.")
         if not self.accumulating:
             self.accumulating = True
         self.datum = datum
@@ -305,20 +306,20 @@ class RdDecoder():
         return self.to_uint(reply[4:9], n_bytes=5)
 
 
-class RdEncoder():
-    '''Encode Python values into Ruida protocol binary data.
+class RdEncoder:
+    """Encode Python values into Ruida protocol binary data.
 
     Encoder methods mirror the RdDecoder methods, converting Python values
     back into the 7-bit byte arrays used in Ruida protocol packets.
     All methods are stateless and predictable — same input always produces
     same output.
-    '''
+    """
 
     # Core encoding utilities — inverses of RdDecoder.to_uint / to_int
 
     @staticmethod
     def from_uint(value: int, n_bytes: int) -> bytearray:
-        '''Encode an unsigned integer into n_bytes of 7-bit data (MSB first).'''
+        """Encode an unsigned integer into n_bytes of 7-bit data (MSB first)."""
         data = bytearray()
         for i in range(n_bytes):
             shift = (n_bytes - 1 - i) * 7
@@ -327,12 +328,12 @@ class RdEncoder():
 
     @staticmethod
     def from_int(value: int, n_bytes: int) -> bytearray:
-        '''Encode a signed integer into n_bytes of 7-bit data.
+        """Encode a signed integer into n_bytes of 7-bit data.
 
         Uses the same 2's complement convention as RdDecoder.to_int:
         - First byte: bits 0-5 are data, bit 6 is sign
         - Subsequent bytes: 7 bits of data each
-        '''
+        """
         neg = value < 0
         if neg:
             mask = (1 << (n_bytes * 7 - 1)) - 1
@@ -366,51 +367,51 @@ class RdEncoder():
         return self.from_uint(value, 5)
 
     def encode_cstring(self, value: str) -> bytearray:
-        '''Encode a string as 7-bit bytes with null terminator.'''
-        data = bytearray(value.encode('utf-8'))
+        """Encode a string as 7-bit bytes with null terminator."""
+        data = bytearray(value.encode("utf-8"))
         data.append(0)
         return data
 
     def encode_string8(self, value: str) -> bytearray:
-        '''Encode an 8-character string into 10 bytes of 7-bit data.'''
-        _padded = value.ljust(8, '\x00')[:8]
-        _ba = _padded.encode('utf-8')
-        _i1 = int.from_bytes(_ba[:4], byteorder='big')
-        _i2 = int.from_bytes(_ba[4:], byteorder='big')
+        """Encode an 8-character string into 10 bytes of 7-bit data."""
+        _padded = value.ljust(8, "\x00")[:8]
+        _ba = _padded.encode("utf-8")
+        _i1 = int.from_bytes(_ba[:4], byteorder="big")
+        _i2 = int.from_bytes(_ba[4:], byteorder="big")
         return self.from_uint(_i1, 5) + self.from_uint(_i2, 5)
 
     def encode_coord(self, value: float, n_bytes: int = 5) -> bytearray:
-        '''Encode a coordinate (mm) as signed value * 1000.
+        """Encode a coordinate (mm) as signed value * 1000.
 
         Args:
             value: Coordinate in mm.
             n_bytes: Number of 7-bit bytes (2 for int14, 5 for int35). Default 5.
-        '''
+        """
         if n_bytes not in (2, 5):
             n_bytes = 5
         return self.from_int(int(round(value * 1000)), n_bytes)
 
     def encode_power(self, value: float) -> bytearray:
-        '''Encode a power percentage as uint14 scaled by 0x4000/100.'''
+        """Encode a power percentage as uint14 scaled by 0x4000/100."""
         return self.from_uint(int(round(value * 0x4000 / 100)), 2)
 
     def encode_frequency(self, value: float) -> bytearray:
-        '''Encode a frequency (KHz) as int35 value * 1000.'''
+        """Encode a frequency (KHz) as int35 value * 1000."""
         return self.from_int(int(round(value * 1000)), 5)
 
     def encode_speed(self, value: float) -> bytearray:
-        '''Encode a speed (mm/S) as int35 value * 1000.'''
+        """Encode a speed (mm/S) as int35 value * 1000."""
         return self.from_int(int(round(value * 1000)), 5)
 
     def encode_time(self, value: float) -> bytearray:
-        '''Encode a time (mS) as int35 value * 1000.'''
+        """Encode a time (mS) as int35 value * 1000."""
         return self.from_int(int(round(value * 1000)), 5)
 
     def encode_card_id(self, value: str) -> bytearray:
-        '''Encode a card ID string (e.g. "RDC6442S") to uint35 bytes.
+        """Encode a card ID string (e.g. "RDC6442S") to uint35 bytes.
 
         Looks up the string in CARD_IDS_BY_NAME to find the numeric ID,
         then encodes as uint35. If the name is not found, encodes 0.
-        '''
+        """
         numeric_id = rdap.CARD_IDS_BY_NAME.get(value, 0)
         return self.from_uint(numeric_id, 5)

@@ -109,5 +109,7 @@ class RpaSwizzler:
 
     def _get_unswizzle_lut(self) -> list[int]:
         if self._unswizzle_lut is None:
-            self._unswizzle_lut = [self.unswizzle_byte(i, self._magic) for i in range(256)]
+            self._unswizzle_lut = [
+                self.unswizzle_byte(i, self._magic) for i in range(256)
+            ]
         return self._unswizzle_lut

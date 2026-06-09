@@ -15,6 +15,8 @@ import threading
 import time
 from typing import Any, Callable, TypedDict
 
+import protocols.ruida.ruida_protocol as rdap
+from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import (
     encode_command,
     is_set_file_sum,
@@ -22,23 +24,20 @@ from rpascript.encoding import (
     should_include_in_checksum,
 )
 from rpascript.interpreter import ScriptParser
-from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
-from ruidadriver.rd_transport import RdTransport
-import protocols.ruida.ruida_protocol as rdap
-
 
 _UNSET = object()  # Sentinel for "never seen before" in status change detection
 
 
 class StatusDict(TypedDict, total=False):
     """Status update dict sent from RdDriver to status listeners.
-    
+
     All fields are optional — only keys that changed are present.
     Non-bool values are (raw_value, formatted_string) tuples.
     Machine status bits remain simple bools.
     """
+
     MEM_CURRENT_POSITION_X: tuple[float, str]
     MEM_CURRENT_POSITION_Y: tuple[float, str]
     MEM_CURRENT_POSITION_Z: tuple[float, str]
@@ -68,28 +67,28 @@ class RdDriver:
     """
 
     # Ping command — MEM_CARD_ID reply detects controller changes
-    _PING_SCRIPT = ['GET_SETTING MEM_CARD_ID']
+    _PING_SCRIPT = ["GET_SETTING MEM_CARD_ID"]
 
     # Query command segment — sent at configured query_interval
     _QUERY_SCRIPT = [
-        'GET_SETTING MEM_MACHINE_STATUS',
-        'GET_SETTING MEM_CURRENT_POSITION_X',
-        'GET_SETTING MEM_CURRENT_POSITION_Y',
-        'GET_SETTING MEM_CURRENT_POSITION_Z',
-        'GET_SETTING MEM_CURRENT_POSITION_U',
+        "GET_SETTING MEM_MACHINE_STATUS",
+        "GET_SETTING MEM_CURRENT_POSITION_X",
+        "GET_SETTING MEM_CURRENT_POSITION_Y",
+        "GET_SETTING MEM_CURRENT_POSITION_Z",
+        "GET_SETTING MEM_CURRENT_POSITION_U",
     ]
 
     # Commands triggered on MEM_CARD_ID reply
     _BED_SIZE_SCRIPT = [
-        'GET_SETTING MEM_BED_SIZE_X',
-        'GET_SETTING MEM_BED_SIZE_Y',
+        "GET_SETTING MEM_BED_SIZE_X",
+        "GET_SETTING MEM_BED_SIZE_Y",
     ]
 
     # Machine status bit name → mask mapping (used by _handle_wait)
     _STATUS_NAME_TO_BIT = {
-        'MACHINE_STATUS_MOVING': rdap.MACHINE_STATUS_MOVING[0],
-        'MACHINE_STATUS_PART_END': rdap.MACHINE_STATUS_PART_END[0],
-        'MACHINE_STATUS_JOB_RUNNING': rdap.MACHINE_STATUS_JOB_RUNNING[0],
+        "MACHINE_STATUS_MOVING": rdap.MACHINE_STATUS_MOVING[0],
+        "MACHINE_STATUS_PART_END": rdap.MACHINE_STATUS_PART_END[0],
+        "MACHINE_STATUS_JOB_RUNNING": rdap.MACHINE_STATUS_JOB_RUNNING[0],
     }
 
     def __init__(self, session: RdSession) -> None:
@@ -112,40 +111,38 @@ class RdDriver:
 
     def _build_status_map(self) -> None:
         """Build address resolution maps from _PING_SCRIPT, _QUERY_SCRIPT, _BED_SIZE_SCRIPT.
-        
+
         Populates:
             _handled_addresses: set[int] — fast membership check for reply filtering
             _address_to_mnemonic: dict[int, str] — for building status-dict keys
             _address_to_bit_keys: dict[int, list[tuple[str, int]]] — maps 0x0400 to status bit descriptors
         """
         from rpascript.interpreter import ScriptParser
-        from rpascript.encoding import encode_command
-        from rpalib.ruida_transcoder import RdEncoder
-        
+
         parser = ScriptParser()
-        
+
         self._handled_addresses: set[int] = set()
         self._address_to_mnemonic: dict[int, str] = {}
         # Map 0x0400 to (bit_key_name, bit_mask) for individual status bits
         self._address_to_bit_keys: dict[int, list[tuple[str, int]]] = {}
         self._address_to_bit_keys[0x0400] = [
-            ('MACHINE_STATUS_MOVING', rdap.MACHINE_STATUS_MOVING[0]),
-            ('MACHINE_STATUS_PART_END', rdap.MACHINE_STATUS_PART_END[0]),
-            ('MACHINE_STATUS_JOB_RUNNING', rdap.MACHINE_STATUS_JOB_RUNNING[0]),
+            ("MACHINE_STATUS_MOVING", rdap.MACHINE_STATUS_MOVING[0]),
+            ("MACHINE_STATUS_PART_END", rdap.MACHINE_STATUS_PART_END[0]),
+            ("MACHINE_STATUS_JOB_RUNNING", rdap.MACHINE_STATUS_JOB_RUNNING[0]),
         ]
         self._address_to_spec: dict[int, tuple[str, str, str]] = {}
-        
+
         scripts = [
-            ('_PING_SCRIPT', self._PING_SCRIPT),
-            ('_QUERY_SCRIPT', self._QUERY_SCRIPT),
-            ('_BED_SIZE_SCRIPT', self._BED_SIZE_SCRIPT),
+            ("_PING_SCRIPT", self._PING_SCRIPT),
+            ("_QUERY_SCRIPT", self._QUERY_SCRIPT),
+            ("_BED_SIZE_SCRIPT", self._BED_SIZE_SCRIPT),
         ]
-        
+
         for script_name, script_lines in scripts:
             parsed = parser.parse_lines(script_lines)
             for cmd in parsed:
-                if cmd.get('mnemonic') == 'GET_SETTING':
-                    params = cmd.get('params', [])
+                if cmd.get("mnemonic") == "GET_SETTING":
+                    params = cmd.get("params", [])
                     if params:
                         mnemonic = params[0]
                         mt_entry = parser._mt_map.get(mnemonic)
@@ -158,7 +155,9 @@ class RdDriver:
 
     # ---- Listener Registration ----
 
-    def register_status_listener(self, listener: Callable[[RdStatusEvent | StatusDict], None]) -> None:
+    def register_status_listener(
+        self, listener: Callable[[RdStatusEvent | StatusDict], None]
+    ) -> None:
         """Register a listener for RdStatusEvent notifications. Thread-safe."""
         with self._lock:
             self._status_listeners.append(listener)
@@ -168,7 +167,9 @@ class RdDriver:
         with self._lock:
             self._error_listeners.append(listener)
 
-    def register_reply_listener(self, listener: Callable[[list[bytearray]], None]) -> None:
+    def register_reply_listener(
+        self, listener: Callable[[list[bytearray]], None]
+    ) -> None:
         """Register a listener for raw reply data notifications. Thread-safe."""
         with self._lock:
             self._reply_listeners.append(listener)
@@ -186,9 +187,14 @@ class RdDriver:
                 pass  # Isolate bad callbacks
 
     @staticmethod
-    def _diff_machine_status_bits(address: int, prev: object, new_value: int, address_to_bit_keys: dict[int, list[tuple[str, int]]]) -> dict[str, bool]:
+    def _diff_machine_status_bits(
+        address: int,
+        prev: object,
+        new_value: int,
+        address_to_bit_keys: dict[int, list[tuple[str, int]]],
+    ) -> dict[str, bool]:
         """Compare old and new machine status values and return changed bits as bool dict.
-        
+
         Returns dict with changed bit names → bool value. Empty dict if address is not 0x0400.
         """
         bit_changes: dict[str, bool] = {}
@@ -208,12 +214,13 @@ class RdDriver:
     @staticmethod
     def _format_status_value(address: int, raw_reply: bytearray) -> str:
         """Format a decoded reply value using the MT table format spec.
-        
+
         Uses the RdDecoder with the MT spec for this address to produce
         a human-readable formatted string (e.g., '123.456 mm' for a coord).
         Falls back to str(raw_value) if the MT entry is not found or decode fails.
         """
         from protocols.ruida.ruida_protocol import MT, RD_TYPES, RDT_BYTES
+
         msb = (address >> 8) & 0xFF
         lsb = address & 0xFF
         mt_entry = MT.get(msb, {}).get(lsb)
@@ -225,9 +232,9 @@ class RdDriver:
         d.rd_type = spec[2]
         d.data = bytearray([])
         d.value = None
-        d.cstring = d.rd_type == 'cstring'
+        d.cstring = d.rd_type == "cstring"
         d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
-        decoder_method = getattr(d, f'rd_{spec[1]}')
+        decoder_method = getattr(d, f"rd_{spec[1]}")
         try:
             return decoder_method(raw_reply[4:9])
         except Exception:
@@ -235,43 +242,49 @@ class RdDriver:
 
     def _on_reply(self, replies: list[bytearray]) -> None:
         """Internal reply handler: decode for status tracking, filter handled replies.
-        
+
         For handled addresses (from _PING_SCRIPT, _QUERY_SCRIPT, _BED_SIZE_SCRIPT):
         - Decode value, compare with previous, build changes dict if changed.
         - Machine status bits are split into individual bool keys.
         - Do NOT forward to reply listeners.
-        
+
         For non-handled addresses:
         - Forward raw reply data to registered reply listeners.
         """
         decoder = RdDecoder()
         changes: dict[str, Any] = {}
         forward_replies: list[bytearray] = []
-        
+
         for raw_reply in replies:
             address = decoder.decode_address(raw_reply)
-            
+
             if address in self._handled_addresses:
                 new_value = decoder.decode_value(raw_reply)
                 prev = self._decoded_values.get(address, _UNSET)
-                
+
                 if prev is _UNSET or prev != new_value:
-                    mnemonic = self._address_to_mnemonic.get(address, f"0x{address:04X}")
+                    mnemonic = self._address_to_mnemonic.get(
+                        address, f"0x{address:04X}"
+                    )
                     formatted = self._format_status_value(address, raw_reply)
                     changes[mnemonic] = (new_value, formatted)
-                    
-                    changes.update(self._diff_machine_status_bits(address, prev, new_value, self._address_to_bit_keys))
-                
+
+                    changes.update(
+                        self._diff_machine_status_bits(
+                            address, prev, new_value, self._address_to_bit_keys
+                        )
+                    )
+
                 self._decoded_values[address] = new_value
-                
+
                 if address == 0x057E:
                     self.run(self._BED_SIZE_SCRIPT)
             else:
                 forward_replies.append(raw_reply)
-        
+
         if changes:
             self._on_status_event(StatusDict(**changes))
-        
+
         if forward_replies:
             with self._lock:
                 listeners = list(self._reply_listeners)
@@ -280,8 +293,6 @@ class RdDriver:
                     listener(forward_replies)
                 except Exception:
                     pass
-
-
 
     # ---- Script Runner Lifecycle ----
 
@@ -307,12 +318,16 @@ class RdDriver:
         parser = ScriptParser()
 
         ping_parsed = parser.parse_lines(self._PING_SCRIPT)
-        ping_binary = encode_command(ping_parsed[0], parser.mnemonic_map, parser.mt_map, RdEncoder())
+        ping_binary = encode_command(
+            ping_parsed[0], parser.mnemonic_map, parser.mt_map, RdEncoder()
+        )
         self._session.status.set_ping_command(ping_binary)
 
         query_parsed = parser.parse_lines(self._QUERY_SCRIPT)
-        query_binary = [encode_command(cmd, parser.mnemonic_map, parser.mt_map, RdEncoder())
-                        for cmd in query_parsed]
+        query_binary = [
+            encode_command(cmd, parser.mnemonic_map, parser.mt_map, RdEncoder())
+            for cmd in query_parsed
+        ]
         self._session.status.set_query_commands(query_binary)
 
         # 2. Start the runner thread BEFORE registering listeners,
@@ -368,30 +383,41 @@ class RdDriver:
                 parsed = parser.parse_lines(script)
                 encoded = []
                 file_checksum = 0
-                set_file_sum_idx: int | None = None     # index in `encoded` for the placeholder
-                set_file_sum_value = None # parsed value if present
+                set_file_sum_idx: int | None = (
+                    None  # index in `encoded` for the placeholder
+                )
+                set_file_sum_value = None  # parsed value if present
 
                 for cmd in parsed:
-                    if cmd.get('type') == 'NEW_PACKET':
+                    if cmd.get("type") == "NEW_PACKET":
                         continue
-                    if cmd.get('type') == 'DELAY':
+                    if cmd.get("type") == "DELAY":
                         self._handle_delay(cmd)
                         continue
-                    if cmd.get('type') == 'WAIT':
+                    if cmd.get("type") == "WAIT":
                         self._handle_wait(cmd)
                         continue
-                    raw = encode_command(cmd, parser.mnemonic_map, parser.mt_map, encoder)
+                    raw = encode_command(
+                        cmd, parser.mnemonic_map, parser.mt_map, encoder
+                    )
                     if not raw:
                         continue
 
                     if is_set_file_sum(cmd, parser.mnemonic_map):
-                        if set_file_sum_value is not None or set_file_sum_idx is not None:
-                            raise ValueError("Duplicate SET_FILE_SUM — at most one per file")
-                        if cmd['params']:
-                            set_file_sum_value = parse_value(cmd['params'][0], 'checksum', 'uint_35')
+                        if (
+                            set_file_sum_value is not None
+                            or set_file_sum_idx is not None
+                        ):
+                            raise ValueError(
+                                "Duplicate SET_FILE_SUM — at most one per file"
+                            )
+                        if cmd["params"]:
+                            set_file_sum_value = parse_value(
+                                cmd["params"][0], "checksum", "uint_35"
+                            )
                         else:
                             # Omitted: extend raw with placeholder bytes for later fill
-                            raw.extend(b'\x00' * 5)
+                            raw.extend(b"\x00" * 5)
                             set_file_sum_idx = len(encoded)
                         encoded.append(raw)
                         # DO NOT include SET_FILE_SUM bytes in file_checksum
@@ -412,7 +438,9 @@ class RdDriver:
                     # Fill omitted checksum: encode value, patch the placeholder bytearray
                     encoded_sum = encoder.encode_uint35(file_checksum)
                     raw_sfs = encoded[set_file_sum_idx]
-                    raw_sfs[-5:] = encoded_sum  # last 5 bytes are the uint35 placeholder
+                    raw_sfs[-5:] = (
+                        encoded_sum  # last 5 bytes are the uint35 placeholder
+                    )
 
                 if encoded and self._session.is_connected:
                     with self._lock:
@@ -444,7 +472,9 @@ class RdDriver:
         """
         with self._lock:
             if self._runner_thread is None or not self._runner_thread.is_alive():
-                raise RuntimeError("Script runner not started. Call start_script_runner() first.")
+                raise RuntimeError(
+                    "Script runner not started. Call start_script_runner() first."
+                )
             if not script:
                 return  # Empty script is a no-op
             self._script_queue.put(script)
@@ -505,19 +535,15 @@ class RdDriver:
         """Parse time spec like '5s' or '5000ms' into seconds (float)."""
         s = to_str.strip()
         # Remove internal whitespace between number and unit
-        s = ''.join(s.split())
-        if s.endswith('ms'):
+        s = "".join(s.split())
+        if s.endswith("ms"):
             seconds = float(s[:-2]) / 1000.0
-        elif s.endswith('s'):
+        elif s.endswith("s"):
             seconds = float(s[:-1])
         else:
-            raise ValueError(
-                f"Invalid time format: '{to_str}'. Use e.g., 5s, 500ms"
-            )
+            raise ValueError(f"Invalid time format: '{to_str}'. Use e.g., 5s, 500ms")
         if seconds <= 0:
-            raise ValueError(
-                f"Timeout must be positive, got '{to_str}'"
-            )
+            raise ValueError(f"Timeout must be positive, got '{to_str}'")
         return seconds
 
     def _resolve_status_bit(self, status_name: str) -> int | None:
@@ -529,7 +555,7 @@ class RdDriver:
 
     def _handle_delay(self, cmd: dict) -> None:
         """Handle a DELAY flow-control command: sleep for specified time."""
-        params = cmd.get('params', [])
+        params = cmd.get("params", [])
         if not params:
             self._notify_script_error("DELAY requires a time argument")
             return
@@ -554,13 +580,13 @@ class RdDriver:
 
         Supports optional to=<timeout> parameter (e.g. '30s', '5000ms').
         """
-        params = cmd.get('params', [])
+        params = cmd.get("params", [])
         if not params:
             self._notify_script_error("WAIT requires a status argument")
             return
 
         status_token = params[0]
-        invert = status_token.startswith('!')
+        invert = status_token.startswith("!")
         status_name = status_token[1:] if invert else status_token
 
         bit_mask = self._resolve_status_bit(status_name)
@@ -574,7 +600,7 @@ class RdDriver:
 
         # Parse optional timeout
         timeout = None
-        to_str = cmd.get('to')
+        to_str = cmd.get("to")
         if to_str is not None:
             try:
                 timeout = self._parse_timeout(to_str)
@@ -593,9 +619,7 @@ class RdDriver:
                 # Phase 1: wait for 0→1 transition
                 while not self._shutdown.is_set():
                     if deadline and time.monotonic() >= deadline:
-                        self._notify_script_error(
-                            f"Timeout waiting for {status_token}"
-                        )
+                        self._notify_script_error(f"Timeout waiting for {status_token}")
                         return
                     with self._lock:
                         current = self._decoded_values.get(0x0400, 0)
@@ -617,9 +641,7 @@ class RdDriver:
             # Normal mode: wait for bit to become SET
             while not self._shutdown.is_set():
                 if deadline and time.monotonic() >= deadline:
-                    self._notify_script_error(
-                        f"Timeout waiting for {status_token}"
-                    )
+                    self._notify_script_error(f"Timeout waiting for {status_token}")
                     return
                 with self._lock:
                     current = self._decoded_values.get(0x0400, 0)

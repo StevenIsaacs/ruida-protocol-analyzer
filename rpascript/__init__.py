@@ -9,11 +9,12 @@ Primary classes:
     - ScriptInterpreter: executes parsed commands, generating binary output
     - main: CLI entry point
 """
+
 try:
-    from rpascript.interpreter import ScriptParser, ScriptInterpreter
+    from rpascript.interpreter import ScriptInterpreter, ScriptParser
 except ImportError:
     # Submodules not yet available (skeleton stage)
     ScriptParser = None  # type: ignore
     ScriptInterpreter = None  # type: ignore
 
-__all__ = ['ScriptParser', 'ScriptInterpreter']
+__all__ = ["ScriptParser", "ScriptInterpreter"]

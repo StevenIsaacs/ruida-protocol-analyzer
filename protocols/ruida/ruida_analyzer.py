@@ -1,4 +1,4 @@
-'''
+"""
 Protocol analyzer for Ruida data transported via a UDP connection. This
 dissects Ruida commands and replies in UDP data packets to produce a human
 readable log of events and their relative timing.
@@ -6,14 +6,16 @@ readable log of events and their relative timing.
 This version is intended to be used from the command line to process UDP
 session data previously captured using tshark (Wireshark CLI). See decode
 for more information.
-'''
+"""
+
 import protocols.ruida.ruida_parser as rp
 import protocols.ruida.ruida_protocol as rdap
 from rpalib.rpa_emitter import RpaEmitter
 from rpalib.rpa_swizzler import RpaSwizzler
 
-class UdpDumpReader():
-    '''Parse lines from the dump file or a live stream.
+
+class UdpDumpReader:
+    """Parse lines from the dump file or a live stream.
 
     The dump file should be captured using the command:
     tshark -Y '(ip.addr == <ruida ip> && udp.payload)' -T fields \
@@ -36,7 +38,8 @@ class UdpDumpReader():
                     destination port for replies.
         length      The length of the payload (not including the checksum)
         data        The binary swizzled data payload (not including checksum).
-    '''
+    """
+
     def __init__(self, args, input, output: RpaEmitter):
         self.args = args
         self.input = input
@@ -51,7 +54,7 @@ class UdpDumpReader():
         self.data = []
 
     def next_packet(self):
-        '''Read the next packet from the dump file.
+        """Read the next packet from the dump file.
 
         Reads and extracts the fields from the next line from the dump file.
         The attributes are set based upon the line contents.
@@ -59,72 +62,75 @@ class UdpDumpReader():
         Returns:
             The number of bytes in the data payload.
             If the end of the file has been reached then None is returned.
-        '''
+        """
         try:
             self.line = self.input.readline()
             # Empty file.
-            if self.line == '':
+            if self.line == "":
                 return None
             self.line_number += 1
             self.out.set_pkt_n(self.line_number)
-            _fields:list[str] = self.line.rstrip('\n\r').split('\t')
+            _fields: list[str] = self.line.rstrip("\n\r").split("\t")
 
             # Validate field count: tshark -T fields with 4 -e flags yields
             # 4 tab-separated fields (frame.time_delta, udp.port, udp.length,
             # data.data).
             if len(_fields) != 4:
                 raise SyntaxError(
-                    f'Line {self.line_number}: expected 4 tab-separated fields, '
-                    f'got {len(_fields)}')
+                    f"Line {self.line_number}: expected 4 tab-separated fields, "
+                    f"got {len(_fields)}"
+                )
 
             # First packet has no previous frame, so frame.time_delta is
             # empty.  Treat this as delta_time = 0.
-            if _fields[0] == '':
-                _fields[0] = '0'
+            if _fields[0] == "":
+                _fields[0] = "0"
 
             self.delta_time = float(_fields[0])
-            self.out.reader(f'Interval:{self.delta_time:.6f}S')
+            self.out.reader(f"Interval:{self.delta_time:.6f}S")
 
             # Validate Ruida port combination: the controller exchanges
             # packets between port 40200 and 50200.
-            if _fields[1] not in ('50200,40200', '40200,50200'):
+            if _fields[1] not in ("50200,40200", "40200,50200"):
                 raise SyntaxError(
-                    f'Line {self.line_number}: unrecognized port combination '
-                    f'"{_fields[1]}"; expected 50200,40200 or 40200,50200')
+                    f"Line {self.line_number}: unrecognized port combination "
+                    f'"{_fields[1]}"; expected 50200,40200 or 40200,50200'
+                )
 
-            _ports = _fields[1].split(',')
+            _ports = _fields[1].split(",")
             self.to_port = int(_ports[0])
             self.from_port = int(_ports[1])
             self.length = int(_fields[2]) - 8  # Subtract length of UDP header.
             self.data = bytes.fromhex(_fields[3])
             _n = len(self.data)
             if _n != self.length:
-                self.out.fatal(
-                    f'Length MISMATCH: UDP=({self.length}) payload=({_n})')
+                self.out.fatal(f"Length MISMATCH: UDP=({self.length}) payload=({_n})")
         except EOFError:
             self.line = None
             return None
         except UnicodeDecodeError:
-            if self.args.input_encoding == 'utf-8':
-                _try = 'utf-16'
+            if self.args.input_encoding == "utf-8":
+                _try = "utf-16"
             else:
-                _try = 'utf-8'
+                _try = "utf-8"
             self.out.fatal(
-                f'Input file encoding error -- try:  --input-encoding={_try}')
+                f"Input file encoding error -- try:  --input-encoding={_try}"
+            )
         return self.length
 
     def reset(self):
-        '''Reset the file pointer to the beginning of the dump file.
+        """Reset the file pointer to the beginning of the dump file.
 
         NOTE: This has no effect if --on-the-fly is used.
-        '''
+        """
         if not self.args.on_the_fly:
-            self.out.verbose('Resetting input stream.')
+            self.out.verbose("Resetting input stream.")
             self.input.seek(0)
             self.line_number = 0
 
-class RdPacket():
-    '''Unswizzled packet data.
+
+class RdPacket:
+    """Unswizzled packet data.
 
     This simulates a byte stream. The decoder only needs to call read_byte.
     Packets and replies are handled transparently. However, the caller needs to
@@ -160,7 +166,7 @@ class RdPacket():
         Properties:
             remaining   The number of bytes not read from the data.
 
-    '''
+    """
 
     MAGIC_LUT = {  # RAW ACK or NAK to swizzle magic number table.
         # Raw Magic
@@ -169,13 +175,13 @@ class RdPacket():
     }
 
     def __init__(self, args, reader: UdpDumpReader, output: RpaEmitter):
-        '''
+        """
         Parameters:
         args        The command line arguments.
         reader      The packet reader to get input data from.
         output      The stream to write messages to.
 
-        '''
+        """
         self.args = args
         self.reader = reader
         self.out = output
@@ -190,18 +196,18 @@ class RdPacket():
         self.total_host_bytes = 0
         self.total_reply_packets = 0
         self.total_reply_bytes = 0
-        self.take = 0      # Take index for reading byte by byte.
+        self.take = 0  # Take index for reading byte by byte.
 
     @property
     def remaining(self):
-        '''Return the number of unread bytes in the packet data buffer.'''
+        """Return the number of unread bytes in the packet data buffer."""
         return self.length - self.take
 
     def _next_packet(self):
-        '''Read and un-swizzle the next packet.
+        """Read and un-swizzle the next packet.
 
         Returns the number of bytes in the payload data. None indicates
-        the end of file.'''
+        the end of file."""
         _n = self.reader.next_packet()
         if _n is None:
             # The end of the file has been reached.
@@ -212,21 +218,22 @@ class RdPacket():
         self.reply = self.reader.from_port in [40200, 40207]
 
         if self.reply:
-            self.out.set_direction('<--')
+            self.out.set_direction("<--")
             # Replies don't carry a checksum.
             _data = self.reader.data
             self.chk_ok = True
         else:
-            self.out.set_direction('-->')
+            self.out.set_direction("-->")
             # Verify checksum and return only the data portion of the payload.
             # NOTE: The checksum is not swizzled.
             _chk = int.from_bytes(self.reader.data[0:2])
             _data = self.reader.data[2:]
-            _chk_sum = (sum(_data) & 0xFFFF)
-            self.chk_ok = (_chk == _chk_sum)
+            _chk_sum = sum(_data) & 0xFFFF
+            self.chk_ok = _chk == _chk_sum
             if not self.chk_ok:
                 self.out.error(
-                    f'Checksum mismatch. pkt:0x{_chk:04X} sum:0x{_chk_sum:04X}')
+                    f"Checksum mismatch. pkt:0x{_chk:04X} sum:0x{_chk_sum:04X}"
+                )
 
         if self.swizzled:
             self.data = self._swizzler.unswizzle(bytearray(_data))
@@ -234,10 +241,10 @@ class RdPacket():
             self.data = _data
         self.out.raw(self.reader.line)
         self.out.raw(self.data.hex())
-        self.length = len(self.data) # Does not include any checksum.
+        self.length = len(self.data)  # Does not include any checksum.
         # Update stats.
         if self.reply:
-            self.handshake = (self.length == 1)
+            self.handshake = self.length == 1
             self.total_reply_packets += 1
             self.total_reply_bytes += self.length
         else:
@@ -249,7 +256,7 @@ class RdPacket():
         return self.length
 
     def set_magic(self, magic=None):
-        '''Scan the input file to either an ACK or NAK from the controller
+        """Scan the input file to either an ACK or NAK from the controller
         and use it's swizzled value to determine the magic number.
 
         This resets the file pointer to the beginning of the file.
@@ -261,7 +268,7 @@ class RdPacket():
             LookupError
                     If the magic number cannot be discovered within a few
                     packets.
-        '''
+        """
         if magic is None:
             self.reader.reset()
             _tries = 4  # Should discover magic within a few packets.
@@ -273,23 +280,22 @@ class RdPacket():
                     if _r in self.MAGIC_LUT:
                         self.magic = self.MAGIC_LUT[_r]
                         self._swizzler.set_magic(self.magic)
-                        self.out.verbose(
-                            f'Detected magic: 0x{self.magic:02X}')
+                        self.out.verbose(f"Detected magic: 0x{self.magic:02X}")
                         break
                     else:
                         if _tries:
                             _tries -= 1
                             continue
                         else:
-                            self.out.shutdown('Magic number not discovered.')
+                            self.out.shutdown("Magic number not discovered.")
             self.reader.reset()
         else:
             self.magic = magic
             self._swizzler.set_magic(self.magic)
-            self.out.verbose(f'Using magic: 0x{self.magic:02X}')
+            self.out.verbose(f"Using magic: 0x{self.magic:02X}")
 
     def next_byte(self) -> int:
-        '''Return the next data byte from the input file.
+        """Return the next data byte from the input file.
 
         If the file has been consumed then return None.
 
@@ -301,7 +307,7 @@ class RdPacket():
             The byte as an integer. NOTE: In Ruida packets all bytes are 7 bit
             with the exception of a command byte which has the most significant
             bit set.
-        '''
+        """
         if self.magic is None:
             self.set_magic()
         self.new_packet = False
@@ -319,8 +325,9 @@ class RdPacket():
                     self.new_packet = True
         return _b
 
-class RuidaProtocolAnalyzer():
-    '''Parse a tshark dump file.
+
+class RuidaProtocolAnalyzer:
+    """Parse a tshark dump file.
 
     Each packet of the dump file is unswizzled into a buffer and then decoded
     using the RuidaParser. Technically, Ruida commands can span packet boundaries
@@ -365,7 +372,8 @@ class RuidaProtocolAnalyzer():
                     been received.
         MAGIC_LUT   A lookup table to convert a RAW ACK or NAK to a magic number
                     for un-swizzling data.
-    '''
+    """
+
     def __init__(self, args, input, output: RpaEmitter):
         self.args = args
         self.out = output
@@ -379,7 +387,7 @@ class RuidaProtocolAnalyzer():
         self.on_new_packet = None
 
     def check_handshake(self):
-        '''Verify the ack/nak handshake.
+        """Verify the ack/nak handshake.
 
         Basically, all packets from the host require an ack/nak from the
         controller and the host should wait for the ack/nak before sending
@@ -387,38 +395,36 @@ class RuidaProtocolAnalyzer():
 
         A handshake packet is a packet having a length equal to 1.
 
-        '''
+        """
         # Getting the byte required reading another packet.
         self._line_number = self._reader.line_number
         if self._pkt.reply:
             if self._pkt.handshake:
                 _b = self._pkt.data[0]
                 if _b == rdap.ACK:
-                    _msg = 'ACK'
+                    _msg = "ACK"
                     self.acks_expected -= 1
                 elif _b == rdap.NAK:
-                    _msg = 'NAK'
+                    _msg = "NAK"
                 elif _b == rdap.ERR:
-                    _msg = 'ERR'
+                    _msg = "ERR"
                 elif _b == rdap.ENQ:
-                    _msg = 'ENQ'
+                    _msg = "ENQ"
                 else:
-                    self.out.error('Handshake')
+                    self.out.error("Handshake")
                     if self.acks_expected:
-                        _msg = f'Received 0x{_b:02X} when ACK was expected.'
+                        _msg = f"Received 0x{_b:02X} when ACK was expected."
                     else:
-                        _msg = f'Unexpected reply byte 0x{_b:02X}'
+                        _msg = f"Unexpected reply byte 0x{_b:02X}"
             else:
-                _msg = 'Reply data'
+                _msg = "Reply data"
         else:
             self.acks_expected += 1
-            _msg = 'Expecting ACK'
-        self.out.reader(f'SHK:{self.acks_expected:03d}:{_msg}')
+            _msg = "Expecting ACK"
+        self.out.reader(f"SHK:{self.acks_expected:03d}:{_msg}")
 
     def decode(self):
-        '''Step through each byte of the input stream and decode each packet.
-
-        '''
+        """Step through each byte of the input stream and decode each packet."""
         while True:
             _b = self._pkt.next_byte()
             if _b is None:
@@ -434,4 +440,5 @@ class RuidaProtocolAnalyzer():
                     _b,
                     is_reply=self._pkt.reply,
                     take=self._pkt.take,
-                    remaining=self._pkt.remaining)
+                    remaining=self._pkt.remaining,
+                )
