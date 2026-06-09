@@ -88,6 +88,9 @@ class RdStatus:
         # First ping optimization — send immediately on fresh connection
         self._first_ping = True
 
+        # DISCONNECTED guard — prevents double dispatch in CONNECTING state
+        self._disconnect_fired = False
+
         # Transport event mechanism
         self._transport_event: threading.Event = threading.Event()
         self._last_event: Optional[TransportEvent] = None
@@ -340,12 +343,30 @@ class RdStatus:
         Always closes any stale connection and reopens fresh.
         On success → WAIT_TO_PING with first_ping flag for immediate send.
         On timeout → retry (re-enter CONNECTING).
+
+        Guards against double DISCONNECTED: uses _disconnect_fired flag to
+        fire DISCONNECTED only once per disconnect cycle.
+        Skips transport re-open when already open (UDP socket alive even
+        with dead controller) — avoids unnecessary thread/socket churn.
         """
         while not self._shutdown.is_set():
-            # If we had a previous connection, notify DISCONNECTED
-            if self.transport.is_open:
+            # Notify DISCONNECTED exactly once per disconnect cycle
+            if self.transport.is_open and not self._disconnect_fired:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
-            # Close stale connection and open fresh (RdTransport.open() calls close() internally)
+                self._disconnect_fired = True
+
+            # If transport is already open (UDP socket alive), avoid the
+            # overhead of creating a new handshake thread and socket.
+            # Just wait the reconnect interval, then retry the ping cycle.
+            if self.transport.is_open:
+                # Wait reconnect interval (responds to transport drops)
+                self._wait_for_event(self._connect_interval / 1000.0)
+                if self._shutdown.is_set():
+                    return 'CONNECTING'
+                self._first_ping = True
+                return 'WAIT_TO_PING'
+
+            # Normal open path for closed transport (USB reconnect, etc.)
             self.transport.open()
             event = self._wait_for_event(
                 self._connect_interval / 1000.0,
@@ -423,6 +444,7 @@ class RdStatus:
             if event is TransportEvent.REPLY_FORWARDED:
                 self._notify_listeners(RdStatusEvent.PING_REPLIED)
                 self._notify_listeners(RdStatusEvent.CONNECTED)
+                self._disconnect_fired = False
                 return ('WAIT_TO_POLL', retries)
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
                 return ('CONNECTING', retries)
@@ -432,6 +454,7 @@ class RdStatus:
                 continue  # Self-loop (re-enter PING_REPLY)
             else:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
+                self._disconnect_fired = True
                 return ('RESYNC', retries)
         return ('CONNECTING', retries)
 
@@ -518,5 +541,6 @@ class RdStatus:
                 return 'CONNECTING'
             # Timeout
             self._notify_listeners(RdStatusEvent.DISCONNECTED)
+            self._disconnect_fired = True
             return 'CONNECTING'
         return 'WAIT_TO_POLL'
