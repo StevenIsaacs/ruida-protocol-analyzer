@@ -866,7 +866,7 @@ def run_tui() -> None:
 
 ### 6.3 `rpa-script` CLI
 
-**File:** `rpascript/cli.py`
+**File:** `rpascript/tui.py`
 
 #### 6.3.1 Command Line Interface
 

@@ -1,5 +1,5 @@
 """Support `python -m rpascript` invocation."""
-from rpascript.cli import main
+from rpascript.tui import main
 
 if __name__ == '__main__':
     main()
