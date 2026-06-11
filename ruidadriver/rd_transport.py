@@ -57,27 +57,31 @@ class RdTransport:
 
     def configure(
         self,
-        udp_host: str = "",
-        usb_device: str = "",
         magic: int = 0x88,
         chunk_size: int = 1024,
         timeout: int = 250,
         gross_timeout: int = 15000,
     ) -> None:
         """Configure transport parameters. Must be called before open()."""
+        self._swizzler.set_magic(magic)
+        self._chunk_size = chunk_size
+        self._timeout = timeout
+        self._gross_timeout = gross_timeout
+
+    def open(self, udp_host: str = "", usb_device: str = "") -> bool:
+        """Open the preferred transport (USB first, then UDP).
+
+        Args:
+            udp_host: UDP host address. Empty string reuses value from a previous `open()` call.
+            usb_device: USB device path. Empty string reuses value from a previous `open()` call.
+        """
         if udp_host:
             self._udp = UdpTransport()
             self._udp_host = udp_host
         if usb_device:
             self._usb = UsbTransport()
             self._usb_device = usb_device
-        self._swizzler.set_magic(magic)
-        self._chunk_size = chunk_size
-        self._timeout = timeout
-        self._gross_timeout = gross_timeout
 
-    def open(self) -> bool:
-        """Open the preferred transport (USB first, then UDP)."""
         if self._usb and self._usb.open(self._usb_device):
             self._transport = self._usb
         elif self._udp and self._udp.open(self._udp_host, 50200):

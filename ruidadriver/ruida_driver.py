@@ -182,13 +182,13 @@ class RdDriver:
                 return True
 
         self._session = RdSession()
-        self._session.transport.configure(
+        self._session.transport.configure()
+        self._start_udp_host = udp_host
+        self._start_usb_device = usb_device
+        opened = self._session.transport.open(
             udp_host=udp_host,
             usb_device=usb_device,
         )
-        self._start_udp_host = udp_host
-        self._start_usb_device = usb_device
-        opened = self._session.transport.open()
         self.start_script_runner()
         return opened
 

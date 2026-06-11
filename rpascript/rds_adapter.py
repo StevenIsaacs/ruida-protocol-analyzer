@@ -1050,6 +1050,7 @@ class RdsAdapter(App):
             self._log_error(f"Failed to start session: {e}")
             if self._ruida_driver is not None:
                 self._ruida_driver.stop()
+                self._session_connected.clear()
                 self._ruida_driver = None
 
     async def _stop_session(self) -> None:
@@ -1060,12 +1061,14 @@ class RdsAdapter(App):
 
         try:
             self._ruida_driver.stop()
+            self._session_connected.clear()
             self._ruida_driver = None
             self._log_info("Session ended")
             self._update_status_bar()
 
         except Exception as e:
             self._log_error(f"Error stopping session: {e}")
+            self._session_connected.clear()
             self._ruida_driver = None
 
     async def _teardown_session(self) -> None:
@@ -1075,6 +1078,7 @@ class RdsAdapter(App):
         """
         if self._ruida_driver is not None:
             self._ruida_driver.stop()
+            self._session_connected.clear()
             self._ruida_driver = None
 
         self._session_connected.clear()
@@ -1159,13 +1163,20 @@ class RdsAdapter(App):
             suffix = f" ({transport_type})" if transport_type else ""
 
             if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
+                if not self._session_disconnected or event is RdStatusEvent.TERMINATED:
+                    msg = (
+                        "Disconnected (session ended)"
+                        if event is RdStatusEvent.TERMINATED
+                        else f"Disconnected{suffix}"
+                    )
+                    self._log_info(msg)
                 self._session_disconnected = True
                 self._session_connected.clear()
-                self._log_info(f"Disconnected{suffix}")
             elif event is RdStatusEvent.CONNECTED:
+                if self._session_disconnected:
+                    self._log_info(f"Connected{suffix}")
                 self._session_disconnected = False
                 self._session_connected.set()
-                self._log_info(f"Connected{suffix}")
             self._update_status_bar()
 
         self.call_from_thread(_update)
@@ -1563,6 +1574,7 @@ class RdsAdapter(App):
         self._save_command_history()
         if self._ruida_driver is not None:
             self._ruida_driver.stop()
+            self._session_connected.clear()
             self._ruida_driver = None
         await super()._on_exit_app()
 
