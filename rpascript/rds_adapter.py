@@ -1145,12 +1145,27 @@ class RdsAdapter(App):
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
+            # Determine transport type for log messages
+            transport_type = ""
+            if (
+                self._ruida_driver is not None
+                and self._ruida_driver.transport is not None
+            ):
+                transport = self._ruida_driver.transport
+                if transport.is_usb:
+                    transport_type = "USB"
+                elif transport.is_udp:
+                    transport_type = "UDP"
+            suffix = f" ({transport_type})" if transport_type else ""
+
             if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
                 self._session_disconnected = True
                 self._session_connected.clear()
+                self._log_info(f"Disconnected{suffix}")
             elif event is RdStatusEvent.CONNECTED:
                 self._session_disconnected = False
                 self._session_connected.set()
+                self._log_info(f"Connected{suffix}")
             self._update_status_bar()
 
         self.call_from_thread(_update)
