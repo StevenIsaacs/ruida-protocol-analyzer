@@ -223,11 +223,6 @@ class ScriptParser:
                 for token in tokens[2:]:
                     key, _, val = token.partition("=")
                     kwargs[key.lower()] = None if val.lower() == "none" else val
-                # Validate: at least one of udp= or usb= must be provided
-                if "udp" not in kwargs and "usb" not in kwargs:
-                    raise ValueError(
-                        f"{line_num}: session start requires at least one of udp= or usb="
-                    )
                 return {
                     "type": "SESSION_START",
                     "mnemonic": "SESSION_START",

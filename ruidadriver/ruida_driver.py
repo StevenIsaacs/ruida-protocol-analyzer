@@ -98,12 +98,13 @@ class RdDriver:
         self._script_queue: queue.Queue = queue.Queue()
         self._runner_thread: threading.Thread | None = None
         self._status_listeners: list[Callable] = []
-        self._lifecycle_listeners: list[Callable] = []
         self._error_listeners: list[Callable[[str], None]] = []
         self._reply_listeners: list[Callable] = []
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
         self._cancel_flag: bool = False
+        self._start_udp_host: str = ""
+        self._start_usb_device: str = ""
         self._decoded_values: dict[int, Any] = {}
         self._build_status_map()
 
@@ -153,7 +154,7 @@ class RdDriver:
 
     # ---- Driver Lifecycle ----
 
-    def start(self, udp_host: str = "", usb_device: str = "") -> bool:
+    def start(self, udp_host: str | None = None, usb_device: str | None = None) -> bool:
         """Start the driver: create session, configure transport, open, start script runner.
 
         Creates an RdSession, configures transport with the given parameters,
@@ -161,20 +162,32 @@ class RdDriver:
         then starts the script runner and status monitor.
 
         Args:
-            udp_host: UDP host address or hostname.
-            usb_device: USB serial device path.
+            udp_host: UDP host address or hostname. None reuses previous value.
+            usb_device: USB serial device path. None reuses previous value.
 
         Returns:
             True if transport opened immediately, False if it needs retry.
         """
+        if udp_host is None:
+            udp_host = self._start_udp_host
+        if usb_device is None:
+            usb_device = self._start_usb_device
+
         if self._session is not None:
-            return True
+            if (udp_host and udp_host != self._start_udp_host) or (
+                usb_device and usb_device != self._start_usb_device
+            ):
+                self.stop()
+            else:
+                return True
 
         self._session = RdSession()
         self._session.transport.configure(
             udp_host=udp_host,
             usb_device=usb_device,
         )
+        self._start_udp_host = udp_host
+        self._start_usb_device = usb_device
         opened = self._session.transport.open()
         self.start_script_runner()
         return opened
@@ -182,7 +195,8 @@ class RdDriver:
     def stop(self) -> None:
         """Stop the driver: stop script runner, disconnect session, clean up.
 
-        Idempotent — safe to call multiple times.
+        Idempotent — safe to call multiple times. Connection parameters
+        persist for reuse on next start() call.
         """
         self.stop_script_runner()
         if self._session is not None:
@@ -198,21 +212,12 @@ class RdDriver:
         with self._lock:
             self._status_listeners.append(listener)
 
-    def register_lifecycle_listener(
-        self, listener: Callable[[RdStatusEvent], None]
-    ) -> None:
-        """Register a listener for lifecycle events (CONNECTED/DISCONNECTED). Thread-safe."""
-        with self._lock:
-            self._lifecycle_listeners.append(listener)
-
     def register_error_listener(self, listener: Callable[[str], None]) -> None:
         """Register a listener for error message notifications. Thread-safe."""
         with self._lock:
             self._error_listeners.append(listener)
 
-    def register_reply_listener(
-        self, listener: Callable[[list[str]], None]
-    ) -> None:
+    def register_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
         """Register a listener for raw reply data notifications. Thread-safe."""
         with self._lock:
             self._reply_listeners.append(listener)
@@ -223,16 +228,6 @@ class RdDriver:
         """Forward RdStatus events to registered listeners. Thread-safe via copy-on-iterate."""
         with self._lock:
             listeners = list(self._status_listeners)
-        for listener in listeners:
-            try:
-                listener(event)
-            except Exception:
-                pass  # Isolate bad callbacks
-
-    def _on_lifecycle_event(self, event: RdStatusEvent) -> None:
-        """Forward lifecycle events from RdStatus to lifecycle listeners. Thread-safe."""
-        with self._lock:
-            listeners = list(self._lifecycle_listeners)
         for listener in listeners:
             try:
                 listener(event)
@@ -274,7 +269,9 @@ class RdDriver:
         return formatted
 
     @staticmethod
-    def format_reply_value(address: int, raw_reply: bytearray) -> tuple[str | None, str]:
+    def format_reply_value(
+        address: int, raw_reply: bytearray
+    ) -> tuple[str | None, str]:
         """Decode a reply bytearray using the MT table into (mnemonic, formatted_value).
 
         Args:
@@ -447,7 +444,7 @@ class RdDriver:
         self._runner_thread.start()
 
         # 3. Register session listeners (runner is ready)
-        self._session.status.register_status_listener(self._on_lifecycle_event)
+        self._session.status.register_status_listener(self._on_status_event)
         self._session.transport.register_reply_listener(self._on_reply)
 
         # 4. Start the status monitor LAST — from this point, replies can arrive
@@ -473,7 +470,7 @@ class RdDriver:
         self._runner_thread.join(timeout=2.0)
 
         # Clean up listeners
-        self._session.status.unregister_status_listener(self._on_lifecycle_event)
+        self._session.status.unregister_status_listener(self._on_status_event)
         self._session.transport.unregister_reply_listener(self._on_reply)
 
         self._runner_thread = None

@@ -141,6 +141,8 @@ class RdsAdapter(App):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._ruida_driver: RdDriver | None = None
+        self._last_udp_host: str = ""
+        self._last_usb_device: str = ""
         self._parser = ScriptParser()
         self._decoder = RdDecoder()
         self._event_count = 0
@@ -149,9 +151,13 @@ class RdsAdapter(App):
         self._logging_enabled: bool = True
         self._introspect_map: dict[str, Callable[[], Any]] = {
             "session": lambda: self._ruida_driver,
-            "transport": lambda: self._ruida_driver.transport if self._ruida_driver else None,
+            "transport": lambda: (
+                self._ruida_driver.transport if self._ruida_driver else None
+            ),
             "driver": lambda: self._ruida_driver,
-            "status": lambda: self._ruida_driver.status_monitor if self._ruida_driver else None,
+            "status": lambda: (
+                self._ruida_driver.status_monitor if self._ruida_driver else None
+            ),
             "parser": lambda: self._parser,
             "decoder": lambda: self._decoder,
         }
@@ -936,7 +942,7 @@ class RdsAdapter(App):
     # ------------------------------------------------------------------
 
     async def _start_session(
-        self, udp: str = "", usb: str | None = None, to: str | None = None
+        self, udp: str | None = None, usb: str | None = None, to: str | None = None
     ) -> None:
         """Connect to a Ruida controller and start the script runner.
 
@@ -944,11 +950,24 @@ class RdsAdapter(App):
         driver.start() which creates the session, opens the transport,
         starts the script runner and status monitor, and returns.
         """
-        if self._ruida_driver is not None:
-            self._log_error("Session already active. Use 'session end' first.")
+        # Resolve None params against last-used values so params persist
+        # across session end/start cycles even when RdDriver is discarded.
+        if udp is None:
+            udp = self._last_udp_host
+        if usb is None:
+            usb = self._last_usb_device
+
+        if not udp and not usb:
+            self._log_error(
+                "No connection parameters. Provide udp=<host> or usb=<device>."
+            )
             return
 
-        usb_device = usb if usb else ""
+        if self._ruida_driver is not None:
+            self._ruida_driver.start(udp_host=udp, usb_device=usb)
+            self._last_udp_host = udp
+            self._last_usb_device = usb
+            return
 
         timeout: float | None = None
         if to is not None:
@@ -959,7 +978,7 @@ class RdsAdapter(App):
                 return
 
         # Check pyserial availability before attempting USB connection
-        if usb_device:
+        if usb:
             try:
                 import serial  # noqa: F401
             except ImportError:
@@ -981,15 +1000,17 @@ class RdsAdapter(App):
             udp = resolved
 
         try:
-            self._log_info(f"Connecting (udp={udp}, usb={usb_device})...")
+            self._log_info(f"Connecting (udp={udp}, usb={usb})...")
 
             driver = RdDriver()
             driver.register_status_listener(self.on_status_event)
-            driver.register_lifecycle_listener(self.on_lifecycle_event)
+
             driver.register_error_listener(self.on_error)
             driver.register_reply_listener(self.on_reply_data)
 
-            opened = driver.start(udp_host=udp, usb_device=usb_device)
+            opened = driver.start(udp_host=udp, usb_device=usb)
+            self._last_udp_host = udp
+            self._last_usb_device = usb
             if not opened:
                 self._log_info("Transport not available yet (retrying in background)")
 
@@ -1063,27 +1084,6 @@ class RdsAdapter(App):
     # AppAdapter-compatible interface (called from driver background thread)
     # ------------------------------------------------------------------
 
-    def on_lifecycle_event(self, event: RdStatusEvent) -> None:
-        """Handle a lifecycle event from the driver (CONNECTED/DISCONNECTED/TERMINATED).
-
-        Called from the driver's background thread. Bridges to the asyncio
-        event loop thread via call_from_thread for safe widget updates.
-        """
-
-        def _update() -> None:
-            if self._logging_enabled:
-                self._status_log.write(f"[STATUS] {event.value}")
-            self._event_count += 1
-            if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
-                self._session_disconnected = True
-                self._session_connected.clear()
-            elif event is RdStatusEvent.CONNECTED:
-                self._session_disconnected = False
-                self._session_connected.set()
-            self._update_status_bar()
-
-        self.call_from_thread(_update)
-
     def on_status_event(self, event: RdStatusEvent | StatusDict) -> None:
         """Handle a status event from the driver.
 
@@ -1145,9 +1145,12 @@ class RdsAdapter(App):
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
-            if event is RdStatusEvent.DISCONNECTED:
+            if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
                 self._session_disconnected = True
                 self._session_connected.clear()
+            elif event is RdStatusEvent.CONNECTED:
+                self._session_disconnected = False
+                self._session_connected.set()
             self._update_status_bar()
 
         self.call_from_thread(_update)
@@ -1433,10 +1436,7 @@ class RdsAdapter(App):
         # Connection info
         if self._session_disconnected:
             conn = "[red]Disconnected[/red]"
-        elif (
-            self._ruida_driver is not None
-            and self._ruida_driver.is_connected
-        ):
+        elif self._ruida_driver is not None and self._ruida_driver.is_connected:
             conn = "[green]Connected[/green]"
         elif self._ruida_driver is not None:
             conn = "[yellow]Connecting[/yellow]"

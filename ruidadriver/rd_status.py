@@ -355,6 +355,8 @@ class RdStatus:
         fire DISCONNECTED only once per disconnect cycle.
         Skips transport re-open when already open (UDP socket alive even
         with dead controller) — avoids unnecessary thread/socket churn.
+        For USB, always reopens because pyserial's is_open lies about
+        handles whose device has been physically removed.
         """
         while not self._shutdown.is_set():
             # Notify DISCONNECTED exactly once per disconnect cycle
@@ -362,10 +364,14 @@ class RdStatus:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
                 self._disconnect_fired = True
 
-            # If transport is already open (UDP socket alive), avoid the
-            # overhead of creating a new handshake thread and socket.
-            # Just wait the reconnect interval, then retry the ping cycle.
-            if self.transport.is_open:
+            # If transport is already open and no alternative transport is available,
+            # skip the reopen overhead and just retry the ping cycle.
+            # (When USB is available, always fall through so open() can try it first.)
+            if (
+                self.transport.is_open
+                and not self.transport.is_usb
+                and not self.transport.has_usb
+            ):
                 # Wait reconnect interval (responds to transport drops)
                 self._wait_for_event(self._connect_interval / 1000.0)
                 if self._shutdown.is_set():

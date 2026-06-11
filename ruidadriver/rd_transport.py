@@ -298,5 +298,9 @@ class RdTransport:
     def is_udp(self) -> bool:
         return self._transport is not None and self._transport.is_udp
 
+    @property
+    def has_usb(self) -> bool:
+        return self._usb is not None
+
     def set_gross_timeout(self, state: bool) -> None:
         self._use_gross_timeout = state
