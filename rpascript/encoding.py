@@ -392,3 +392,22 @@ def parse_value(
 
     # --- Fallback: return as string ---
     return raw
+
+
+def is_resolvable_address(token: str, mt_map: dict) -> bool:
+    """Check if a GET_SETTING address token can be resolved (MT mnemonic or numeric).
+
+    Args:
+        token: The address token (e.g. "MEM_CARD_ID", "0x0400", "1024").
+        mt_map: The MT mnemonic-to-entry mapping from ScriptParser._mt_map.
+
+    Returns:
+        True if the token is a known MT mnemonic or a parseable integer.
+    """
+    if token in mt_map:
+        return True
+    try:
+        int(token, 0)
+        return True
+    except ValueError:
+        return False

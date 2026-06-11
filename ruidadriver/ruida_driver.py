@@ -59,11 +59,12 @@ class RdDriver:
     forwarding to registered application listeners.
 
     Usage::
-        driver = RdDriver(session)
-        driver.start_script_runner()
+        driver = RdDriver()
+        driver.register_status_listener(...)
+        driver.start(udp_host='192.168.1.100')
         driver.run(['GET_SETTING MEM_CARD_ID'])
         # ... script executes in background ...
-        driver.stop_script_runner()
+        driver.stop()
     """
 
     # Ping command — MEM_CARD_ID reply detects controller changes
@@ -91,16 +92,13 @@ class RdDriver:
         "MACHINE_STATUS_JOB_RUNNING": rdap.MACHINE_STATUS_JOB_RUNNING[0],
     }
 
-    def __init__(self, session: RdSession) -> None:
-        """Initialize RdDriver.
-
-        Args:
-            session: RdSession instance providing transport and status access.
-        """
-        self._session = session
+    def __init__(self) -> None:
+        """Initialize RdDriver. No session yet — call start() to connect."""
+        self._session: RdSession | None = None
         self._script_queue: queue.Queue = queue.Queue()
         self._runner_thread: threading.Thread | None = None
         self._status_listeners: list[Callable] = []
+        self._lifecycle_listeners: list[Callable] = []
         self._error_listeners: list[Callable[[str], None]] = []
         self._reply_listeners: list[Callable] = []
         self._lock: threading.RLock = threading.RLock()
@@ -153,6 +151,44 @@ class RdDriver:
                             self._address_to_mnemonic[address] = mnemonic
                             self._address_to_spec[address] = mt_entry[1]
 
+    # ---- Driver Lifecycle ----
+
+    def start(self, udp_host: str = "", usb_device: str = "") -> bool:
+        """Start the driver: create session, configure transport, open, start script runner.
+
+        Creates an RdSession, configures transport with the given parameters,
+        opens the transport (non-fatal if it fails — status monitor retries),
+        then starts the script runner and status monitor.
+
+        Args:
+            udp_host: UDP host address or hostname.
+            usb_device: USB serial device path.
+
+        Returns:
+            True if transport opened immediately, False if it needs retry.
+        """
+        if self._session is not None:
+            return True
+
+        self._session = RdSession()
+        self._session.transport.configure(
+            udp_host=udp_host,
+            usb_device=usb_device,
+        )
+        opened = self._session.transport.open()
+        self.start_script_runner()
+        return opened
+
+    def stop(self) -> None:
+        """Stop the driver: stop script runner, disconnect session, clean up.
+
+        Idempotent — safe to call multiple times.
+        """
+        self.stop_script_runner()
+        if self._session is not None:
+            self._session.disconnect()
+            self._session = None
+
     # ---- Listener Registration ----
 
     def register_status_listener(
@@ -162,13 +198,20 @@ class RdDriver:
         with self._lock:
             self._status_listeners.append(listener)
 
+    def register_lifecycle_listener(
+        self, listener: Callable[[RdStatusEvent], None]
+    ) -> None:
+        """Register a listener for lifecycle events (CONNECTED/DISCONNECTED). Thread-safe."""
+        with self._lock:
+            self._lifecycle_listeners.append(listener)
+
     def register_error_listener(self, listener: Callable[[str], None]) -> None:
         """Register a listener for error message notifications. Thread-safe."""
         with self._lock:
             self._error_listeners.append(listener)
 
     def register_reply_listener(
-        self, listener: Callable[[list[bytearray]], None]
+        self, listener: Callable[[list[str]], None]
     ) -> None:
         """Register a listener for raw reply data notifications. Thread-safe."""
         with self._lock:
@@ -180,6 +223,16 @@ class RdDriver:
         """Forward RdStatus events to registered listeners. Thread-safe via copy-on-iterate."""
         with self._lock:
             listeners = list(self._status_listeners)
+        for listener in listeners:
+            try:
+                listener(event)
+            except Exception:
+                pass  # Isolate bad callbacks
+
+    def _on_lifecycle_event(self, event: RdStatusEvent) -> None:
+        """Forward lifecycle events from RdStatus to lifecycle listeners. Thread-safe."""
+        with self._lock:
+            listeners = list(self._lifecycle_listeners)
         for listener in listeners:
             try:
                 listener(event)
@@ -215,9 +268,23 @@ class RdDriver:
     def _format_status_value(address: int, raw_reply: bytearray) -> str:
         """Format a decoded reply value using the MT table format spec.
 
-        Uses the RdDecoder with the MT spec for this address to produce
-        a human-readable formatted string (e.g., '123.456 mm' for a coord).
-        Falls back to str(raw_value) if the MT entry is not found or decode fails.
+        Legacy wrapper — delegates to format_reply_value.
+        """
+        _, formatted = RdDriver.format_reply_value(address, raw_reply)
+        return formatted
+
+    @staticmethod
+    def format_reply_value(address: int, raw_reply: bytearray) -> tuple[str | None, str]:
+        """Decode a reply bytearray using the MT table into (mnemonic, formatted_value).
+
+        Args:
+            address: The memory address extracted from the reply header.
+            raw_reply: The full reply bytearray (including header bytes).
+
+        Returns:
+            Tuple of (mnemonic, formatted_value_string).
+            mnemonic is None if the address is not in the MT table.
+            formatted_value_string is always a string (fallback on decode failure).
         """
         from protocols.ruida.ruida_protocol import MT, RD_TYPES, RDT_BYTES
 
@@ -225,7 +292,11 @@ class RdDriver:
         lsb = address & 0xFF
         mt_entry = MT.get(msb, {}).get(lsb)
         if mt_entry is None:
-            return str(RdDecoder().decode_value(raw_reply))
+            # Fallback: raw decode
+            val = RdDecoder().decode_value(raw_reply)
+            return (None, str(val))
+
+        mnemonic = mt_entry[0]
         spec = mt_entry[1]  # (format_string, decoder_fn, raw_type)
         d = RdDecoder()
         d.format = spec[0]
@@ -236,9 +307,45 @@ class RdDriver:
         d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
         decoder_method = getattr(d, f"rd_{spec[1]}")
         try:
-            return decoder_method(raw_reply[4:9])
+            decoded = decoder_method(raw_reply[4:9])
+            return (mnemonic, str(decoded))
         except Exception:
-            return str(RdDecoder().decode_value(raw_reply))
+            val = RdDecoder().decode_value(raw_reply)
+            return (mnemonic, str(val))
+
+    @staticmethod
+    def format_reply(reply: bytearray) -> str:
+        """Format a GET_SETTING reply bytearray as a human-readable string.
+
+        Extracts the address from the reply, looks up the MT table,
+        decodes the value, and returns a formatted line like:
+            "MEM_CARD_ID: 12345"
+        or (if address not in MT table):
+            "0x057E: 12345"
+
+        Args:
+            reply: Raw reply bytearray (min 9 bytes).
+
+        Returns:
+            Formatted string suitable for display.
+        """
+        addr = (reply[2] << 8) | reply[3]
+        mnemonic, formatted = RdDriver.format_reply_value(addr, reply)
+        if mnemonic:
+            return f"{mnemonic}: {formatted}"
+        return f"0x{addr:04X}: {formatted}"
+
+    @staticmethod
+    def format_reply_list(replies: list[bytearray]) -> list[str]:
+        """Format a list of reply bytearrays into human-readable strings.
+
+        Args:
+            replies: List of raw reply bytearrays.
+
+        Returns:
+            List of formatted strings, one per reply.
+        """
+        return [RdDriver.format_reply(r) for r in replies]
 
     def _on_reply(self, replies: list[bytearray]) -> None:
         """Internal reply handler: decode for status tracking, filter handled replies.
@@ -249,11 +356,11 @@ class RdDriver:
         - Do NOT forward to reply listeners.
 
         For non-handled addresses:
-        - Forward raw reply data to registered reply listeners.
+        - Format via format_reply_list and forward formatted strings to reply listeners.
         """
         decoder = RdDecoder()
         changes: dict[str, Any] = {}
-        forward_replies: list[bytearray] = []
+        forward_replies_raw: list[bytearray] = []
 
         for raw_reply in replies:
             address = decoder.decode_address(raw_reply)
@@ -280,12 +387,13 @@ class RdDriver:
                 if address == 0x057E:
                     self.run(self._BED_SIZE_SCRIPT)
             else:
-                forward_replies.append(raw_reply)
+                forward_replies_raw.append(raw_reply)
 
         if changes:
             self._on_status_event(StatusDict(**changes))
 
-        if forward_replies:
+        if forward_replies_raw:
+            forward_replies = RdDriver.format_reply_list(forward_replies_raw)
             with self._lock:
                 listeners = list(self._reply_listeners)
             for listener in listeners:
@@ -314,6 +422,9 @@ class RdDriver:
         self._shutdown.clear()
         self._cancel_flag = False
 
+        if self._session is None:
+            raise RuntimeError("Session not created. Call start() first.")
+
         # 1. Configure RdStatus with ping/query commands (before starting anything)
         parser = ScriptParser()
 
@@ -336,7 +447,7 @@ class RdDriver:
         self._runner_thread.start()
 
         # 3. Register session listeners (runner is ready)
-        self._session.status.register_status_listener(self._on_status_event)
+        self._session.status.register_status_listener(self._on_lifecycle_event)
         self._session.transport.register_reply_listener(self._on_reply)
 
         # 4. Start the status monitor LAST — from this point, replies can arrive
@@ -352,13 +463,17 @@ class RdDriver:
         if self._runner_thread is None:
             return
 
+        if self._session is None:
+            self._runner_thread = None
+            return
+
         self._shutdown.set()
         self._script_queue.put(None)  # Sentinel to unblock get()
 
         self._runner_thread.join(timeout=2.0)
 
         # Clean up listeners
-        self._session.status.unregister_status_listener(self._on_status_event)
+        self._session.status.unregister_status_listener(self._on_lifecycle_event)
         self._session.transport.unregister_reply_listener(self._on_reply)
 
         self._runner_thread = None
@@ -652,9 +767,24 @@ class RdDriver:
     # ---- Properties ----
 
     @property
-    def session(self) -> RdSession:
-        """The underlying RdSession instance."""
+    def session(self) -> RdSession | None:
+        """The underlying RdSession instance, or None if not started."""
         return self._session
+
+    @property
+    def is_connected(self) -> bool:
+        """True if the session exists AND is connected to the controller."""
+        return self._session is not None and self._session.is_connected
+
+    @property
+    def transport(self):
+        """The session's transport, or None if not started."""
+        return self._session.transport if self._session else None
+
+    @property
+    def status_monitor(self):
+        """The session's status monitor, or None if not started."""
+        return self._session.status if self._session else None
 
     @property
     def machine_status(self) -> dict[int, Any]:

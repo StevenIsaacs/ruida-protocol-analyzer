@@ -26,16 +26,9 @@ from textual.containers import Horizontal, Vertical
 from textual.events import Key
 from textual.widgets import Header, Input, RichLog, Static
 
-from protocols.ruida.ruida_protocol import (
-    MACHINE_STATUS_JOB_RUNNING,
-    MACHINE_STATUS_MOVING,
-    MACHINE_STATUS_PART_END,
-    MT,
-)
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
-from rpascript.encoding import encode_command
+from rpascript.encoding import encode_command, is_resolvable_address
 from rpascript.interpreter import ScriptParser, reconstruct_script_line
-from ruidadriver.rd_session import RdSession
 from ruidadriver.rd_status import RdStatusEvent
 from ruidadriver.ruida_driver import RdDriver, StatusDict
 
@@ -147,7 +140,6 @@ class RdsAdapter(App):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._session: RdSession | None = None
         self._ruida_driver: RdDriver | None = None
         self._parser = ScriptParser()
         self._decoder = RdDecoder()
@@ -156,10 +148,10 @@ class RdsAdapter(App):
         self._script_count = 0
         self._logging_enabled: bool = True
         self._introspect_map: dict[str, Callable[[], Any]] = {
-            "session": lambda: self._session,
-            "transport": lambda: self._session.transport if self._session else None,
+            "session": lambda: self._ruida_driver,
+            "transport": lambda: self._ruida_driver.transport if self._ruida_driver else None,
             "driver": lambda: self._ruida_driver,
-            "status": lambda: self._session.status if self._session else None,
+            "status": lambda: self._ruida_driver.status_monitor if self._ruida_driver else None,
             "parser": lambda: self._parser,
             "decoder": lambda: self._decoder,
         }
@@ -211,6 +203,11 @@ class RdsAdapter(App):
         self._session_disconnected: bool = False
         self._machine_status: int = 0
         self._machine_status_formatted: str = "0"
+        self._status_bits: dict[str, bool] = {
+            "MACHINE_STATUS_MOVING": False,
+            "MACHINE_STATUS_PART_END": False,
+            "MACHINE_STATUS_JOB_RUNNING": False,
+        }
         self._last_cmd_was_get_setting: bool = False
 
     # ------------------------------------------------------------------
@@ -920,7 +917,7 @@ class RdsAdapter(App):
             self._ruida_driver.cancel_script()
 
         session_stopped = False
-        if self._session is not None and not self._session_connected.is_set():
+        if not self._session_connected.is_set():
             session_stopped = True
 
         if session_stopped and driver_stopped:
@@ -943,12 +940,11 @@ class RdsAdapter(App):
     ) -> None:
         """Connect to a Ruida controller and start the script runner.
 
-        Opens the transport (non-fatal if it fails — the status monitor retries
-        in background), creates the driver, then starts the script runner.
-        The status monitor is started LAST so that reply events arrive to a
-        fully-initialized driver with a running script runner.
+        Creates an RdDriver, registers TUI listeners, then calls
+        driver.start() which creates the session, opens the transport,
+        starts the script runner and status monitor, and returns.
         """
-        if self._session is not None:
+        if self._ruida_driver is not None:
             self._log_error("Session already active. Use 'session end' first.")
             return
 
@@ -985,30 +981,18 @@ class RdsAdapter(App):
             udp = resolved
 
         try:
-            session = RdSession()
-            session.transport.configure(
-                udp_host=udp,
-                usb_device=usb_device,
-            )
-
             self._log_info(f"Connecting (udp={udp}, usb={usb_device})...")
 
-            # Open transport (fast, non-blocking for UDP).
-            # If it fails (e.g., USB cable disconnected), the status monitor's
-            # CONNECTING state will retry automatically.
-            if not session.transport.open():
-                self._log_info("Transport not available yet (retrying in background)")
-
-            # Create driver and register TUI listeners
-            driver = RdDriver(session)
+            driver = RdDriver()
             driver.register_status_listener(self.on_status_event)
+            driver.register_lifecycle_listener(self.on_lifecycle_event)
             driver.register_error_listener(self.on_error)
             driver.register_reply_listener(self.on_reply_data)
 
-            # Start the script runner:
-            driver.start_script_runner()
+            opened = driver.start(udp_host=udp, usb_device=usb_device)
+            if not opened:
+                self._log_info("Transport not available yet (retrying in background)")
 
-            self._session = session
             self._ruida_driver = driver
 
             # Wait for connection with optional timeout + cancel support
@@ -1044,38 +1028,23 @@ class RdsAdapter(App):
         except Exception as e:
             self._log_error(f"Failed to start session: {e}")
             if self._ruida_driver is not None:
-                self._ruida_driver.stop_script_runner()
+                self._ruida_driver.stop()
                 self._ruida_driver = None
-            if self._session is not None:
-                try:
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, lambda: self._session.disconnect())
-                except Exception:
-                    pass  # Don't mask the original error
-                self._session = None
 
     async def _stop_session(self) -> None:
         """Disconnect from the controller and clean up resources."""
-        if self._ruida_driver is None and self._session is None:
+        if self._ruida_driver is None:
             self._log_info("No active session.")
             return
 
         try:
-            if self._ruida_driver is not None:
-                self._ruida_driver.stop_script_runner()
-                self._ruida_driver = None
-
-            if self._session is not None:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, lambda: self._session.disconnect())
-                self._session = None
-
+            self._ruida_driver.stop()
+            self._ruida_driver = None
             self._log_info("Session ended")
             self._update_status_bar()
 
         except Exception as e:
             self._log_error(f"Error stopping session: {e}")
-            self._session = None
             self._ruida_driver = None
 
     async def _teardown_session(self) -> None:
@@ -1084,13 +1053,8 @@ class RdsAdapter(App):
         Used by timeout/cancel paths in _start_session.
         """
         if self._ruida_driver is not None:
-            self._ruida_driver.stop_script_runner()
+            self._ruida_driver.stop()
             self._ruida_driver = None
-
-        if self._session is not None:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: self._session.disconnect())
-            self._session = None
 
         self._session_connected.clear()
         self._update_status_bar()
@@ -1098,6 +1062,27 @@ class RdsAdapter(App):
     # ------------------------------------------------------------------
     # AppAdapter-compatible interface (called from driver background thread)
     # ------------------------------------------------------------------
+
+    def on_lifecycle_event(self, event: RdStatusEvent) -> None:
+        """Handle a lifecycle event from the driver (CONNECTED/DISCONNECTED/TERMINATED).
+
+        Called from the driver's background thread. Bridges to the asyncio
+        event loop thread via call_from_thread for safe widget updates.
+        """
+
+        def _update() -> None:
+            if self._logging_enabled:
+                self._status_log.write(f"[STATUS] {event.value}")
+            self._event_count += 1
+            if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
+                self._session_disconnected = True
+                self._session_connected.clear()
+            elif event is RdStatusEvent.CONNECTED:
+                self._session_disconnected = False
+                self._session_connected.set()
+            self._update_status_bar()
+
+        self.call_from_thread(_update)
 
     def on_status_event(self, event: RdStatusEvent | StatusDict) -> None:
         """Handle a status event from the driver.
@@ -1144,17 +1129,7 @@ class RdsAdapter(App):
                         "MACHINE_STATUS_PART_END",
                         "MACHINE_STATUS_JOB_RUNNING",
                     ):
-                        bitmask = (
-                            MACHINE_STATUS_MOVING[0]
-                            if key == "MACHINE_STATUS_MOVING"
-                            else MACHINE_STATUS_PART_END[0]
-                            if key == "MACHINE_STATUS_PART_END"
-                            else MACHINE_STATUS_JOB_RUNNING[0]
-                        )
-                        if value:
-                            self._machine_status |= bitmask
-                        else:
-                            self._machine_status &= ~bitmask
+                        self._status_bits[key] = bool(value)
                     else:
                         logging.getLogger(__name__).warning(
                             "Unknown status key in StatusDict: %s = %r", key, value
@@ -1165,32 +1140,28 @@ class RdsAdapter(App):
                 self._update_status_bar()
                 return
 
-            # Original RdStatusEvent handling (unchanged)
+            # Script events received via status listener path
+            # (_notify_script_skipped / _notify_script_error in driver)
             if self._logging_enabled:
                 self._status_log.write(f"[STATUS] {event.value}")
             self._event_count += 1
-            if event in (RdStatusEvent.DISCONNECTED, RdStatusEvent.TERMINATED):
+            if event is RdStatusEvent.DISCONNECTED:
                 self._session_disconnected = True
                 self._session_connected.clear()
-            elif event is RdStatusEvent.CONNECTED:
-                self._session_disconnected = False
-                self._session_connected.set()
             self._update_status_bar()
 
         self.call_from_thread(_update)
 
-    def on_reply_data(self, replies: list[bytearray]) -> None:
-        """Handle reply data from the driver.
+    def on_reply_data(self, replies: list[str]) -> None:
+        """Handle formatted reply data from the driver.
 
         Called from the driver's background thread. Bridges to the asyncio
         event loop thread via call_from_thread for safe widget updates.
-        Decodes raw reply bytearrays to MEM_ mnemonics with decoded values.
+        Receives already-formatted reply strings from the driver.
         """
 
         def _update() -> None:
-            decoder = RdDecoder()
-            for raw in replies:
-                formatted = self._format_reply(raw, decoder)
+            for formatted in replies:
                 if self._logging_enabled:
                     self._reply_log.write(formatted)
                     # If the last command was a GET_SETTING, also show the
@@ -1457,56 +1428,6 @@ class RdsAdapter(App):
         """Log an error message in bold red."""
         self._log_widget.write(f"[bold red]ERROR: {message}[/bold red]")
 
-    def _format_reply(self, reply: bytearray, decoder: RdDecoder | None = None) -> str:
-        """Format a GET_SETTING reply bytearray as MEM_ mnemonic with decoded value.
-
-        Uses the MT memory table from ruida_protocol to look up the address
-        and decode the value using the appropriate type decoder.
-        Avoids the prime method of RdDecoder which requires a non-None output emitter.
-        """
-        addr = (reply[2] << 8) | reply[3]
-        msb = (addr >> 8) & 0xFF
-        lsb = addr & 0xFF
-
-        mt_entry = MT.get(msb, {}).get(lsb)
-        if mt_entry is not None:
-            mnemonic, spec = mt_entry[0], mt_entry[1]
-            if decoder is None:
-                d = RdDecoder()
-            else:
-                d = decoder
-
-            # Set up decoder fields manually (avoid prime() which calls self.out.verbose())
-            d.format = spec[0]
-            d.rd_type = spec[2]
-            d.data = bytearray([])
-            d.value = None
-            d.cstring = d.rd_type == "cstring"
-
-            # Set _length for to_int/to_uint
-            from protocols.ruida.ruida_protocol import RD_TYPES, RDT_BYTES
-
-            d._length = RD_TYPES.get(d.rd_type, [0, 5])[RDT_BYTES]
-
-            # Call the decoder method directly by name
-            decoder_method = getattr(d, f"rd_{spec[1]}")
-            data_bytes = reply[4:9]
-
-            try:
-                decoded = decoder_method(data_bytes)
-            except Exception:
-                decoded = None
-
-            if decoded:
-                return f"{mnemonic}: {decoded}"
-
-        # Fallback: raw hex format
-        if decoder is None:
-            val = RdDecoder().decode_value(reply)
-        else:
-            val = decoder.decode_value(reply)
-        return f"0x{addr:04X}: {val}"
-
     def _update_status_bar(self) -> None:
         """Update the bottom status bar with connection info, counters, and position."""
         # Connection info
@@ -1514,18 +1435,17 @@ class RdsAdapter(App):
             conn = "[red]Disconnected[/red]"
         elif (
             self._ruida_driver is not None
-            and self._session is not None
-            and self._session.is_connected
+            and self._ruida_driver.is_connected
         ):
             conn = "[green]Connected[/green]"
-        elif self._session is not None:
+        elif self._ruida_driver is not None:
             conn = "[yellow]Connecting[/yellow]"
         else:
             conn = "[red]Disconnected[/red]"
 
         # Transport info
-        if self._session is not None:
-            transport = self._session.transport
+        if self._ruida_driver is not None and self._ruida_driver.transport is not None:
+            transport = self._ruida_driver.transport
             if transport.is_udp:
                 transport_info = transport._udp_host
             elif transport.is_usb:
@@ -1562,16 +1482,15 @@ class RdsAdapter(App):
 
         # Machine status indicators (MOVE, PART, JOB)
         status_parts = []
-        ms = self._machine_status
-        if ms & MACHINE_STATUS_MOVING[0]:
+        if self._status_bits["MACHINE_STATUS_MOVING"]:
             status_parts.append("[bold green]MOVE[/bold green]")
         else:
             status_parts.append("MOVE")
-        if ms & MACHINE_STATUS_PART_END[0]:
+        if self._status_bits["MACHINE_STATUS_PART_END"]:
             status_parts.append("[bold green]PART[/bold green]")
         else:
             status_parts.append("PART")
-        if ms & MACHINE_STATUS_JOB_RUNNING[0]:
+        if self._status_bits["MACHINE_STATUS_JOB_RUNNING"]:
             status_parts.append("[bold green]JOB[/bold green]")
         else:
             status_parts.append("JOB")
@@ -1609,8 +1528,10 @@ class RdsAdapter(App):
         pass
 
     def stop(self) -> None:
-        """AppAdapter interface — cleanup handled by _on_exit_app or session end."""
-        pass
+        """AppAdapter interface — stop the driver if running."""
+        if self._ruida_driver is not None:
+            self._ruida_driver.stop()
+            self._ruida_driver = None
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -1626,11 +1547,8 @@ class RdsAdapter(App):
         """
         self._save_command_history()
         if self._ruida_driver is not None:
-            self._ruida_driver.stop_script_runner()
+            self._ruida_driver.stop()
             self._ruida_driver = None
-        if self._session is not None:
-            self._session.disconnect()
-            self._session = None
         await super()._on_exit_app()
 
     @staticmethod
@@ -1666,13 +1584,7 @@ class RdsAdapter(App):
 
     def _is_resolvable_address(self, token: str) -> bool:
         """Check if a GET_SETTING address token can be resolved (MT mnemonic or numeric)."""
-        if token in self._parser._mt_map:
-            return True
-        try:
-            int(token, 0)
-            return True
-        except ValueError:
-            return False
+        return is_resolvable_address(token, self._parser._mt_map)
 
 
 # ------------------------------------------------------------------

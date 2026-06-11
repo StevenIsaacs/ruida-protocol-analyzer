@@ -38,11 +38,11 @@ class AppAdapter(ABC):
         ...
 
     @abstractmethod
-    def on_reply_data(self, replies: list[bytearray]) -> None:
-        """Handle raw reply data from the driver.
+    def on_reply_data(self, replies: list[str]) -> None:
+        """Handle formatted reply data from the driver.
 
         Args:
-            replies: List of raw reply bytearrays received from the controller.
+            replies: List of formatted reply strings from the driver.
         """
         ...
 

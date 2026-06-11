@@ -625,40 +625,29 @@ class ScriptInterpreter:
         Handles SESSION_START → create/connect/driver, SESSION_END → stop/cleanup,
         and routes intermediate commands through driver.run() via reconstruct_script_line().
         """
-        session = None
         driver = None
 
         for cmd in commands:
             if cmd["type"] == "SESSION_START":
-                from ruidadriver.rd_session import RdSession
                 from ruidadriver.ruida_driver import RdDriver
 
-                session = RdSession()
                 params = cmd.get("params", {})
-                session.transport.configure(
+                driver = RdDriver()
+                opened = driver.start(
                     udp_host=params.get("udp", ""),
                     usb_device=params.get("usb", ""),
                 )
-                # Open transport (fast, non-blocking for UDP)
-                if not session.transport.open():
+                if not opened:
                     self._out.write(
                         f"# ERROR: Failed to open transport to Ruida controller "
                         f"(udp={params.get('udp', '')}, usb={params.get('usb', '')})\n"
                     )
                     return
-                driver = RdDriver(session)
-                # start_script_runner configures ping/query, starts the runner thread,
-                # registers reply listeners, and starts the status monitor — in that
-                # order — so replies arrive to a fully-initialized driver.
-                driver.start_script_runner()
 
             elif cmd["type"] == "SESSION_END":
                 if driver is not None:
-                    driver.stop_script_runner()
+                    driver.stop()
                     driver = None
-                if session is not None:
-                    session.disconnect()
-                    session = None
 
             else:
                 if driver is None:
@@ -671,9 +660,7 @@ class ScriptInterpreter:
 
         # Clean up if session wasn't explicitly ended
         if driver is not None:
-            driver.stop_script_runner()
-        if session is not None:
-            session.disconnect()
+            driver.stop()
 
     # ------------------------------------------------------------------
     # Command encoding
