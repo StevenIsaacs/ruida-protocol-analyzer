@@ -203,7 +203,7 @@ class RdsAdapter(App):
         width: 1fr;
     }
 
-    #status-log, #reply-log {
+    #status-log {
         text-style: dim;
     }
 
@@ -215,6 +215,7 @@ class RdsAdapter(App):
     #reply-log {
         height: 1fr;
         border-bottom: solid $surface;
+        padding: 1 2;
     }
 
     #status-bar {
@@ -319,11 +320,14 @@ class RdsAdapter(App):
             "MACHINE_STATUS_PART_END": False,
             "MACHINE_STATUS_JOB_RUNNING": False,
         }
-        self._last_cmd_was_get_setting: bool = False
-
         # File browser tree state
         self._file_browser: FileBrowserTree | None = None
         self._file_browse_cmd: str = ""
+
+        # Memory monitor state
+        self._mem_prev: dict[str, int] | None = None
+        self._mem_initial: dict[str, int] = {}
+        self._mem_timer: Any = None
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -345,22 +349,24 @@ class RdsAdapter(App):
                 yield RichLog(
                     id="status-log", highlight=True, markup=True, max_lines=50
                 )
-                yield RichLog(id="reply-log", highlight=True, markup=True, max_lines=50)
+                yield Static(id="reply-log", markup=True)
         yield Static(id="status-bar")
 
     def on_mount(self) -> None:
         """Widgets are ready — cache references, load history, and log startup message."""
         self._log_widget = self.query_one("#log-area", RichLog)
         self._status_log = self.query_one("#status-log", RichLog)
-        self._reply_log = self.query_one("#reply-log", RichLog)
+        self._reply_log = self.query_one("#reply-log", Static)
         self._status_bar = self.query_one("#status-bar", Static)
         # Restrict focus to command input only — Tab stays on Input
         self._log_widget.can_focus = False
         self._status_log.can_focus = False
-        self._reply_log.can_focus = False
         self._update_status_bar()
         self._load_command_history()
         self.query_one("#command-input", Input).focus()
+        # Start memory monitor
+        self._mem_timer = self.set_interval(15, self._update_mem_monitor)
+        self._update_mem_monitor()
 
     # ------------------------------------------------------------------
     # Command input handling
@@ -445,9 +451,6 @@ class RdsAdapter(App):
             return
         self._log_script(line)
 
-        # Clear stale flag to prevent misattribution of QUERY replies
-        self._last_cmd_was_get_setting = False
-
         try:
             # Parse the line as a single rpascript command
             parsed = self._parser.parse_lines([line])
@@ -473,20 +476,15 @@ class RdsAdapter(App):
                 except Exception as e:
                     self._log_error(f"Encoding failed: {e}")
 
-            # Only track GET_SETTING commands with valid, resolvable addresses
-            # to prevent stale flag from showing QUERY replies as GET_SETTING results
+            # Validate GET_SETTING commands have resolvable addresses
             if cmd.get("mnemonic", "") == "GET_SETTING":
                 params = cmd.get("params", [])
-                if params and self._is_resolvable_address(params[0]):
-                    self._last_cmd_was_get_setting = True
-                else:
+                if not params or not self._is_resolvable_address(params[0]):
                     reason = (
                         f"unknown address: {params[0]}" if params else "missing address"
                     )
                     self._log_error(f"Invalid GET_SETTING: {reason}")
                     return
-            else:
-                self._last_cmd_was_get_setting = False
 
             if cmd["type"] == "SESSION_START":
                 await self._start_session(**cmd["params"])
@@ -1119,10 +1117,12 @@ class RdsAdapter(App):
         """Clear all log panels, loaded script, head, and tail."""
         self._log_widget.clear()
         self._status_log.clear()
-        self._reply_log.clear()
+        self._reply_log.update("")
         self._loaded_script = []
         self._head_script = []
         self._tail_script = []
+        self._mem_initial = {}
+        self._mem_prev = None
         self._log_info("Logs, head, and tail cleared")
 
     def _cmd_quit(self) -> None:
@@ -1766,26 +1766,15 @@ class RdsAdapter(App):
     def on_reply_data(self, replies: list[str]) -> None:
         """Handle formatted reply data from the driver.
 
-        Called from the driver's background thread. Bridges to the asyncio
-        event loop thread via call_from_thread for safe widget updates.
-        Receives already-formatted reply strings from the driver.
+        Logs script command replies to the main TUI window.
+        Thread-safe: bridges from driver thread to asyncio thread.
         """
+        self.call_from_thread(self._write_replies, replies)
 
-        def _update() -> None:
-            for formatted in replies:
-                if self._logging_enabled:
-                    self._reply_log.write(formatted)
-                    # If the last command was a GET_SETTING, also show the
-                    # decoded reply in the main log pane
-                    if self._last_cmd_was_get_setting:
-                        self._log_widget.write(f"  ← {formatted}")
-                        self._last_cmd_was_get_setting = (
-                            False  # reset — only log the first reply
-                        )
-            self._reply_count += len(replies)
-            self._update_status_bar()
-
-        self.call_from_thread(_update)
+    def _write_replies(self, replies: list[str]) -> None:
+        """Write reply strings to the main log area (asyncio thread only)."""
+        for formatted in replies:
+            self._log_widget.write(f"  ← {formatted}")
 
     def on_error(self, message: str) -> None:
         """Handle an error condition. Thread-safe via call_from_thread."""
@@ -2157,11 +2146,16 @@ class RdsAdapter(App):
     async def _on_exit_app(self) -> None:
         """Save command history, then clean up active session when TUI exits.
 
+
         Overrides the internal Textual lifecycle hook _on_exit_app (called when
         the app exits) to persist command history and tear down the session.
         In Textual 8.x, the shutdown message is ExitApp, which dispatches to
         _on_exit_app — NOT on_exit (which has no matching message class).
         """
+        # Stop memory monitor timer to prevent widget access during teardown
+        if self._mem_timer is not None:
+            self._mem_timer.cancel()
+            self._mem_timer = None
         self._save_command_history()
         if self._ruida_driver is not None:
             self._ruida_driver.stop()
@@ -2199,6 +2193,123 @@ class RdsAdapter(App):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _read_mem() -> dict[str, int]:
+        """Read memory stats from /proc/self/status.
+
+        Returns dict with keys: VmRSS, VmSize, VmPeak, Threads.
+        Returns empty dict on any error (fail silent, monitor simply won't update).
+        """
+        try:
+            with open("/proc/self/status") as f:
+                data = f.read()
+        except OSError:
+            return {}
+        result: dict[str, int] = {}
+        fields = {"VmRSS", "VmSize", "VmPeak", "Threads"}
+        for line in data.splitlines():
+            for field in fields:
+                if line.startswith(field + ":"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            result[field] = int(parts[1])
+                        except ValueError:
+                            pass
+        return result
+
+    @staticmethod
+    def _render_mem_display(
+        cur: dict[str, int],
+        prev: dict[str, int] | None,
+        initial: dict[str, int],
+    ) -> str:
+        """Format memory stats as a 4-line tabular display.
+
+        Line 1: column headers (VmRSS KB, VmSize KB, VmPeak KB, Threads)
+        Line 2: Mem:   current values
+        Line 3: Change: delta since previous update (yellow if non-zero)
+        Line 4: Total:  total change since start
+        """
+        fields = ["VmRSS", "VmSize", "VmPeak", "Threads"]
+        col_w = [9, 9, 9, 7]  # right-aligned column widths
+        sep = "  "  # inter-column gap (2 spaces)
+        pad = " " * 8  # 8-char label column (left-aligned Mem:/Change:/Total:)
+
+        # Helper: right-pad a value string in its column
+        def _col(s: str, i: int) -> str:
+            return f"{s:>{col_w[i]}}"
+
+        # Helper: format delta value with sign, optionally yellow
+        def _fmt_delta(d: int, i: int) -> str:
+            if d > 0:
+                text = f"+{d}"
+            elif d < 0:
+                text = str(d)
+            else:
+                text = "0"
+            padded = _col(text, i)
+            if d != 0:
+                padded = f"[yellow]{padded}[/yellow]"
+            return padded
+
+        # Line 1: header
+        headers = ["VmRSS KB", "VmSize KB", "VmPeak KB", "Threads"]
+        hdr_line = pad + sep + sep.join(_col(h, i) for i, h in enumerate(headers))
+
+        # Line 2: Mem (current values)
+        cur_vals = [cur.get(f, 0) for f in fields]
+        mem_line = f"{'Mem:':<8}" + sep + sep.join(
+            _col(str(v), i) for i, v in enumerate(cur_vals)
+        )
+
+        # Line 3: Change (delta since previous update)
+        if prev is None:
+            chg_cells = [_col("-", i) for i in range(4)]
+        else:
+            chg_cells = []
+            for i, f in enumerate(fields):
+                d = cur.get(f, 0) - prev.get(f, 0)
+                chg_cells.append(_fmt_delta(d, i))
+        chg_line = f"{'Change:':<8}" + sep + sep.join(chg_cells)
+
+        # Line 4: Total (delta since start)
+        if not initial:
+            tot_cells = [_col("-", i) for i in range(4)]
+        else:
+            tot_cells = []
+            for i, f in enumerate(fields):
+                d = cur.get(f, 0) - initial.get(f, 0)
+                if d > 0:
+                    text = f"+{d}"
+                elif d < 0:
+                    text = str(d)
+                else:
+                    text = "0"
+                tot_cells.append(_col(text, i))
+        tot_line = f"{'Total:':<8}" + sep + sep.join(tot_cells)
+
+        return f"{hdr_line}\n{mem_line}\n{chg_line}\n{tot_line}"
+
+    def _update_mem_monitor(self) -> None:
+        """Timer callback: read memory, render display, update cache."""
+        cur = self._read_mem()
+        if not cur:
+            return  # Can't read /proc/self/status — skip update
+
+        if not self._mem_initial:
+            # First call — store baseline and render display (Change/Total show "-")
+            self._mem_initial = dict(cur)
+            self._mem_prev = dict(cur)
+            rendered = self._render_mem_display(cur, None, {})
+            self._reply_log.update(rendered)
+            return
+
+        rendered = self._render_mem_display(cur, self._mem_prev, self._mem_initial)
+        self._reply_log.update(rendered)
+
+        self._mem_prev = dict(cur)  # freeze for next iteration
 
     def _is_resolvable_address(self, token: str) -> bool:
         """Check if a GET_SETTING address token can be resolved (MT mnemonic or numeric)."""
