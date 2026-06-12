@@ -487,9 +487,10 @@ class RdDriver:
         encoder = RdEncoder()
         while not self._shutdown.is_set():
             try:
-                script = self._script_queue.get()
-                if script is None:
+                item = self._script_queue.get()
+                if item is None:
                     break  # Sentinel shutdown
+                script, auto_checksum = item
 
                 parser = ScriptParser()
                 parsed = parser.parse_lines(script)
@@ -530,7 +531,7 @@ class RdDriver:
                         else:
                             # Omitted: extend raw with placeholder bytes for later fill
                             raw.extend(b"\x00" * 5)
-                            set_file_sum_idx = len(encoded)
+                        set_file_sum_idx = len(encoded)
                         encoded.append(raw)
                         # DO NOT include SET_FILE_SUM bytes in file_checksum
                     elif should_include_in_checksum(cmd, parser.mnemonic_map):
@@ -542,10 +543,23 @@ class RdDriver:
                 # Post-loop: verify or fill SET_FILE_SUM
                 if set_file_sum_value is not None:
                     if file_checksum != set_file_sum_value:
-                        raise ValueError(
-                            f"SET_FILE_SUM value {set_file_sum_value} does not match "
-                            f"accumulated file checksum {file_checksum}"
-                        )
+                        if auto_checksum:
+                            msg = (
+                                f"SET_FILE_SUM checksum mismatch: "
+                                f"expected {set_file_sum_value}, "
+                                f"calculated {file_checksum}"
+                            )
+                            self._notify_script_error(msg)
+                            # Patch the encoded bytes with the correct checksum
+                            encoded_sum = encoder.encode_uint35(file_checksum)
+                            raw_sfs = encoded[set_file_sum_idx]
+                            raw_sfs[-5:] = encoded_sum
+                            set_file_sum_value = file_checksum
+                        else:
+                            raise ValueError(
+                                f"SET_FILE_SUM value {set_file_sum_value} does not match "
+                                f"accumulated file checksum {file_checksum}"
+                            )
                 elif set_file_sum_idx is not None:
                     # Fill omitted checksum: encode value, patch the placeholder bytearray
                     encoded_sum = encoder.encode_uint35(file_checksum)
@@ -565,7 +579,7 @@ class RdDriver:
                             self._cancel_flag = False
                             continue  # Drop script, don't requeue
                     # Not connected: requeue script for retry, notify via status listener
-                    self._script_queue.put(script)
+                    self._script_queue.put((script, auto_checksum))
                     self._notify_script_skipped()
             except Exception as exc:
                 # Log error, notify, continue to next script
@@ -573,11 +587,13 @@ class RdDriver:
 
     # ---- Script Execution API ----
 
-    def run(self, script: list[str]) -> None:
+    def run(self, script: list[str], auto_checksum: bool = False) -> None:
         """Queue a script for background execution.
 
         Args:
             script: List of rpascript-formatted command lines.
+            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+                with a warning instead of raising.
 
         Raises:
             RuntimeError: If script runner is not started.
@@ -589,7 +605,7 @@ class RdDriver:
                 )
             if not script:
                 return  # Empty script is a no-op
-            self._script_queue.put(script)
+            self._script_queue.put((script, auto_checksum))
 
     def cancel_script(self) -> None:
         """Cancel all queued scripts and prevent current script from requeuing.

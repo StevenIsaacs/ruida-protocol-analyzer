@@ -178,7 +178,7 @@ class RdsAdapter(App):
         self._cmd_descriptions: dict[str, str] = {
             "help": "Show help text",
             "load": "Load a script file from disk",
-            "exec": "Execute the loaded script",
+            "exec": "Execute job from loaded script (/exec script for all lines)",
             "clear": "Clear all log panels, loaded script, head, and tail",
             "quit": "Exit the TUI",
             "log": "Toggle display of status/reply messages (on|off|status)",
@@ -928,8 +928,8 @@ class RdsAdapter(App):
     def _cmd_exec(self, args: str = "") -> None:
         """Execute the loaded script.
 
-        If args is 'job', execute only commands from START_PROCESS to EOF.
-        Otherwise execute all loaded commands.
+        Defaults to executing only the job portion (START_PROCESS to EOF).
+        Use '/exec script' to execute all loaded commands.
         """
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
@@ -941,17 +941,17 @@ class RdsAdapter(App):
             return
         action = args.strip().lower()
         if action == "":
-            self._log_info(f"Executing {len(self._loaded_script)} lines...")
-            self.run_script(self._loaded_script)
-        elif action == "job":
             script = self._build_job_script(self._loaded_script)
             if not script:
                 self._log_error("No job commands found (no START_PROCESS/EOF markers).")
                 return
             self._log_info(f"Executing {len(script)} job commands...")
-            self.run_script(script)
+            self.run_script(script, auto_checksum=True)
+        elif action == "script":
+            self._log_info(f"Executing {len(self._loaded_script)} lines...")
+            self.run_script(self._loaded_script)
         else:
-            self._log_error(f"Unknown exec action: '{action}'. Usage: /exec [job]")
+            self._log_error(f"Unknown exec action: '{action}'. Usage: /exec [script]")
 
     @staticmethod
     def _filter_job_commands(lines: list[str]) -> list[str]:
@@ -1384,8 +1384,13 @@ class RdsAdapter(App):
 
         self.call_from_thread(_update)
 
-    def run_script(self, script: list[str]) -> None:
+    def run_script(self, script: list[str], auto_checksum: bool = False) -> None:
         """Queue a script for execution.
+
+        Args:
+            script: List of rpascript-formatted command lines.
+            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+                with a warning instead of raising.
 
         Thread-safe: can be called from any thread.
         """
@@ -1402,7 +1407,7 @@ class RdsAdapter(App):
 
         def _run() -> None:
             try:
-                self._ruida_driver.run(script)
+                self._ruida_driver.run(script, auto_checksum=auto_checksum)
                 self._script_count += len(script)
                 self._update_status_bar()
             except RuntimeError as e:
