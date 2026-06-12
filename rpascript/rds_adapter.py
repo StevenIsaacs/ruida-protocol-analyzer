@@ -18,7 +18,8 @@ import os
 import re
 import threading
 import time
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, Iterable
 
 import argparse
 from rpalib.rpa_emitter import RpaEmitter
@@ -32,8 +33,9 @@ from rpascript.generator import ScriptGenerator
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.events import Key
-from textual.widgets import Header, Input, RichLog, Static
+from textual.events import DescendantFocus, Key
+from textual.screen import ModalScreen
+from textual.widgets import DirectoryTree, Header, Input, RichLog, Static
 
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import encode_command, is_resolvable_address, parse_value
@@ -55,6 +57,89 @@ def _parse_timeout_spec(to_str: str) -> float:
     if unit == "ms":
         return value / 1000.0
     return value
+
+
+class FileBrowserTree(DirectoryTree):
+    """DirectoryTree that filters files by allowed extensions.
+
+    Directories are always shown to allow navigation. When allowed_extensions
+    is None, all files are shown.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        allowed_extensions: set[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(path, **kwargs)
+        self._allowed_extensions = allowed_extensions
+
+    def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+        for p in paths:
+            if p.is_dir():
+                yield p
+            elif self._allowed_extensions is None:
+                yield p
+            elif p.suffix.lower() in self._allowed_extensions:
+                yield p
+
+
+class ErrorScreen(ModalScreen):
+    """Modal screen that displays a crash traceback and waits for keypress."""
+
+    CSS = """
+    ErrorScreen {
+        align: center middle;
+    }
+    #error-box {
+        width: 80%;
+        height: 80%;
+        border: thick $error;
+        background: $surface;
+    }
+    #error-title {
+        padding: 1 2;
+        text-style: bold;
+        background: $error;
+        color: $text;
+    }
+    #error-detail {
+        height: 1fr;
+        padding: 1 2;
+    }
+    #error-footer {
+        padding: 1 2;
+        text-style: dim;
+        text-align: center;
+    }
+    """
+
+    def __init__(self, error: BaseException) -> None:
+        super().__init__()
+        self._error = error
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="error-box"):
+            yield Static("⚠ Application Crashed", id="error-title")
+            yield RichLog(id="error-detail", highlight=True, markup=True)
+            yield Static("Press any key to exit.", id="error-footer")
+
+    def on_mount(self) -> None:
+        """Render the traceback into the detail panel."""
+        from rich.traceback import Traceback
+
+        detail = self.query_one("#error-detail", RichLog)
+        tb = Traceback.from_exception(
+            type(self._error),
+            self._error,
+            self._error.__traceback__,
+        )
+        detail.write(tb)
+
+    def on_key(self, event: Key) -> None:
+        """Any key exits the app."""
+        self.app.exit(return_code=1)
 
 
 class RdsAdapter(App):
@@ -147,6 +232,13 @@ class RdsAdapter(App):
         background: $panel;
         overflow-y: auto;
     }
+
+    FileBrowserTree {
+        max-height: 15;
+        border-top: solid $primary;
+        background: $panel;
+        margin: 0 1;
+    }
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -228,6 +320,10 @@ class RdsAdapter(App):
             "MACHINE_STATUS_JOB_RUNNING": False,
         }
         self._last_cmd_was_get_setting: bool = False
+
+        # File browser tree state
+        self._file_browser: FileBrowserTree | None = None
+        self._file_browse_cmd: str = ""
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -418,10 +514,20 @@ class RdsAdapter(App):
             self._suppress_popup = False
             self._suggest_matches = []
             self._suggest_mode = ""
+            self._dismiss_file_browser()
             if self._suggest_popup.is_attached:
                 self._suggest_popup.remove()
             return
         value = event.value
+
+        # --- File-browse detection: must precede slash suggest logic ---
+        cmd, path_part = self._check_file_browse_trigger(value)
+        if cmd:
+            self._show_file_browser(cmd, path_part)
+            return
+        elif self._file_browser is not None:
+            # Was browsing but command changed — dismiss
+            self._dismiss_file_browser()
 
         # Slash commands
         if value.startswith("/"):
@@ -518,6 +624,20 @@ class RdsAdapter(App):
         popup_has_focus = (
             self._suggest_popup.is_attached and self._suggest_popup.has_focus
         )
+        # File browser keyboard handling — takes priority over history/suggest
+        if self._file_browser is not None:
+            if event.key == "escape":
+                event.stop()
+                self._dismiss_file_browser()
+                inp.focus()
+                return
+            if event.key == "tab":
+                event.stop()
+                if inp.has_focus:
+                    self._file_browser.focus()
+                else:
+                    inp.focus()
+                return
         if not inp.has_focus and not popup_has_focus:
             return
 
@@ -1013,6 +1133,44 @@ class RdsAdapter(App):
         """Handle Escape key: stop current operation."""
         self._cmd_stop("")
 
+    # ------------------------------------------------------------------
+    # Exception handling
+    # ------------------------------------------------------------------
+
+    def _handle_exception(self, error: BaseException) -> None:
+        """Override default: keep app alive and show persistent error screen.
+
+        Textual's default _handle_exception calls panic() which calls
+        _close_messages_no_wait(), shutting down the app immediately
+        and printing the traceback to stderr after alt-screen restore.
+        Instead, we populate _exit_renderables (for terminal fallback)
+        and schedule a screen push via call_later so the user sees the
+        error and must press a key to exit.
+        """
+        from rich.text import Text as RichText
+        from rich.traceback import Traceback
+
+        self._exit_renderables = [
+            RichText(f"Fatal error: {error}", style="bold red"),
+            Traceback.from_exception(
+                type(error), error, error.__traceback__
+            ),
+        ]
+        # Do NOT call panic() or _fatal_error() — keep the app alive
+        self.call_later(self._show_error_screen, error)
+
+    def _show_error_screen(self, error: BaseException) -> None:
+        """Push the ErrorScreen onto the screen stack.
+
+        Falls back to terminal exit if push_screen fails (e.g., no
+        screen stack yet).
+        """
+        try:
+            self.push_screen(ErrorScreen(error))
+        except Exception:
+            import sys
+            sys.exit(1)
+
     def _cmd_log(self, args: str) -> None:
         """Handle /log subcommands: on, off, status, or toggle."""
         action = args.strip().lower()
@@ -1213,6 +1371,153 @@ class RdsAdapter(App):
                 self._log_error("Failed to start Bokeh server.")
         except Exception as e:
             self._log_error("Failed to start Bokeh server: {}".format(e))
+
+    # ------------------------------------------------------------------
+    # File browser helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _file_extensions_for_cmd(cmd: str) -> set[str] | None:
+        """Return allowed file extensions for a file-path command.
+
+        Returns None to allow all extensions, or a set of lowercase extensions.
+        """
+        if cmd in ("/load", "/head", "/tail"):
+            return {".rds"}
+        if cmd == "/import":
+            return {".log", ".txt"}
+        if cmd == "/save":
+            return None  # All files
+        return set()  # Changed from None to set() — unknown commands show no files
+
+    def _resolve_start_path(self, path_part: str) -> Path:
+        """Resolve a partial path to a starting directory for the file browser.
+
+        Handles ~/ expansion and falls back to cwd on unresolvable paths.
+        """
+        expanded = os.path.expanduser(path_part.strip())
+        if not expanded:
+            return Path.cwd()
+        if os.path.isdir(expanded):
+            return Path(expanded)
+        if os.path.isfile(expanded):
+            return Path(expanded).parent
+        # Partial path — try parent directory
+        parent = os.path.dirname(expanded)
+        if parent and os.path.isdir(parent):
+            return Path(parent)
+        return Path.cwd()
+
+    def _check_file_browse_trigger(self, value: str) -> tuple[str | None, str]:
+        """Check if the input value is a file-path command with at least one space.
+
+        Returns (cmd, path_part) if triggered, or (None, '') if not.
+        The cmd is a slash-prefixed command like '/load', '/save', etc.
+        The path_part is whatever the user typed after the command (may be empty).
+        """
+        if not value.startswith("/"):
+            return (None, "")
+
+        # Find first space to split command from rest
+        space_idx = value.find(" ")
+        if space_idx == -1:
+            return (None, "")  # No space yet — still typing command name
+
+        cmd = value[:space_idx].lower()
+        rest = value[space_idx:].strip()
+
+        # Simple path-taking commands: /load, /head, /tail, /import
+        simple_cmds = {"/load", "/head", "/tail", "/import"}
+        if cmd in simple_cmds:
+            return (cmd, rest)
+
+        # /save job <path> — require "job" subcommand word
+        if cmd == "/save":
+            if rest == "job" or rest.startswith("job "):
+                path_part = rest[3:].strip() if len(rest) > 3 else ""
+                return (cmd, path_part)
+            return (None, "")
+
+        return (None, "")
+
+    def _show_file_browser(self, cmd_name: str, path_part: str) -> None:
+        """Mount the file browser tree widget and dismiss the suggest popup."""
+        # Dismiss any existing popups
+        if self._suggest_popup.is_attached:
+            self._suggest_popup.remove()
+        self._suggest_matches = []
+        self._suggest_mode = ""
+
+        allowed_exts = self._file_extensions_for_cmd(cmd_name)
+        start_path = self._resolve_start_path(path_part)
+
+        # Re-use existing browser if path and command haven't changed
+        if (self._file_browser is not None
+            and self._file_browse_cmd == cmd_name
+            and self._file_browser.path == start_path
+        ):
+            if not self._file_browser.has_focus:
+                self._file_browser.focus()
+            return
+
+        # Dismiss any existing file browser
+        if self._file_browser is not None:
+            if self._file_browser.is_attached:
+                self._file_browser.remove()
+            self._file_browser = None
+        self._file_browse_cmd = ""
+
+        browser = FileBrowserTree(start_path, allowed_extensions=allowed_exts)
+        browser.border_title = f"[bold]Select {cmd_name} file[/bold]"
+        self._file_browser = browser
+        self._file_browse_cmd = cmd_name
+
+        self.query_one("#log-panel").mount(browser, before="#command-input")
+        browser.focus()
+
+    def _dismiss_file_browser(self) -> None:
+        """Remove the file browser tree and reset state."""
+        if self._file_browser is not None:
+            if self._file_browser.is_attached:
+                self._file_browser.remove()
+            self._file_browser = None
+        self._file_browse_cmd = ""
+
+    def _set_input_to_path(self, path: Path) -> None:
+        """Set the command input value to the user's selected file path."""
+        input_widget = self.query_one("#command-input", Input)
+        path_str = str(path)
+
+        if self._file_browse_cmd == "/save":
+            prefix = "/save job "
+        elif self._file_browse_cmd:
+            prefix = f"{self._file_browse_cmd} "
+        else:
+            return
+
+        new_value = f"{prefix}{path_str}"
+        self._suppress_popup = True
+        input_widget.value = new_value
+        input_widget.cursor_position = len(new_value)
+        input_widget.focus()
+        self._dismiss_file_browser()
+
+    @on(DirectoryTree.FileSelected)
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        """Handle file selection from the file browser tree."""
+        event.stop()
+        if event.control is not self._file_browser:
+            return
+        self._set_input_to_path(event.path)
+
+    @on(DescendantFocus)
+    def on_focus_changed(self, event: DescendantFocus) -> None:
+        """Auto-dismiss file browser when focus leaves it or the command input."""
+        if self._file_browser is None:
+            return
+        new_focused = event.widget
+        if new_focused is not self._file_browser and new_focused is not self.query_one("#command-input", Input):
+            self._dismiss_file_browser()
 
     # ------------------------------------------------------------------
     # Session lifecycle
