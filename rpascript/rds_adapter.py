@@ -22,6 +22,10 @@ from typing import Any, Callable
 
 import argparse
 from rpalib.rpa_emitter import RpaEmitter
+try:
+    from rpalib.bokeh_app import BokehApp
+except ImportError:
+    BokehApp = None
 from protocols.ruida.ruida_analyzer import RuidaProtocolAnalyzer
 from rpascript.generator import ScriptGenerator
 
@@ -32,7 +36,7 @@ from textual.events import Key
 from textual.widgets import Header, Input, RichLog, Static
 
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
-from rpascript.encoding import encode_command, is_resolvable_address
+from rpascript.encoding import encode_command, is_resolvable_address, parse_value
 from rpascript.interpreter import ScriptParser, reconstruct_script_line
 from ruidadriver.rd_status import RdStatusEvent
 from ruidadriver.ruida_driver import RdDriver, StatusDict
@@ -87,6 +91,7 @@ class RdsAdapter(App):
         "list",
         "save",
         "stop",
+        "plot",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session",)
 
@@ -189,6 +194,7 @@ class RdsAdapter(App):
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
             "save": "Save composed job to a file (/save job <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
+            "plot": "Plot loaded script moves in a Bokeh visualization",
         }
         self._suggest_matches: list[str] = []
         self._suggest_selected: int = 0
@@ -690,6 +696,8 @@ class RdsAdapter(App):
             self._cmd_save(args)
         elif cmd == "stop":
             self._cmd_stop(args)
+        elif cmd == "plot":
+            self._cmd_plot(args)
 
     # ------------------------------------------------------------------
     # _ImportCollector — in-memory script line collector for /import
@@ -1107,6 +1115,104 @@ class RdsAdapter(App):
             self._log_info("Script execution stopped")
         else:
             self._log_info("Nothing to stop")
+
+    def _cmd_plot(self, args: str = "") -> None:
+        """Plot the loaded script in a Bokeh visualization."""
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load <path> first.")
+            return
+
+        if BokehApp is None:
+            self._log_error("Bokeh is not installed. Install with: pip install bokeh")
+            return
+
+        from protocols.ruida.rpa_plotter import RpaPlotter
+
+        parsed = self._parser.parse_lines(self._loaded_script)
+        if not parsed:
+            self._log_error("No commands found in script.")
+            return
+
+        ns = argparse.Namespace(
+            input_file="<script>",
+            output_file=None,
+            bokeh_port=5006,
+            quiet=True,
+            stop_on_error=False,
+            verbose=False,
+            raw=False,
+            unswizzled=False,
+            on_the_fly=False,
+            magic=0x88,
+            input_encoding="utf-8",
+        )
+
+        out = RpaEmitter(ns)
+        plotter = RpaPlotter(out, "Script Plot")
+        plotter.plot.enable()
+
+        cmd_id = 0
+        for cmd in parsed:
+            cmd_type = cmd.get("type")
+            if cmd_type in ("SESSION_START", "SESSION_END", "DELAY", "WAIT", "NEW_PACKET"):
+                continue
+
+            mnemonic = cmd.get("mnemonic")
+            if not mnemonic:
+                continue
+
+            info = self._parser.mnemonic_map.get(mnemonic)
+            if info is None:
+                continue
+
+            prefix_byte = info[0]
+
+            if len(info) == 4:
+                sub_cmd = info[2]
+                cmd_entry = info[3]
+            else:
+                sub_cmd = info[1] if len(info) >= 2 else None
+                cmd_entry = info[2] if len(info) > 2 else None
+
+            param_specs = cmd_entry[1:] if cmd_entry and len(cmd_entry) > 1 else ()
+            param_values = cmd.get("params", [])
+
+            values = []
+            for i, spec in enumerate(param_specs):
+                if i >= len(param_values):
+                    break
+                if not isinstance(spec, tuple) or len(spec) < 2:
+                    continue
+                decoder_fn = spec[1]
+                rd_type = spec[2] if len(spec) >= 3 else None
+                token = param_values[i].strip()
+                if "=" in token:
+                    _, token = token.split("=", 1)
+                try:
+                    values.append(parse_value(token, decoder_fn, rd_type))
+                except Exception:
+                    continue
+
+            cmd_id += 1
+            try:
+                plotter.cmd_update(cmd_id, mnemonic, prefix_byte, sub_cmd, values)
+            except Exception:
+                continue
+
+        if cmd_id == 0:
+            self._log_error("No plot-relevant commands found in script.")
+            return
+
+        try:
+            bokeh_app = BokehApp(ns, plotter.plot)
+            if bokeh_app.start(port=5006):
+                self._log_info(
+                    "Bokeh visualization: http://localhost:{}".format(bokeh_app.port)
+                )
+            else:
+                self._log_error("Failed to start Bokeh server.")
+        except Exception as e:
+            self._log_error("Failed to start Bokeh server: {}".format(e))
 
     # ------------------------------------------------------------------
     # Session lifecycle
