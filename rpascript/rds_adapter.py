@@ -20,6 +20,11 @@ import threading
 import time
 from typing import Any, Callable
 
+import argparse
+from rpalib.rpa_emitter import RpaEmitter
+from protocols.ruida.ruida_analyzer import RuidaProtocolAnalyzer
+from rpascript.generator import ScriptGenerator
+
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -77,6 +82,7 @@ class RdsAdapter(App):
         "quit",
         "log",
         "head",
+        "import",
         "tail",
         "list",
         "save",
@@ -178,6 +184,7 @@ class RdsAdapter(App):
             "log": "Toggle display of status/reply messages (on|off|status)",
             "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
             "head": "Load a script file to prepend to job on execution",
+            "import": "Import tshark <file> [magic=0xNN] as a script",
             "tail": "Load a script file to append to job on execution",
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
             "save": "Save composed job to a file (/save job <path>)",
@@ -673,6 +680,8 @@ class RdsAdapter(App):
             self._cmd_log(args)
         elif cmd == "head":
             self._cmd_head(args)
+        elif cmd == "import":
+            self._cmd_import(args)
         elif cmd == "tail":
             self._cmd_tail(args)
         elif cmd == "list":
@@ -681,6 +690,168 @@ class RdsAdapter(App):
             self._cmd_save(args)
         elif cmd == "stop":
             self._cmd_stop(args)
+
+    # ------------------------------------------------------------------
+    # _ImportCollector — in-memory script line collector for /import
+    # ------------------------------------------------------------------
+
+    class _ImportCollector:
+        """In-memory equivalent of ScriptGenerator — accumulates .rds lines
+        from decoded parser command data instead of writing to a file."""
+
+        def __init__(self) -> None:
+            self.lines: list[str] = []
+            self._pending_line: str | None = None
+            self._pending_expect: str | None = None
+            self._last_cmd_n = 0
+            self._packet_count = 0
+
+        @staticmethod
+        def _extract_reply_expect(decoded: str) -> str | None:
+            """Extract the reply value from a decoded command string.
+
+            Returns the reply value as a string, or '?' for unknown/TBD values,
+            or None if no reply is present.
+            """
+            if ":Reply:" in decoded:
+                reply_part = decoded.split(":Reply:", 1)[1]
+                if "Unknown" in reply_part or "TBD" in reply_part:
+                    return "?"
+                return reply_part
+            return None
+
+        def write_command(
+            self,
+            *,
+            label,
+            cmd_values,
+            param_list,
+            command,
+            sub_command,
+            decoded,
+            cmd_n,
+        ) -> None:
+            """Receive a decoded command from the parser callback.
+
+            Mirrors ScriptGenerator.write_command — buffers the formatted line
+            until any reply callback arrives (same cmd_n) so the reply value
+            can be captured as ``= expected``.
+            """
+            # Reply on same cmd_n → capture expected value
+            if cmd_n == self._last_cmd_n:
+                if self._pending_expect is None:
+                    self._pending_expect = self._extract_reply_expect(decoded)
+                return
+
+            # New command → flush any previously buffered line first
+            self._flush_pending()
+
+            self._last_cmd_n = cmd_n
+            self._pending_expect = None
+            line = ScriptGenerator._format_line(label, param_list, cmd_values, decoded)
+            self._pending_line = line
+
+        def on_new_packet(self) -> None:
+            """Called once per host→controller packet, before any commands in it."""
+            self._flush_pending()
+            self._packet_count += 1
+            if self._packet_count > 1:
+                self.lines.append("NEW_PACKET")
+
+        def _flush_pending(self) -> None:
+            """Write the buffered command line, appending ``= <expect>`` if a
+            reply value was captured from a subsequent callback on the same cmd_n."""
+            if self._pending_line is None:
+                return
+            line = self._pending_line
+            if self._pending_expect is not None:
+                line += f"  = {self._pending_expect}"
+            self.lines.append(line)
+            self._pending_line = None
+
+        def get_script(self) -> list[str]:
+            """Flush any remaining buffered line and return all collected lines."""
+            self._flush_pending()
+            return self.lines
+
+    def _cmd_import(self, args: str) -> None:
+        """Import a tshark capture file as a script.
+
+        Decodes the tshark file in-process using the RuidaProtocolAnalyzer
+        pipeline, converts decoded commands to .rds script lines via the
+        _ImportCollector, and loads the result into _loaded_script for
+        /exec or /save.
+        """
+        if not args:
+            self._log_error("Usage: /import <path> [magic=0xNN]")
+            return
+
+        tokens = args.split()
+        path = os.path.expanduser(tokens[0])
+
+        # Parse optional arguments
+        magic = 0x88
+        for tok in tokens[1:]:
+            if tok.startswith("magic="):
+                try:
+                    val = tok.split("=", 1)[1]
+                    if val.lower().startswith("0x"):
+                        magic = int(val, 16) & 0xFF
+                    else:
+                        raise ValueError
+                except (ValueError, IndexError):
+                    self._log_error(f"Invalid magic number: {tok}")
+                    return
+
+        if not os.path.isfile(path):
+            self._log_error(f"File not found: {path}")
+            return
+
+        # Build minimal args namespace for the decode pipeline
+        ns = argparse.Namespace(
+            magic=magic,
+            input_file=path,
+            input_encoding="utf-8",
+            on_the_fly=False,
+            verbose=False,
+            raw=False,
+            unswizzled=False,
+            stop_on_error=False,
+            quiet=True,
+            output_file=None,
+        )
+
+        output = RpaEmitter(ns)
+        try:
+            fp = open(path, "r", encoding="utf-8")
+            analyzer = RuidaProtocolAnalyzer(ns, fp, output)
+            collector = self._ImportCollector()
+            analyzer.parser.on_command = collector.write_command
+            analyzer.on_new_packet = collector.on_new_packet
+            analyzer.decode()
+            script = collector.get_script()
+        except SyntaxError as e:
+            self._log_error(f"Decode error: {e}")
+            return
+        except ValueError as e:
+            self._log_error(f"Command formatting error: {e}")
+            return
+        except RuntimeError as e:
+            self._log_error(f"Decode error: {e}")
+            return
+        except OSError as e:
+            self._log_error(f"File error: {e}")
+            return
+        finally:
+            fp.close()
+
+        if not script:
+            self._log_warning(f"No commands found in {path}")
+            self._loaded_script = []
+            return
+
+        self._loaded_script = script
+        self._log_info(f"Imported {len(script)} lines from {path}")
 
     def _cmd_load(self, path: str) -> None:
         """Load a script file into memory."""
@@ -1456,6 +1627,10 @@ class RdsAdapter(App):
     def _log_error(self, message: str) -> None:
         """Log an error message in bold red."""
         self._log_widget.write(f"[bold red]ERROR: {message}[/bold red]")
+
+    def _log_warning(self, message: str) -> None:
+        """Log a warning message in bold yellow."""
+        self._log_widget.write(f"[bold yellow]WARNING: {message}[/bold yellow]")
 
     def _update_status_bar(self) -> None:
         """Update the bottom status bar with connection info, counters, and position."""
