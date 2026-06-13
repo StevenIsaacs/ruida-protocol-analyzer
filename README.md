@@ -150,6 +150,119 @@ python rpa.py --quiet --stop-on-error -o results.txt capture.log
 | `--interactive` | (Future) Enter an interactive mode on the console. |
 | `--generate-script` | Generate a `.rds` Ruida Script file from the decoded commands. Combined with `-o <file>` to control the output path. |
 
+## Interactive TUI (Terminal User Interface)
+
+The `rpa-script` command also launches an interactive Terminal User Interface
+for working with Ruida controllers and scripts directly from the terminal,
+combining command execution, file management, and real-time monitoring.
+
+### Launching
+
+Simply run `rpa-script` with no arguments:
+
+```bash
+rpa-script
+```
+
+Or from the source directory:
+
+```bash
+python rpascript/tui.py
+```
+
+### Layout
+
+The TUI is divided into three areas:
+
+- **Left panel**: Main log area showing commands, replies, and system messages.
+- **Right panel (top)**: Status log showing real-time controller status updates
+  (connection state, ping replies, etc.).
+- **Right panel (bottom)**: Memory monitor showing VmRSS, VmSize, VmPeak, and
+  Threads of the TUI process, updated every 15 seconds.
+- **Bottom bar**: Command input at the bottom for entering commands.
+
+### Basic Workflow
+
+1. **Connect to a controller**:
+   ```
+   session start udp=192.168.1.100
+   ```
+   Replace with your controller's IP address. The TUI remains responsive
+   while connecting; use `/stop` to cancel if the controller is unreachable.
+
+2. **Disconnect**:
+   ```
+   session end
+   ```
+
+### Slash Commands
+
+The TUI provides several slash-prefixed commands:
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/load <file>` | Load a `.rds` script file into memory |
+| `/exec` | Execute the loaded script as a job |
+| `/exec script` | Execute the loaded script as raw commands |
+| `/import <file>` | Import a tshark capture (`.log`/`.txt`) and decode into a script |
+| `/save job <path>` | Save the loaded script as a `.rds` file |
+| `/plot` | Visualize script paths in an interactive Bokeh plot |
+| `/clear` | Clear all log panels, loaded script, and monitor totals |
+| `/stop` | Cancel session start or stop script execution |
+| `/head <file>` | Load a `.rds` script as head (prepended to future `/load` operations) |
+| `/tail <file>` | Load a `.rds` script as tail (appended to future `/load` operations) |
+| `/list` | Show the currently loaded script |
+| `/log on\|off\|status` | Control reply logging |
+| `/quit` | Exit the TUI |
+
+### File Browser
+
+Commands that take a file path (`/load`, `/head`, `/tail`, `/import`,
+`/save job`) trigger an interactive file browser after typing a space:
+
+- The tree shows only matching file types (`.rds` for load/head/tail,
+  `.log`/`.txt` for import, all files for save).
+- **Tab** toggles focus between the command input and the file tree.
+- **Enter** on a selected file backfills the command with the full path.
+- **Escape** dismisses the tree.
+- The tree follows partial paths (e.g., typing `/load /tmp/` starts
+  browsing at `/tmp`).
+- Navigating into subdirectories is preserved when typing additional
+  characters in the same directory.
+
+### Introspection
+
+Prefix any expression with `?` to introspect TUI objects:
+
+```
+?          # List available introspection objects
+?driver    # Inspect the current driver state
+?session   # Inspect the current session state
+```
+
+### Memory Monitor
+
+The bottom-right panel displays real-time process memory usage, updated
+every 15 seconds:
+
+```
+        VmRSS KB  VmSize KB  VmPeak KB  Threads
+Mem:       47100     541348     542264       15
+Change:        0       +100          0        0
+Total:         0      +1000          0        0
+```
+
+- **Mem**: Current values.
+- **Change**: Difference since the previous update (yellow if non-zero).
+- **Total**: Total change since the TUI started.
+- Monitor totals reset with `/clear`.
+
+### Crash Handling
+
+If an unhandled exception occurs, a persistent error screen displays the
+traceback with Rich formatting. Press any key to exit the TUI.
+
 ## Script Generation & Round-Trip Testing
 
 `rpa-script` is a script interpreter that plays back Ruida Script (`.rds`) files and
