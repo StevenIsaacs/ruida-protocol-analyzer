@@ -487,7 +487,7 @@ class RdsAdapter(App):
                     return
 
             if cmd["type"] == "SESSION_START":
-                await self._start_session(**cmd["params"])
+                asyncio.create_task(self._start_session(**cmd["params"]))
             elif cmd["type"] == "SESSION_END":
                 await self._stop_session()
             else:
