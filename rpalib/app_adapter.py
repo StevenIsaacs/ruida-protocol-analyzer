@@ -1,7 +1,7 @@
 """Application adapter abstract base class for Ruida protocol adapters.
 
 AppAdapter defines the interface that application-layer adapters must implement
-to interact with the Ruida session/driver stack. Subclasses include RdsAdapter
+to interact with the Ruida session/driver stack. Subclasses include TuiAdapter
 (TUI) and future adapters for MeerK40t, Rayforge, etc.
 """
 

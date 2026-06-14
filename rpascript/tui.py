@@ -59,7 +59,7 @@ def main() -> None:
 
     # TUI mode: launch interactive terminal interface
     if args.tui:
-        from rpascript.rds_adapter import run_tui
+        from rpascript.tui_adapter import run_tui
 
         if args.script:
             print(

@@ -2,7 +2,7 @@
 
 A comprehensive Python-based protocol analyzer for analyzing Ruida CNC controller communications. This tool parses network packet captures from tshark/Wireshark to decode and interpret the binary Ruida protocol used in laser cutters, engravers, and CNC machines.
 
-NOTE: Currently only the Ruida UDP protocol is supported.
+NOTE: This is a project which is rapidly evolving. New features and changes are added almost daily. If you clone or fork this project you may want to update regularly. Once all planned features have been added a more controlled release process will be used.
 
 ## Features
 

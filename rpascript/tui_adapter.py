@@ -1,5 +1,5 @@
 """
-L7 RdsAdapter — Textual-based TUI for interactive Ruida script execution.
+L7 TuiAdapter — Textual-based TUI for interactive Ruida script execution.
 
 Provides a terminal user interface for connecting to Ruida laser controllers,
 executing rpascript commands interactively, and monitoring status/reply events
@@ -224,7 +224,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None) -> int:
     return total
 
 
-class RdsAdapter(App):
+class TuiAdapter(App):
     """Textual-based TUI for interactive Ruida script execution.
 
     Implements the AppAdapter interface (duck-typing compatible) combined with
@@ -233,7 +233,7 @@ class RdsAdapter(App):
     events in real-time.
 
     Usage::
-        app = RdsAdapter()
+        app = TuiAdapter()
         app.run()  # Blocks until user quits
     """
 
@@ -1917,7 +1917,7 @@ class RdsAdapter(App):
         On success, error_message is None.
         On failure, resolved_object is None and error_message describes the issue.
         """
-        # Handle 'self.' prefix for RdsAdapter itself
+        # Handle 'self.' prefix for TuiAdapter itself
         if path.startswith("self."):
             obj = self
             remaining = path[5:]
@@ -2577,10 +2577,10 @@ def _resolve_hostname(host: str, port: int = 50200) -> str | None:
 
 
 def run_tui() -> None:
-    """Run the RdsAdapter TUI application.
+    """Run the TuiAdapter TUI application.
 
-    Creates an RdsAdapter instance and enters the Textual event loop.
+    Creates an TuiAdapter instance and enters the Textual event loop.
     Blocks until the user quits (Ctrl+C).
     """
-    app = RdsAdapter()
+    app = TuiAdapter()
     app.run()

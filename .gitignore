@@ -12,4 +12,5 @@ dist
 release
 *.egg-info
 docs/plans
+docs/logs
 commit.txt
