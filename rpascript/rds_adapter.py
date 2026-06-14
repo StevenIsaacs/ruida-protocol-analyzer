@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import sys
+import types
 import threading
 import gc
 import time
@@ -142,6 +143,85 @@ class ErrorScreen(ModalScreen):
     def on_key(self, event: Key) -> None:
         """Any key exits the app."""
         self.app.exit(return_code=1)
+
+
+def _deep_getsizeof(obj: Any, seen: set[int] | None = None) -> int:
+    """Recursively compute deep memory footprint of an object.
+
+    Walks __dict__, __slots__, and container items (dict, list, tuple, set)
+    to sum sys.getsizeof for the object and all objects it transitively
+    references.  Stops recursion at primitive types (int, float, str, bytes,
+    bool, NoneType) and shared runtime types (type, ModuleType, etc.).
+
+    Uses id()-based cycle detection via the *seen* set.
+
+    Args:
+        obj: The object to measure.
+        seen: Set of object ids already visited (for cycle detection).
+
+    Returns:
+        Total deep size in bytes.
+    """
+    _PRIMITIVE_TYPES = (int, float, str, bytes, bool, type(None))
+    _STOP_TYPES = (
+        type,
+        types.ModuleType,
+        types.FunctionType,
+        types.BuiltinFunctionType,
+        types.BuiltinMethodType,
+        types.MethodType,
+        types.CodeType,
+        types.FrameType,
+        types.TracebackType,
+        types.GeneratorType,
+    )
+
+    if seen is None:
+        seen = set()
+
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+
+    # Base size of the object itself
+    try:
+        total = sys.getsizeof(obj)
+    except (TypeError, AttributeError):
+        total = 0
+
+    # Stop recursion at primitives and shared runtime types
+    if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES):
+        return total
+
+    # Walk based on container type
+    if isinstance(obj, dict):
+        for k, v in list(obj.items()):
+            total += _deep_getsizeof(k, seen)
+            total += _deep_getsizeof(v, seen)
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        for item in list(obj):
+            total += _deep_getsizeof(item, seen)
+
+    # Walk instance attributes via __dict__ and __slots__
+    if hasattr(obj, '__dict__') and obj.__dict__ is not None:
+        total += _deep_getsizeof(obj.__dict__, seen)
+
+    for _cls in type(obj).__mro__:
+        slots = getattr(_cls, '__slots__', ())
+        if isinstance(slots, str):
+            slots = (slots,)
+        for slot in slots:
+            if slot == '__dict__':
+                continue  # Already handled above
+            if hasattr(obj, slot):
+                try:
+                    val = getattr(obj, slot)
+                    total += _deep_getsizeof(val, seen)
+                except (AttributeError, TypeError):
+                    continue
+
+    return total
 
 
 class RdsAdapter(App):
@@ -2328,7 +2408,7 @@ class RdsAdapter(App):
                     continue
                 cls_name = type(obj).__name__
                 count, mem = counter.get(cls_name, (0, 0))
-                counter[cls_name] = (count + 1, mem + sys.getsizeof(obj))
+                counter[cls_name] = (count + 1, mem + _deep_getsizeof(obj))
             except (AttributeError, TypeError, OSError):
                 continue  # Skip objects that cause errors during inspection
 
