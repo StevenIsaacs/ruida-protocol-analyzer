@@ -16,7 +16,9 @@ import json
 import logging
 import os
 import re
+import sys
 import threading
+import gc
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -328,6 +330,10 @@ class RdsAdapter(App):
         self._mem_prev: dict[str, int] | None = None
         self._mem_initial: dict[str, int] = {}
         self._mem_timer: Any = None
+
+        # GC object counter state
+        self._gc_prev: dict[str, tuple[int, int]] | None = None
+        self._gc_initial: dict[str, tuple[int, int]] = {}
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -1123,6 +1129,8 @@ class RdsAdapter(App):
         self._tail_script = []
         self._mem_initial = {}
         self._mem_prev = None
+        self._gc_initial = {}
+        self._gc_prev = None
         self._log_info("Logs, head, and tail cleared")
 
     def _cmd_quit(self) -> None:
@@ -2292,24 +2300,152 @@ class RdsAdapter(App):
 
         return f"{hdr_line}\n{mem_line}\n{chg_line}\n{tot_line}"
 
-    def _update_mem_monitor(self) -> None:
-        """Timer callback: read memory, render display, update cache."""
+    @staticmethod
+    def _count_gc_objects() -> dict[str, tuple[int, int]]:
+        """Count GC-tracked Ruida PA class instances and their total memory.
+
+        Calls gc.collect(), then iterates gc.get_objects(), filtering to
+        classes whose __module__ starts with a Ruida PA package prefix.
+
+        Returns:
+            dict mapping class name -> (instance_count, total_bytes),
+            sorted by total_bytes descending, truncated to top 20.
+            Empty dict if gc.collect() itself fails (fail-silent).
+        """
+        try:
+            gc.collect()
+        except (AttributeError, TypeError, OSError):
+            return {}
+
+        counter: dict[str, tuple[int, int]] = {}
+        for obj in gc.get_objects():
+            try:
+                mod = type(obj).__module__
+                if not (
+                    mod == "rpa"
+                    or mod.startswith(("rpalib.", "protocols.", "rpascript.", "ruidadriver."))
+                ):
+                    continue
+                cls_name = type(obj).__name__
+                count, mem = counter.get(cls_name, (0, 0))
+                counter[cls_name] = (count + 1, mem + sys.getsizeof(obj))
+            except (AttributeError, TypeError, OSError):
+                continue  # Skip objects that cause errors during inspection
+
+        # Sort by total_bytes descending, take top 20
+        try:
+            sorted_items = sorted(
+                counter.items(), key=lambda kv: kv[1][1], reverse=True
+            )[:20]
+            return dict(sorted_items)
+        except (AttributeError, TypeError, OSError):
+            return {}
+
+    @staticmethod
+    def _render_gc_display(
+        cur: dict[str, tuple[int, int]],
+        prev: dict[str, tuple[int, int]] | None,
+        initial: dict[str, tuple[int, int]],
+    ) -> str:
+        """Format GC object counts as a 21-line table (header + 20 data rows).
+
+        Columns: Class(15L)  Count(10R)  Mem(10R)  Change(10R)  Total(10R)
+
+        Args:
+            cur: Current snapshot — {class_name: (count, mem_bytes)}
+            prev: Previous snapshot for Change delta, or None for first update.
+            initial: First snapshot for Total delta, or empty for first update.
+
+        Returns:
+            Formatted string with Textual markup for non-zero deltas.
+        """
+        col_w = [15, 10, 10, 10, 10]
+        sep = "  "
+
+        # Header row: Class left-aligned, others right-aligned
+        headers = ["Class", "Count", "Mem", "Change", "Total"]
+        cells: list[str] = []
+        for i, h in enumerate(headers):
+            if i == 0:
+                cells.append(f"{h:<{col_w[i]}}")
+            else:
+                cells.append(f"{h:>{col_w[i]}}")
+        hdr_line = sep.join(cells)
+
+        lines: list[str] = []
+        for cls_name in cur:
+            cnt, mem = cur[cls_name]
+            # Change delta
+            if prev is None:
+                chg = "-"
+                chg_str = f"{chg:>{col_w[3]}}"
+            else:
+                _, p_mem = prev.get(cls_name, (0, 0))
+                d = mem - p_mem
+                if d > 0:
+                    chg_str = f"[yellow]{d:>+{col_w[3]}}[/yellow]"
+                elif d < 0:
+                    chg_str = f"[yellow]{d:>{col_w[3]}}[/yellow]"
+                else:
+                    chg_str = f"{'0':>{col_w[3]}}"
+            # Total delta
+            if not initial:
+                tot = "-"
+                tot_str = f"{tot:>{col_w[4]}}"
+            else:
+                i_cnt, i_mem = initial.get(cls_name, (0, 0))
+                td = mem - i_mem
+                if td > 0:
+                    tot_str = f"{td:>+{col_w[4]}}"
+                elif td < 0:
+                    tot_str = f"{td:>{col_w[4]}}"
+                else:
+                    tot_str = f"{'0':>{col_w[4]}}"
+            # Mem column
+            mem_str = f"{mem:>{col_w[2]}}"
+            # Count column
+            cnt_str = f"{cnt:>{col_w[1]}}"
+
+            cls_str = f"{cls_name:<{col_w[0]}}"
+            lines.append(
+                sep.join([cls_str, cnt_str, mem_str, chg_str, tot_str])
+            )
+
+        return hdr_line + "\n" + "\n".join(lines)
+
+    async def _update_mem_monitor(self) -> None:
+        """Timer callback: read memory, count GC objects, render display, update cache."""
         cur = self._read_mem()
         if not cur:
-            return  # Can't read /proc/self/status — skip update
-
-        if not self._mem_initial:
-            # First call — store baseline and render display (Change/Total show "-")
-            self._mem_initial = dict(cur)
-            self._mem_prev = dict(cur)
-            rendered = self._render_mem_display(cur, None, {})
-            self._reply_log.update(rendered)
             return
 
-        rendered = self._render_mem_display(cur, self._mem_prev, self._mem_initial)
-        self._reply_log.update(rendered)
+        # --- Memory stats (inline, fast /proc read) ---
+        if not self._mem_initial:
+            self._mem_initial = dict(cur)
+            self._mem_prev = dict(cur)
+            rendered_mem = self._render_mem_display(cur, None, {})
+        else:
+            rendered_mem = self._render_mem_display(cur, self._mem_prev, self._mem_initial)
+            self._mem_prev = dict(cur)
 
-        self._mem_prev = dict(cur)  # freeze for next iteration
+        # --- GC object stats (offloaded to executor to avoid blocking event loop) ---
+        loop = asyncio.get_running_loop()
+        gc_cur = await loop.run_in_executor(None, self._count_gc_objects)
+
+        if gc_cur:
+            if not self._gc_initial:
+                self._gc_initial = dict(gc_cur)
+                self._gc_prev = dict(gc_cur)
+                rendered_gc = self._render_gc_display(gc_cur, None, {})
+            else:
+                rendered_gc = self._render_gc_display(
+                    gc_cur, self._gc_prev, self._gc_initial
+                )
+                self._gc_prev = dict(gc_cur)
+
+            self._reply_log.update(rendered_mem + "\n\n" + rendered_gc)
+        else:
+            self._reply_log.update(rendered_mem)
 
     def _is_resolvable_address(self, token: str) -> bool:
         """Check if a GET_SETTING address token can be resolved (MT mnemonic or numeric)."""
