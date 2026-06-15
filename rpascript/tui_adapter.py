@@ -2122,18 +2122,26 @@ class TuiAdapter(App):
 
     def _log_script(self, line: str) -> None:
         """Log a script command to the log area with [SCRIPT] prefix."""
+        if not hasattr(self, '_log_widget'):
+            return
         self._log_widget.write(f"[SCRIPT] {line}")
 
     def _log_info(self, message: str) -> None:
         """Log an informational message in cyan."""
+        if not hasattr(self, '_log_widget'):
+            return
         self._log_widget.write(f"[bold cyan]{message}[/bold cyan]")
 
     def _log_error(self, message: str) -> None:
         """Log an error message in bold red."""
+        if not hasattr(self, '_log_widget'):
+            return
         self._log_widget.write(f"[bold red]ERROR: {message}[/bold red]")
 
     def _log_warning(self, message: str) -> None:
         """Log a warning message in bold yellow."""
+        if not hasattr(self, '_log_widget'):
+            return
         self._log_widget.write(f"[bold yellow]WARNING: {message}[/bold yellow]")
 
     def _update_status_bar(self) -> None:
@@ -2228,15 +2236,160 @@ class TuiAdapter(App):
         """AppAdapter interface — TUI creates sessions on demand via command input."""
         pass
 
-    def start(self) -> None:
-        """AppAdapter interface — Textual's App.run() handles lifecycle."""
-        pass
+    def start(self, udp_host: str | None = None, usb_device: str | None = None) -> bool:
+        """Start the driver session.
+
+        Emulates RdDriver.start(). Creates a new RdDriver if none exists,
+        registers TUI listeners, and delegates to RdDriver.start().
+
+        Args:
+            udp_host: UDP host address or hostname.
+            usb_device: USB serial device path.
+
+        Returns:
+            True if transport opened immediately, False if retry needed.
+        """
+        if self._ruida_driver is None:
+            self._ruida_driver = RdDriver()
+            self._ruida_driver.register_status_listener(self.on_status_event)
+            self._ruida_driver.register_error_listener(self.on_error)
+            self._ruida_driver.register_reply_listener(self.on_reply_data)
+        result = self._ruida_driver.start(udp_host=udp_host, usb_device=usb_device)
+        self._log_info(
+            f"[EMU] driver.start(udp_host={udp_host!r}, usb_device={usb_device!r}) -> {result}"
+        )
+        return result
 
     def stop(self) -> None:
         """AppAdapter interface — stop the driver if running."""
         if self._ruida_driver is not None:
+            self._log_info("[EMU] driver.stop()")
             self._ruida_driver.stop()
             self._ruida_driver = None
+
+    def run(
+        self,
+        script: list[str] | None = None,
+        auto_checksum: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Queue a script for execution, or start the TUI event loop.
+
+        When *script* is None, delegates to ``App.run(self, **kwargs)`` so that
+        ``run_tui()`` can call ``app.run()`` with no arguments and enter the
+        Textual event loop normally.
+
+        When *script* is provided, emulates ``RdDriver.run()``: logs the first
+        3 command lines to the TUI and stores the script in ``_loaded_script``
+        for ``/list`` access.
+
+        Args:
+            script: List of rpascript-formatted command lines, or None to
+                start the TUI event loop.
+            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch.
+            **kwargs: Forwarded to ``App.run()`` when *script* is None.
+        """
+        if script is None:
+            # Called from run_tui() — start the TUI event loop
+            return App.run(self, **kwargs)
+
+        # Emulation path — log first 3 lines with truncation indicator
+        if len(script) <= 3:
+            preview = " / ".join(script)
+        else:
+            preview = " / ".join(script[:3]) + f" ... ({len(script)} lines)"
+        self._log_info(f"[EMU] driver.run({preview})")
+
+        # Store for /list access
+        self._loaded_script = list(script)
+
+        self.run_script(script, auto_checksum=auto_checksum)
+
+    def register_status_listener(
+        self, listener: Callable[[RdStatusEvent | StatusDict], None]
+    ) -> None:
+        """Register a status event listener.
+
+        Emulates RdDriver.register_status_listener(). Delegates to the
+        underlying driver if active, raises RuntimeError otherwise.
+        """
+        if self._ruida_driver is None:
+            raise RuntimeError("No active driver. Call start() first.")
+        self._ruida_driver.register_status_listener(listener)
+        self._log_info(f"[EMU] register_status_listener({listener!r})")
+
+    def register_error_listener(self, listener: Callable[[str], None]) -> None:
+        """Register an error listener.
+
+        Emulates RdDriver.register_error_listener().
+        """
+        if self._ruida_driver is None:
+            raise RuntimeError("No active driver. Call start() first.")
+        self._ruida_driver.register_error_listener(listener)
+        self._log_info(f"[EMU] register_error_listener({listener!r})")
+
+    def register_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
+        """Register a reply listener.
+
+        Emulates RdDriver.register_reply_listener().
+        """
+        if self._ruida_driver is None:
+            raise RuntimeError("No active driver. Call start() first.")
+        self._ruida_driver.register_reply_listener(listener)
+        self._log_info(f"[EMU] register_reply_listener({listener!r})")
+
+    def cancel_script(self) -> None:
+        """Cancel the currently running script.
+
+        Emulates RdDriver.cancel_script().
+        """
+        if self._ruida_driver is not None:
+            self._ruida_driver.cancel_script()
+            self._log_info("[EMU] cancel_script()")
+
+    @property
+    def is_connected(self) -> bool:
+        """Return whether the driver is connected.
+
+        Emulates RdDriver.is_connected.
+        """
+        return self._ruida_driver is not None and self._ruida_driver.is_connected
+
+    @property
+    def machine_status(self) -> dict[int, Any]:
+        """Return the current machine status dict.
+
+        Emulates RdDriver.machine_status.
+        """
+        if self._ruida_driver is None:
+            return {}
+        return self._ruida_driver.machine_status
+
+    @staticmethod
+    def format_reply_value(
+        address: int, raw_reply: bytearray
+    ) -> tuple[str | None, str]:
+        """Format a single reply value.
+
+        Emulates RdDriver.format_reply_value().
+        """
+        return RdDriver.format_reply_value(address, raw_reply)
+
+    @staticmethod
+    def format_reply(reply: bytearray) -> str:
+        """Format a reply bytearray.
+
+        Emulates RdDriver.format_reply().
+        """
+        return RdDriver.format_reply(reply)
+
+    @staticmethod
+    def format_reply_list(replies: list[bytearray]) -> list[str]:
+        """Format a list of reply bytearrays.
+
+        Emulates RdDriver.format_reply_list().
+        """
+        return RdDriver.format_reply_list(replies)
 
     # ------------------------------------------------------------------
     # Cleanup
