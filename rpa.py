@@ -22,10 +22,10 @@ try:
     try:
         __version__ = _pkg_version("ruida-protocol-analyzer")
     except PackageNotFoundError:
-        __version__ = "0.7.0-dev"
+        __version__ = "0.8.0-dev"
 except ImportError:
     # Python < 3.8 fallback
-    __version__ = "0.7.0-dev"
+    __version__ = "0.8.0-dev"
 
 
 def parse_arguments():
