@@ -375,14 +375,14 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Steps** | 1. Attempt `AppAdapter()`. |
 | **Expected result** | `TypeError` raised: "Can't instantiate abstract class AppAdapter with abstract methods...". |
 
-#### Test 5.1.2: RdsAdapter Has All AppAdapter Interface Methods
+#### Test 5.1.2: TuiAdapter Has All AppAdapter Interface Methods
 - [ ] Test 5.1.2
 
 | Field | Value |
 |-------|-------|
-| **Objective** | Verify that `RdsAdapter` implements all required AppAdapter methods. |
-| **Prerequisites** | Import `RdsAdapter` from `rpascript.rds_adapter`. |
-| **Steps** | 1. Call `dir(RdsAdapter)` and check for method names: `create_driver_and_session`, `on_status_event`, `on_reply_data`, `on_error`, `run_script`, `start`, `stop`. |
+| **Objective** | Verify that `TuiAdapter` implements all required AppAdapter methods. |
+| **Prerequisites** | Import `TuiAdapter` from `rpascript.tui_adapter`. |
+| **Steps** | 1. Call `dir(TuiAdapter)` and check for method names: `create_driver_and_session`, `on_status_event`, `on_reply_data`, `on_error`, `run_script`, `start`, `stop`. |
 | **Expected result** | All seven methods are present. |
 
 #### Test 5.1.3: `run_tui()` Is Callable
@@ -391,7 +391,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | Field | Value |
 |-------|-------|
 | **Objective** | Verify that `run_tui()` is a callable function (does not test the actual TUI launch). |
-| **Prerequisites** | Import `run_tui` from `rpascript.rds_adapter`. |
+| **Prerequisites** | Import `run_tui` from `rpascript.tui_adapter`. |
 | **Steps** | 1. Verify `callable(run_tui)` returns `True`. |
 | **Expected result** | `run_tui` is callable. |
 
@@ -728,7 +728,7 @@ If the issue is in Python code:
    - **L4**: `ruidadriver/rd_transport.py`, `ruidadriver/transport/`
    - **L5**: `ruidadriver/rd_status.py`, `ruidadriver/rd_session.py`
    - **L6**: `ruidadriver/ruida_driver.py`, `rpascript/interpreter.py`, `rpascript/encoding.py`
-   - **L7**: `rpascript/rds_adapter.py`, `rpalib/app_adapter.py`
+   - **L7**: `rpascript/tui_adapter.py`, `rpalib/app_adapter.py`
 3. Reproduce the failure under the debugger.
 4. Capture stack traces and variable state.
 
@@ -741,7 +741,7 @@ The `!` introspection commands provide a powerful diagnostic tool for understand
 - **Examine transport state**: `!transport.is_open` — returns `True`/`False`
 - **Test encoding directly**: `!transport._package 0xDA0100` — manually invoke wire-format packaging
 - **Inspect any object**: Use `!<path>` to walk the object graph starting from: `session`, `transport`, `driver`, `status`, `parser`, `decoder`
-- **Self-inspect**: Use `!self.<attribute>` to inspect RdsAdapter TUI internals (e.g., `!self._event_count`)
+- **Self-inspect**: Use `!self.<attribute>` to inspect TuiAdapter TUI internals (e.g., `!self._event_count`)
 
 Introspection output appears in the main log area with `[INFO]` prefix. Errors (unknown objects, attribute errors, type errors) are logged as `[ERROR]` without crashing the TUI.
 

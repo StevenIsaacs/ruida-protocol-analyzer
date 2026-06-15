@@ -29,7 +29,7 @@ The driver conforms broadly to the OSI communications model, with layers L4 (Tra
 ```mermaid
 block-beta
 columns 1
-    l7["Application / Integration (L7)\nAppAdapter (ABC) ─── RdsAdapter (Textual TUI)\nrpa-script CLI"]
+    l7["Application / Integration (L7)\nAppAdapter (ABC) ─── TuiAdapter (Textual TUI)\nrpa-script CLI"]
     l6["Driver (L6)\nRdDriver — script parsing, encoding, background execution, machine status"]
     l5["Session (L5)\nRdSession — lifecycle (connect/disconnect)\nRdStatus — ping/query monitor, auto-reconnect"]
     block:l4block
@@ -69,7 +69,7 @@ flowchart TD
     NS["RdTransport._notify_status()\n(TransportEvent listeners)"]
     RS["RdStatus._transport_listener (L5)\nevent-driven state machine\nsets threading.Event"]
     DR["RdDriver._on_reply() (L6)\nRdDecoder.decode_address() / decode_value()\nupdate _machine_status dict\nfire MACHINE_STATUS_* events\nqueue BED_SIZE_SCRIPT on MEM_CARD_ID reply\nforward raw replies to reply listeners"]
-    TUI["RdsAdapter.on_reply_data() (L7)\ndisplay in TUI side panel"]
+    TUI["TuiAdapter.on_reply_data() (L7)\ndisplay in TUI side panel"]
     RC --> TR --> HST
     HST --> NRL
     HST --> NS
@@ -697,9 +697,9 @@ class AppAdapter(ABC):
 
 Subclasses must implement the three callback methods and `create_driver_and_session()`. The `start()`/`stop()`/`run_script()` methods provide sensible defaults.
 
-### 6.2 `RdsAdapter` — Textual TUI
+### 6.2 `TuiAdapter` — Textual TUI
 
-**File:** `rpascript/rds_adapter.py`
+**File:** `rpascript/tui_adapter.py`
 
 A Textual-based terminal user interface that implements (duck-types) the `AppAdapter` interface and extends Textual's `App`.
 
@@ -777,7 +777,7 @@ The TUI provides an interactive introspection mode for inspecting and calling me
 - `status` → `RdStatus` instance (via `session.status`)
 - `parser` → `ScriptParser` instance
 - `decoder` → `RdDecoder` instance
-- `self` → the `RdsAdapter` instance itself
+- `self` → the `TuiAdapter` instance itself
 
 **Syntax:**
 
@@ -787,7 +787,7 @@ The TUI provides an interactive introspection mode for inspecting and calling me
 | `!<path> <args...>` | Call the callable with space-separated, comma-delimited arguments | `!transport._package 0xAA` |
 | `!<path>()` | Show `inspect.signature()` of the callable | `!decoder.decode_address()` |
 | `!<path>(<args>)` | Call with parenthesized arguments | `!transport._package(0xD0, 0x1A, 0x00)` |
-| `!self.<attr>` | Access RdsAdapter attributes | `!self._event_count` |
+| `!self.<attr>` | Access TuiAdapter attributes | `!self._event_count` |
 
 **Argument parsing** (in order of precedence):
 1. `ast.literal_eval` — int, float, list, dict, None, True, False
@@ -858,9 +858,9 @@ The driver's status and reply callbacks fire from background threads. The TUI us
 #### 6.2.8 Entry Point
 
 ```python
-# rpascript/rds_adapter.py
+# rpascript/tui_adapter.py
 def run_tui() -> None:
-    app = RdsAdapter()
+    app = TuiAdapter()
     app.run()
 ```
 
@@ -888,7 +888,7 @@ options:
 
 #### 6.3.2 Execution Modes
 
-1. **TUI mode** (`--tui`): Calls `run_tui()` from `rds_adapter.py`. Script argument is ignored with a note.
+1. **TUI mode** (`--tui`): Calls `run_tui()` from `tui_adapter.py`. Script argument is ignored with a note.
 2. **Parse + tshark output** (script file provided): Parses the `.rds` file, creates `ScriptInterpreter`, writes tshark-format output to stdout or a file. The output can be piped to `rpa.py` for decode verification.
 3. **Dry run** (`--dry-run`): Parses and displays the command tree without generating output.
 4. **No arguments and no `--tui`**: Prints help and exits with code 1.
@@ -1069,7 +1069,7 @@ flowchart TD
     SS["RdSession (L5)\nSession Manager"]
     DR["RdDriver (L6)\nScript Runner\n_machine status tracking_"]
     AA["AppAdapter (L7)\nApplication Callbacks"]
-    TUI["RdsAdapter (L7)\nTUI Display\n_call_from_thread bridge_"]
+    TUI["TuiAdapter (L7)\nTUI Display\n_call_from_thread bridge_"]
 
     subgraph L4 [L4 — Transport]
         RD
@@ -1108,8 +1108,8 @@ flowchart TD
 | `RdTransport` | `TransportEvent` | `Callable[[TransportEvent], None]` | `RdStatus` (via `_transport_listener`) |
 | `RdTransport` | `list[bytearray]` | `Callable[[list[bytearray]], None]` | `RdDriver` (via `_on_reply`) |
 | `RdStatus` | `RdStatusEvent` | `Callable[[RdStatusEvent], None]` | `RdDriver` + application |
-| `RdDriver` | `RdStatusEvent` | `Callable[[RdStatusEvent], None]` | Application (e.g., `RdsAdapter`) |
-| `RdDriver` | `list[bytearray]` | `Callable[[list[bytearray]], None]` | Application (e.g., `RdsAdapter`) |
+| `RdDriver` | `RdStatusEvent` | `Callable[[RdStatusEvent], None]` | Application (e.g., `TuiAdapter`) |
+| `RdDriver` | `list[bytearray]` | `Callable[[list[bytearray]], None]` | Application (e.g., `TuiAdapter`) |
 
 ### 9.3 Thread Safety
 
@@ -1215,7 +1215,7 @@ Converts decoded Ruida parser output (from `rpa.py`) to `.rds` script format for
 | Package | Required | Purpose |
 |---|---|---|
 | `bokeh` | Yes | Plotting (decoding visualization, not part of driver core) |
-| `textual` | Yes | TUI framework for `RdsAdapter` |
+| `textual` | Yes | TUI framework for `TuiAdapter` |
 | `pyserial` | Optional | USB/serial transport (`UsbTransport`) |
 | `selenium` | Optional | PNG export via Bokeh |
 
@@ -1240,7 +1240,7 @@ rpascript/
     encoding.py           # Pure encoding functions
     interpreter.py        # ScriptParser, ScriptInterpreter
     generator.py          # ScriptGenerator (decode→.rds)
-    rds_adapter.py        # RdsAdapter (L7 TUI)
+    tui_adapter.py        # TuiAdapter (L7 TUI)
     cli.py                # rpa-script CLI entry point
 
 rpalib/
