@@ -145,7 +145,7 @@ class ErrorScreen(ModalScreen):
         self.app.exit(return_code=1)
 
 
-def _deep_getsizeof(obj: Any, seen: set[int] | None = None) -> int:
+def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -> int:
     """Recursively compute deep memory footprint of an object.
 
     Walks __dict__, __slots__, and container items (dict, list, tuple, set)
@@ -190,22 +190,22 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None) -> int:
     except (TypeError, AttributeError):
         total = 0
 
-    # Stop recursion at primitives and shared runtime types
-    if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES):
+    # Stop recursion at primitives, shared runtime types, or depth limit
+    if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES) or _depth <= 0:
         return total
 
     # Walk based on container type
     if isinstance(obj, dict):
         for k, v in list(obj.items()):
-            total += _deep_getsizeof(k, seen)
-            total += _deep_getsizeof(v, seen)
+            total += _deep_getsizeof(k, seen, _depth - 1)
+            total += _deep_getsizeof(v, seen, _depth - 1)
     elif isinstance(obj, (list, tuple, set, frozenset)):
         for item in list(obj):
-            total += _deep_getsizeof(item, seen)
+            total += _deep_getsizeof(item, seen, _depth - 1)
 
     # Walk instance attributes via __dict__ and __slots__
     if hasattr(obj, '__dict__') and obj.__dict__ is not None:
-        total += _deep_getsizeof(obj.__dict__, seen)
+        total += _deep_getsizeof(obj.__dict__, seen, _depth - 1)
 
     for _cls in type(obj).__mro__:
         slots = getattr(_cls, '__slots__', ())
@@ -217,7 +217,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None) -> int:
             if hasattr(obj, slot):
                 try:
                     val = getattr(obj, slot)
-                    total += _deep_getsizeof(val, seen)
+                    total += _deep_getsizeof(val, seen, _depth - 1)
                 except (AttributeError, TypeError):
                     continue
 
