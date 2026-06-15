@@ -567,7 +567,7 @@ _BED_SIZE_SCRIPT = [
 #### 5.1.3 Script Runner Lifecycle
 
 ```python
-def start_script_runner() -> None
+def _start_script_runner() -> None
 ```
 
 1. Idempotent — no-op if runner is already alive.
@@ -660,7 +660,6 @@ Thread-safe (RLock). Forwarding methods copy the listener list under lock and it
 
 | Property | Returns |
 |---|---|
-| `session` | The underlying `RdSession` instance |
 | `machine_status` | Read-only snapshot of `{address: decoded_value}` dict |
 
 ---
@@ -754,7 +753,7 @@ On `Input.Submitted`, the input is dispatched in this order:
    - `to` is an optional timeout parameter (e.g. `5s`, `5000ms`). Defaults to 5000ms if omitted. Invalid formats produce an error.
    - Create `RdSession`, call `transport.configure()`.
    - Call `session.connect(timeout=...)` in `run_in_executor` (to avoid blocking the TUI asyncio event loop), using the parsed timeout value.
-   - On success: create `RdDriver`, register `self` as status and reply listeners, call `driver.start_script_runner()`.
+   - On success: create `RdDriver`, register `self` as status and reply listeners, call `driver._start_script_runner()`.
    - On failure: log error, clean up session.
 6. **Session end** (`session end`):
    - Guard: if no active session → log info, return.
@@ -1156,8 +1155,8 @@ Handled at all levels:
 ### 10.5 Stale Session State
 
 - `RdSession.connect()` checks `is_connected` first; returns `True` immediately if already connected (idempotent).
-- `RdDriver.start_script_runner()` checks `_runner_thread.is_alive()`; no-op if already running (idempotent).
-- `RdDriver.stop_script_runner()` checks `_runner_thread is None`; no-op if already stopped (idempotent).
+- `RdDriver._start_script_runner()` checks `_runner_thread.is_alive()`; no-op if already running (idempotent).
+- `RdDriver._stop_script_runner()` checks `_runner_thread is None`; no-op if already stopped (idempotent).
 - `RdStatus.stop()` checks `_monitor_thread` aliveness; idempotent.
 
 ### 10.6 Script Runner Disconnect Handling

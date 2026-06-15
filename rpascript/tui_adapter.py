@@ -145,7 +145,7 @@ class ErrorScreen(ModalScreen):
         self.app.exit(return_code=1)
 
 
-def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -> int:
+def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -> tuple[int, bool]:
     """Recursively compute deep memory footprint of an object.
 
     Walks __dict__, __slots__, and container items (dict, list, tuple, set)
@@ -160,7 +160,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
         seen: Set of object ids already visited (for cycle detection).
 
     Returns:
-        Total deep size in bytes.
+        Tuple of (total deep size in bytes, True if depth limit was exceeded).
     """
     _PRIMITIVE_TYPES = (int, float, str, bytes, bool, type(None))
     _STOP_TYPES = (
@@ -181,7 +181,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
 
     obj_id = id(obj)
     if obj_id in seen:
-        return 0
+        return (0, False)
     seen.add(obj_id)
 
     # Base size of the object itself
@@ -191,21 +191,30 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
         total = 0
 
     # Stop recursion at primitives, shared runtime types, or depth limit
-    if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES) or _depth <= 0:
-        return total
+    if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES):
+        return (total, False)
+    if _depth <= 0:
+        return (total, True)
 
     # Walk based on container type
+    depth_hit = False
     if isinstance(obj, dict):
         for k, v in list(obj.items()):
-            total += _deep_getsizeof(k, seen, _depth - 1)
-            total += _deep_getsizeof(v, seen, _depth - 1)
+            ks, kh = _deep_getsizeof(k, seen, _depth - 1)
+            vs, vh = _deep_getsizeof(v, seen, _depth - 1)
+            total += ks + vs
+            depth_hit = depth_hit or kh or vh
     elif isinstance(obj, (list, tuple, set, frozenset)):
         for item in list(obj):
-            total += _deep_getsizeof(item, seen, _depth - 1)
+            item_s, item_h = _deep_getsizeof(item, seen, _depth - 1)
+            total += item_s
+            depth_hit = depth_hit or item_h
 
     # Walk instance attributes via __dict__ and __slots__
     if hasattr(obj, '__dict__') and obj.__dict__ is not None:
-        total += _deep_getsizeof(obj.__dict__, seen, _depth - 1)
+        d_s, d_h = _deep_getsizeof(obj.__dict__, seen, _depth - 1)
+        total += d_s
+        depth_hit = depth_hit or d_h
 
     for _cls in type(obj).__mro__:
         slots = getattr(_cls, '__slots__', ())
@@ -217,11 +226,13 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
             if hasattr(obj, slot):
                 try:
                     val = getattr(obj, slot)
-                    total += _deep_getsizeof(val, seen, _depth - 1)
+                    v_s, v_h = _deep_getsizeof(val, seen, _depth - 1)
+                    total += v_s
+                    depth_hit = depth_hit or v_h
                 except (AttributeError, TypeError):
                     continue
 
-    return total
+    return (total, depth_hit)
 
 
 class TuiAdapter(App):
@@ -338,11 +349,11 @@ class TuiAdapter(App):
         self._introspect_map: dict[str, Callable[[], Any]] = {
             "session": lambda: self._ruida_driver,
             "transport": lambda: (
-                self._ruida_driver.transport if self._ruida_driver else None
+                self._ruida_driver._session.transport if self._ruida_driver._session else None
             ),
             "driver": lambda: self._ruida_driver,
             "status": lambda: (
-                self._ruida_driver.status_monitor if self._ruida_driver else None
+                self._ruida_driver._session.status if self._ruida_driver._session else None
             ),
             "parser": lambda: self._parser,
             "decoder": lambda: self._decoder,
@@ -412,8 +423,8 @@ class TuiAdapter(App):
         self._mem_timer: Any = None
 
         # GC object counter state
-        self._gc_prev: dict[str, tuple[int, int]] | None = None
-        self._gc_initial: dict[str, tuple[int, int]] = {}
+        self._gc_prev: dict[str, tuple[int, int, bool]] | None = None
+        self._gc_initial: dict[str, tuple[int, int, bool]] = {}
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -1823,9 +1834,9 @@ class TuiAdapter(App):
             transport_type = ""
             if (
                 self._ruida_driver is not None
-                and self._ruida_driver.transport is not None
+                and self._ruida_driver._session is not None
             ):
-                transport = self._ruida_driver.transport
+                transport = self._ruida_driver._session.transport
                 if transport.is_usb:
                     transport_type = "USB"
                 elif transport.is_udp:
@@ -2138,8 +2149,8 @@ class TuiAdapter(App):
             conn = "[red]Disconnected[/red]"
 
         # Transport info
-        if self._ruida_driver is not None and self._ruida_driver.transport is not None:
-            transport = self._ruida_driver.transport
+        if self._ruida_driver is not None and self._ruida_driver._session is not None:
+            transport = self._ruida_driver._session.transport
             if transport.is_udp:
                 transport_info = transport._udp_host
             elif transport.is_usb:
@@ -2381,14 +2392,14 @@ class TuiAdapter(App):
         return f"{hdr_line}\n{mem_line}\n{chg_line}\n{tot_line}"
 
     @staticmethod
-    def _count_gc_objects() -> dict[str, tuple[int, int]]:
+    def _count_gc_objects() -> dict[str, tuple[int, int, bool]]:
         """Count GC-tracked Ruida PA class instances and their total memory.
 
         Calls gc.collect(), then iterates gc.get_objects(), filtering to
         classes whose __module__ starts with a Ruida PA package prefix.
 
         Returns:
-            dict mapping class name -> (instance_count, total_bytes),
+            dict mapping class name -> (instance_count, total_bytes, depth_exceeded),
             sorted by total_bytes descending, truncated to top 20.
             Empty dict if gc.collect() itself fails (fail-silent).
         """
@@ -2397,7 +2408,7 @@ class TuiAdapter(App):
         except (AttributeError, TypeError, OSError):
             return {}
 
-        counter: dict[str, tuple[int, int]] = {}
+        counter: dict[str, tuple[int, int, bool]] = {}
         for obj in gc.get_objects():
             try:
                 mod = type(obj).__module__
@@ -2407,8 +2418,9 @@ class TuiAdapter(App):
                 ):
                     continue
                 cls_name = type(obj).__name__
-                count, mem = counter.get(cls_name, (0, 0))
-                counter[cls_name] = (count + 1, mem + _deep_getsizeof(obj))
+                count, mem, depth_hit = counter.get(cls_name, (0, 0, False))
+                obj_mem, obj_hit = _deep_getsizeof(obj)
+                counter[cls_name] = (count + 1, mem + obj_mem, depth_hit or obj_hit)
             except (AttributeError, TypeError, OSError):
                 continue  # Skip objects that cause errors during inspection
 
@@ -2423,16 +2435,16 @@ class TuiAdapter(App):
 
     @staticmethod
     def _render_gc_display(
-        cur: dict[str, tuple[int, int]],
-        prev: dict[str, tuple[int, int]] | None,
-        initial: dict[str, tuple[int, int]],
+        cur: dict[str, tuple[int, int, bool]],
+        prev: dict[str, tuple[int, int, bool]] | None,
+        initial: dict[str, tuple[int, int, bool]],
     ) -> str:
         """Format GC object counts as a 21-line table (header + 20 data rows).
 
         Columns: Class(15L)  Count(10R)  Mem(10R)  Change(10R)  Total(10R)
 
         Args:
-            cur: Current snapshot — {class_name: (count, mem_bytes)}
+            cur: Current snapshot — {class_name: (count, mem_bytes, depth_exceeded)}
             prev: Previous snapshot for Change delta, or None for first update.
             initial: First snapshot for Total delta, or empty for first update.
 
@@ -2454,13 +2466,13 @@ class TuiAdapter(App):
 
         lines: list[str] = []
         for cls_name in cur:
-            cnt, mem = cur[cls_name]
+            cnt, mem, depth_exceeded = cur[cls_name]
             # Change delta
             if prev is None:
                 chg = "-"
                 chg_str = f"{chg:>{col_w[3]}}"
             else:
-                _, p_mem = prev.get(cls_name, (0, 0))
+                _, p_mem, _ = prev.get(cls_name, (0, 0, False))
                 d = mem - p_mem
                 if d > 0:
                     chg_str = f"[yellow]{d:>+{col_w[3]}}[/yellow]"
@@ -2473,7 +2485,7 @@ class TuiAdapter(App):
                 tot = "-"
                 tot_str = f"{tot:>{col_w[4]}}"
             else:
-                i_cnt, i_mem = initial.get(cls_name, (0, 0))
+                i_cnt, i_mem, _ = initial.get(cls_name, (0, 0, False))
                 td = mem - i_mem
                 if td > 0:
                     tot_str = f"{td:>+{col_w[4]}}"
@@ -2486,7 +2498,10 @@ class TuiAdapter(App):
             # Count column
             cnt_str = f"{cnt:>{col_w[1]}}"
 
-            cls_str = f"{cls_name:<{col_w[0]}}"
+            if depth_exceeded:
+                cls_str = f"[orange]{cls_name:<{col_w[0]}}[/orange]"
+            else:
+                cls_str = f"{cls_name:<{col_w[0]}}"
             lines.append(
                 sep.join([cls_str, cnt_str, mem_str, chg_str, tot_str])
             )

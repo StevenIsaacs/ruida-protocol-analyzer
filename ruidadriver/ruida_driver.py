@@ -189,7 +189,7 @@ class RdDriver:
             udp_host=udp_host,
             usb_device=usb_device,
         )
-        self.start_script_runner()
+        self._start_script_runner()
         return opened
 
     def stop(self) -> None:
@@ -198,7 +198,7 @@ class RdDriver:
         Idempotent — safe to call multiple times. Connection parameters
         persist for reuse on next start() call.
         """
-        self.stop_script_runner()
+        self._stop_script_runner()
         if self._session is not None:
             self._session.disconnect()
             self._session = None
@@ -401,7 +401,7 @@ class RdDriver:
 
     # ---- Script Runner Lifecycle ----
 
-    def start_script_runner(self) -> None:
+    def _start_script_runner(self) -> None:
         """Start the background script runner thread and register session listeners.
 
         Configures RdStatus with ping/query commands, then starts the status monitor.
@@ -451,7 +451,7 @@ class RdDriver:
         #    and will be handled by a fully-initialized driver
         self._session.status.start()
 
-    def stop_script_runner(self) -> None:
+    def _stop_script_runner(self) -> None:
         """Stop the background script runner thread and unregister session listeners.
 
         Sends shutdown sentinel, joins thread (2s timeout), and unregisters listeners.
@@ -601,7 +601,7 @@ class RdDriver:
         with self._lock:
             if self._runner_thread is None or not self._runner_thread.is_alive():
                 raise RuntimeError(
-                    "Script runner not started. Call start_script_runner() first."
+                    "Script runner not started. Call start() first."
                 )
             if not script:
                 return  # Empty script is a no-op
@@ -780,24 +780,9 @@ class RdDriver:
     # ---- Properties ----
 
     @property
-    def session(self) -> RdSession | None:
-        """The underlying RdSession instance, or None if not started."""
-        return self._session
-
-    @property
     def is_connected(self) -> bool:
         """True if the session exists AND is connected to the controller."""
         return self._session is not None and self._session.is_connected
-
-    @property
-    def transport(self):
-        """The session's transport, or None if not started."""
-        return self._session.transport if self._session else None
-
-    @property
-    def status_monitor(self):
-        """The session's status monitor, or None if not started."""
-        return self._session.status if self._session else None
 
     @property
     def machine_status(self) -> dict[int, Any]:
