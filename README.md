@@ -6,7 +6,6 @@ NOTE: This is a project which is rapidly evolving. New features and changes are 
 
 ## Features
 
-- **Real-time Analysis**: Spawn tshark and analyze packets as they're captured
 - **File-based Analysis**: Process existing tshark capture files
 - **State Machine Parser**: Robust parsing using a finite state machine architecture
 - **Hierarchical Commands**: Handles nested command structures (command/subcommand)
@@ -14,6 +13,7 @@ NOTE: This is a project which is rapidly evolving. New features and changes are 
 - **Flexible Output**: Console output, file output, verbose modes, and raw packet display
 - **Error Handling**: Configurable error handling with resync capabilities
 - **Move and Cut Plotting**: When enabled moves and cut lines are plotted using Bokeh
+- **Automation-friendly**: `rpa.py` accepts a tshark log file and produces structured, text-based output suitable for scripting, pipelines, and CI/CD systems.
 
 This tool is designed to be used to discover and diagnose problems related to UDP communications with a Ruida controller. Much of the Ruida protocol is unknown and new commands or parameters may be discovered during analysis. The nature of such discovery often requires new experiments or parsing algorithms when new information is learned. Because of this the best experience using this tool is within VSCode or its forks like VSCodium and Antigravity. These IDEs allow stepping through the code to observe the analyzer's behavior along with side by side display of moves and cuts. And, when needed, this tool can be hacked to refine analysis. If you create a hack which can be useful to others please consider contributing it to this project.
 
@@ -116,11 +116,6 @@ tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
 python rpa.py capture.log
 ```
 
-#### Real-time Analysis
-```bash
-python rpa.py --on-the-fly
-```
-
 #### Advanced Options
 ```bash
 # Verbose output with raw packet data
@@ -137,8 +132,6 @@ python rpa.py --quiet --stop-on-error -o results.txt capture.log
 
 | Option | Description |
 |--------|-------------|
-| `--on-the-fly` | Spawn tshark and process output in real time. |
-| `--ip` | The Ruida controller IP address. Required when `--on-the-fly` is used. |
 | `--magic <magic_number>` | Specify the swizzle magic number rather than attempt to discover it in the capture. |
 | `--out <file>`, `-o <file>` | Write decoded data to specified file. |
 | `--quiet`, `-q` | Suppress stdout output. |
@@ -147,116 +140,24 @@ python rpa.py --quiet --stop-on-error -o results.txt capture.log
 | `--unswizzled` | Output the unswizzled and unprocessed data. |
 | `--stop-on-error` | Stop processing on first decode error. |
 | `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
-| `--interactive` | (Future) Enter an interactive mode on the console. |
 | `--generate-script` | Generate a `.rds` Ruida Script file from the decoded commands. Combined with `-o <file>` to control the output path. |
 
-## Interactive TUI (Terminal User Interface)
+### Interactive TUI (Terminal User Interface)
 
-The `rpa-script` command also launches an interactive Terminal User Interface
-for working with Ruida controllers and scripts directly from the terminal,
-combining command execution, file management, and real-time monitoring.
+For detailed documentation of the TUI, including session management,
+script execution, capture import, visualization, and all slash commands:
 
-### Launching
+**[docs/guides/tui-guide.md](docs/guides/tui-guide.md)**
 
-Simply run `rpa-script` with no arguments:
+Quick start:
 
 ```bash
 rpa-script
 ```
 
-Or from the source directory:
-
-```bash
-python rpascript/tui.py
-```
-
-### Layout
-
-The TUI is divided into three areas:
-
-- **Left panel**: Main log area showing commands, replies, and system messages.
-- **Right panel (top)**: Status log showing real-time controller status updates
-  (connection state, ping replies, etc.).
-- **Right panel (bottom)**: Memory monitor showing VmRSS, VmSize, VmPeak, and
-  Threads of the TUI process, updated every 15 seconds.
-- **Bottom bar**: Command input at the bottom for entering commands.
-
-### Basic Workflow
-
-1. **Connect to a controller**:
-   ```
-   session start udp=192.168.1.100
-   ```
-   Replace with your controller's IP address. The TUI remains responsive
-   while connecting; use `/stop` to cancel if the controller is unreachable.
-
-2. **Disconnect**:
-   ```
-   session end
-   ```
-
-### Slash Commands
-
-The TUI provides several slash-prefixed commands:
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
-| `/load <file>` | Load a `.rds` script file into memory |
-| `/exec` | Execute the loaded script as a job |
-| `/exec script` | Execute the loaded script as raw commands |
-| `/import <file>` | Import a tshark capture (`.log`/`.txt`) and decode into a script |
-| `/save job <path>` | Save the loaded script as a `.rds` file |
-| `/plot` | Visualize script paths in an interactive Bokeh plot |
-| `/clear` | Clear all log panels, loaded script, and monitor totals |
-| `/stop` | Cancel session start or stop script execution |
-| `/head <file>` | Load a `.rds` script as head (prepended to future `/load` operations) |
-| `/tail <file>` | Load a `.rds` script as tail (appended to future `/load` operations) |
-| `/list` | Show the currently loaded script |
-| `/log on\|off\|status` | Control reply logging |
-| `/quit` | Exit the TUI |
-
-### File Browser
-
-Commands that take a file path (`/load`, `/head`, `/tail`, `/import`,
-`/save job`) trigger an interactive file browser after typing a space:
-
-- The tree shows only matching file types (`.rds` for load/head/tail,
-  `.log`/`.txt` for import, all files for save).
-- **Tab** toggles focus between the command input and the file tree.
-- **Enter** on a selected file backfills the command with the full path.
-- **Escape** dismisses the tree.
-- The tree follows partial paths (e.g., typing `/load /tmp/` starts
-  browsing at `/tmp`).
-- Navigating into subdirectories is preserved when typing additional
-  characters in the same directory.
-
-### Introspection
-
-Prefix any expression with `?` to introspect TUI objects:
-
-```
-?          # List available introspection objects
-?driver    # Inspect the current driver state
-?session   # Inspect the current session state
-```
-
-### Memory Monitor
-
-The bottom-right panel displays real-time process memory usage, updated
-every 15 seconds:
-
-```
-        VmRSS KB  VmSize KB  VmPeak KB  Threads
-Mem:       47100     541348     542264       15
-Change:        0       +100          0        0
-Total:         0      +1000          0        0
-```
-
-- **Mem**: Current values.
-- **Change**: Difference since the previous update (yellow if non-zero).
-- **Total**: Total change since the TUI started.
-- Monitor totals reset with `/clear`.
+The TUI provides interactive access to Ruida controllers via terminal,
+combining connection management, script execution, real-time monitoring,
+and capture import from other laser applications.
 
 ### Crash Handling
 

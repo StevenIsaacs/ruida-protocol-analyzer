@@ -1035,7 +1035,6 @@ class TuiAdapter(App):
             magic=magic,
             input_file=path,
             input_encoding="utf-8",
-            on_the_fly=False,
             verbose=False,
             raw=False,
             unswizzled=False,
@@ -1399,7 +1398,6 @@ class TuiAdapter(App):
             verbose=False,
             raw=False,
             unswizzled=False,
-            on_the_fly=False,
             magic=0x88,
             input_encoding="utf-8",
         )

@@ -1,5 +1,4 @@
 import argparse
-import subprocess
 import sys
 import time
 
@@ -46,7 +45,6 @@ a file.
         epilog="""
 Examples:
   %(prog)s capture.log                      # Analyze existing tshark log
-  %(prog)s --on-the-fly --ip 192.168.1.100  # Real-time analysis
   %(prog)s -o output.txt capture.log        # Save decoded output to file
   %(prog)s --verbose --raw capture.log      # Detailed output with raw data
   %(prog)s --magic 0x88 capture.log         # Use specific magic number
@@ -57,7 +55,7 @@ Examples:
     parser.add_argument(
         "input_file",
         nargs="?",
-        help="Tshark log file to analyze (not needed with --on-the-fly).",
+        help="Tshark log file to analyze.",
     )
 
     # Input file encodng.
@@ -66,20 +64,6 @@ Examples:
         metavar="<input_encoding>",
         default="utf-8",
         help="Input text encoding. Windows files can be encoded as utf-16.",
-    )
-
-    # Real-time processing
-    parser.add_argument(
-        "--on-the-fly",
-        action="store_true",
-        help="Spawn tshark and process the output in real time (requires --ip).",
-    )
-
-    # Controller IP address
-    parser.add_argument(
-        "--ip",
-        metavar="<ip_address>",
-        help="The IP address of the controller (required when using --on-the-fly.)",
     )
 
     # Protocol
@@ -160,13 +144,6 @@ Examples:
         help="Port for the Bokeh visualization server (default: 5006).",
     )
 
-    # Enter interactive mode (CLI)
-    parser.add_argument(
-        "--interactive",
-        action="store_true",
-        help="Enter an interactive mode on the console after decode completes.",
-    )
-
     # Generate .rds script file
     parser.add_argument(
         "--generate-script",
@@ -182,14 +159,8 @@ Examples:
     args = parser.parse_args()
 
     # Validation
-    if not args.on_the_fly and not args.input_file:
-        parser.error("Input file required unless using --on-the-fly")
-
-    if args.on_the_fly and args.input_file:
-        parser.error("Cannot specify input file with --on-the-fly")
-
-    if args.on_the_fly and not args.ip:
-        parser.error("--ip is required when using --on-the-fly")
+    if not args.input_file:
+        parser.error("Input file required")
 
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
@@ -212,42 +183,8 @@ Examples:
 
 
 def open_input(args):
-    """Either open the input file or spawn tshark. Both support the
-    readline method so either can be passed to the parser."""
-    _file = args.input_file
-    if args.input_file:
-        input = open(_file, "r", encoding=args.input_encoding)
-    else:
-        # Build tshark command with the specified IP
-        _tshark_cmd = [
-            "tshark",
-            "-Y",
-            f"(ip.addr == {args.ip} && udp.payload)",
-            "-T",
-            "fields",
-            "-e",
-            "frame.time_delta",
-            "-e",
-            "udp.port",
-            "-e",
-            "udp.length",
-            "-e",
-            "data.data",
-            "-l",
-        ]
-        try:
-            _in = subprocess.Popen(
-                _tshark_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-        except FileNotFoundError:
-            raise FileNotFoundError("tshark not found. Please install Wireshark/tshark")
-        input = _in.stdout
-    return input
+    """Open the input tshark log file for reading."""
+    return open(args.input_file, "r", encoding=args.input_encoding)
 
 
 def main():
@@ -284,25 +221,6 @@ def main():
 
         if BokehApp is None:
             output.warning("Bokeh is not installed. Install with: pip install bokeh")
-        elif args.on_the_fly:
-            # For on-the-fly, start Bokeh server before decode.
-            try:
-                bokeh_app = BokehApp(args, analyzer.parser.plot.plot)
-                if bokeh_app.start(port=args.bokeh_port):
-                    output.info(
-                        "Bokeh visualization server started at "
-                        f"http://localhost:{bokeh_app.port}"
-                    )
-                else:
-                    output.warning(
-                        "Failed to start Bokeh server. Continuing without plot."
-                    )
-                    bokeh_app = None
-            except Exception as e:
-                output.warning(
-                    f"Failed to start Bokeh server: {e}. Continuing without plot."
-                )
-                bokeh_app = None
 
     try:
         analyzer.decode()  # Does not return until decode is complete.
@@ -313,7 +231,7 @@ def main():
         if script_gen is not None:
             script_gen.close()
 
-        if args.plot_moves and not args.on_the_fly and BokehApp is not None:
+        if args.plot_moves and BokehApp is not None:
             # File mode: start Bokeh server after output file is written.
             try:
                 bokeh_app = BokehApp(args, analyzer.parser.plot.plot)

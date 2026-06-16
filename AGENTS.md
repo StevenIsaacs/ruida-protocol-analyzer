@@ -8,7 +8,6 @@ A tool that decodes binary UDP packets captured from Ruida CNC/laser controllers
 
 ```
 python rpa.py capture.log              # Decode a tshark log file
-python rpa.py --on-the-fly --ip <IP>   # Live capture via tshark
 ./capture <ip> <file>                  # Capture tshark log (bash)
 ./capture.ps1 -if Ethernet -ip <IP> -out <file>  # Capture (PowerShell)
 ./decode <file>                        # Produces <file>.tshark + <file>-vrb.tshark
@@ -31,7 +30,7 @@ Only the Ruida UDP protocol is currently implemented. Adding a new protocol mean
 
 ## Workflow
 
-1. **Capture** traffic with `./capture` (or `--on-the-fly` mode) → produces `.log`
+1. **Capture** traffic with `./capture` → produces `.log`
 2. **Decode** with `./decode` → produces `.tshark` (summary) and `-vrb.tshark` (verbose)
 3. **Investigate** unknown commands/parameters marked `TBD` in output
 

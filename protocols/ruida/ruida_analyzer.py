@@ -119,14 +119,10 @@ class UdpDumpReader:
         return self.length
 
     def reset(self):
-        """Reset the file pointer to the beginning of the dump file.
-
-        NOTE: This has no effect if --on-the-fly is used.
-        """
-        if not self.args.on_the_fly:
-            self.out.verbose("Resetting input stream.")
-            self.input.seek(0)
-            self.line_number = 0
+        """Reset the file pointer to the beginning of the dump file."""
+        self.out.verbose("Resetting input stream.")
+        self.input.seek(0)
+        self.line_number = 0
 
 
 class RdPacket:
