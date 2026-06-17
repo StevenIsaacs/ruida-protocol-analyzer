@@ -46,6 +46,8 @@ from rpascript.interpreter import ScriptParser, reconstruct_script_line
 from ruidadriver.rd_status import RdStatusEvent
 from ruidadriver.ruida_driver import RdDriver, StatusDict
 
+_log = logging.getLogger(__name__)
+
 
 def _parse_timeout_spec(to_str: str) -> float:
     """Parse a timeout spec like '5s' or '5000ms' into seconds (float).
@@ -2351,7 +2353,9 @@ class TuiAdapter(App):
 
         Emulates RdDriver.is_connected.
         """
-        return self._ruida_driver is not None and self._ruida_driver.is_connected
+        result = self._ruida_driver is not None and self._ruida_driver.is_connected
+        self._log_info(f"[EMU] is_connected -> {result}")
+        return result
 
     @property
     def machine_status(self) -> dict[int, Any]:
@@ -2360,8 +2364,11 @@ class TuiAdapter(App):
         Emulates RdDriver.machine_status.
         """
         if self._ruida_driver is None:
+            self._log_info("[EMU] machine_status -> {} (no driver)")
             return {}
-        return self._ruida_driver.machine_status
+        result = self._ruida_driver.machine_status
+        self._log_info(f"[EMU] machine_status -> {len(result)} items")
+        return result
 
     @staticmethod
     def format_reply_value(
@@ -2371,6 +2378,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply_value().
         """
+        _log.info(f"[EMU] format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
         return RdDriver.format_reply_value(address, raw_reply)
 
     @staticmethod
@@ -2379,6 +2387,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply().
         """
+        _log.info(f"[EMU] format_reply(len={len(reply)})")
         return RdDriver.format_reply(reply)
 
     @staticmethod
@@ -2387,6 +2396,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply_list().
         """
+        _log.info(f"[EMU] format_reply_list(count={len(replies)})")
         return RdDriver.format_reply_list(replies)
 
     # ------------------------------------------------------------------

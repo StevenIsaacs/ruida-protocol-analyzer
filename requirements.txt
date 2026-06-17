@@ -2,5 +2,7 @@ bokeh
 pyserial
 textual  # TUI framework for interactive script execution
 
+rpyc  # RPyC remote procedure call for TUI RPC
+
 # Optional: for PNG export via Bokeh's export_png (requires headless Chrome/Firefox)
 # selenium

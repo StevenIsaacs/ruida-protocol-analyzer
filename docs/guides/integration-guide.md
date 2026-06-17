@@ -468,3 +468,184 @@ Since this project has no automated test infrastructure, agents should:
 - **Ping interval:** 5000ms default. Queries every 1000ms.
 - **Timeouts:** Per-command timeout 250ms, gross timeout 15s for long operations (home sequences, etc.).
 - **Connection retry:** Every 1000ms when not connected.
+
+---
+
+## 8. Remote Control via RPyC
+
+This section covers the RPyC (Remote Python Call) integration path, which makes all 10 TuiAdapter API items remotely callable. This enables headless control of Ruida laser controllers from external applications, CI/CD pipelines, or distributed systems.
+
+### 8.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Client Process                     │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  RPyC Client Connection                       │   │
+│  │  • Connects via TCP + optional TLS            │   │
+│  │  • Sends auth token (optional)                │   │
+│  │  • Calls exposed_* methods via netref         │   │
+│  └────────────┬─────────────────────────────────┘   │
+└───────────────┼─────────────────────────────────────┘
+                │  TCP (encrypted if TLS)
+┌───────────────┼─────────────────────────────────────┐
+│  ┌────────────┴─────────────────────────────────┐   │
+│  │  RPyC Server (ThreadedServer)                 │   │
+│  │  • Binds to host:port (default 127.0.0.1:18812)│   │
+│  │  • Validates auth token (optional)             │   │
+│  │  • Dispatches to RpycTuiService               │   │
+│  └────────────┬─────────────────────────────────┘   │
+│  ┌────────────┴─────────────────────────────────┐   │
+│  │  RpycTuiService                               │   │
+│  │  • Wraps TuiAdapter instance                  │   │
+│  │  • Delegates all 10 API items                 │   │
+│  │  • Wraps netref callbacks in error handlers   │   │
+│  └────────────┬─────────────────────────────────┘   │
+│  ┌────────────┴─────────────────────────────────┐   │
+│  │  TuiAdapter                                    │   │
+│  │  • Emulates RdDriver API                       │   │
+│  │  • Manages driver lifecycle                    │   │
+│  │  • All calls logged with [EMU] prefix          │   │
+│  └────────────┬─────────────────────────────────┘   │
+│  ┌────────────┴─────────────────────────────────┐   │
+│  │  RdDriver                                     │   │
+│  │  • Actual controller communication            │   │
+│  └──────────────────────────────────────────────┘   │
+│                   Server Process                     │
+└─────────────────────────────────────────────────────┘
+```
+
+### 8.2 Starting the RPC Server
+
+The RPC server is started via `rpa-script --rpyc-host`:
+
+```bash
+# Minimal (localhost, no auth)
+rpa-script --rpyc-host 127.0.0.1
+
+# With authentication token
+rpa-script --rpyc-host 0.0.0.0 --rpyc-token "s3cret!t0k3n"
+
+# With TLS encryption
+./scripts/gen-rpyc-certs.sh ./rpyc-certs
+rpa-script --rpyc-host 0.0.0.0 \
+    --rpyc-cert ./rpyc-certs/server-cert.pem \
+    --rpyc-key ./rpyc-certs/server-key.pem \
+    --rpyc-token "s3cret!t0k3n"
+```
+
+| Argument       | Default      | Description                                    |
+|----------------|--------------|------------------------------------------------|
+| `--rpyc-host`  | (none)       | Bind address. When set, starts RPC server mode |
+| `--rpyc-port`  | `18812`      | TCP port                                       |
+| `--rpyc-cert`  | (none)       | TLS certificate path (enables TLS)             |
+| `--rpyc-key`   | (none)       | TLS private key path                           |
+| `--rpyc-token` | (none)       | Auth token (empty = localhost-only without auth)|
+
+### 8.3 Client Connection Example
+
+```python
+import socket
+import rpyc
+from rpyc.utils.factory import connect_stream
+from rpyc.utils.classic import SocketStream
+
+
+def connect_rpyc(host="127.0.0.1", port=18812, token=None):
+    """Connect to the RPyC server and return the service root."""
+    sock = socket.create_connection((host, port))
+
+    if token:
+        # Send auth token: 1 byte length + N bytes token
+        token_bytes = token.encode("utf-8")
+        sock.sendall(bytes([len(token_bytes)]) + token_bytes)
+    else:
+        # Send empty length byte for localhost
+        sock.sendall(b"\x00")
+
+    conn = connect_stream(SocketStream(sock))
+    return conn.root
+
+
+# --- Usage ---
+
+# Connect
+svc = connect_rpyc("127.0.0.1", 18812, token="s3cret!t0k3n")
+
+# Start the driver
+connected = svc.start(udp_host="192.168.1.100")
+print(f"Connected: {connected}")
+
+# Register a status listener (netref callback)
+def on_status(event):
+    print(f"[STATUS] {event}")
+
+svc.register_status_listener(on_status)
+
+# Run a script
+svc.run(["GET_SETTING MEM_CARD_ID"], auto_checksum=True)
+
+# Check connection
+print(f"Is connected: {svc.is_connected()}")
+
+# Stop
+svc.stop()
+```
+
+### 8.4 Authentication Details
+
+The token authentication protocol uses a simple length-prefixed exchange:
+
+1. Client connects TCP socket
+2. Client sends 1 byte (token length N) + N bytes (token UTF-8)
+3. Server validates with constant-time comparison (`hmac.compare_digest`)
+4. If valid, RPyC handshake proceeds normally
+
+**Localhost exception:** Connections from `127.0.0.1`, `::1`, or `localhost` without a token (empty length byte) are allowed through. This enables local testing without auth while requiring tokens for remote connections.
+
+**Auth failure behavior:** Invalid tokens cause the server to immediately close the connection. The client receives an `EOFError` or `ConnectionRefusedError` on the first RPyC call.
+
+### 8.5 TLS Configuration
+
+TLS is configured via RPyC's `ssl_ctx` parameter, which accepts a standard Python `ssl.SSLContext`:
+
+| File                | Purpose                | Generated By                      |
+|---------------------|------------------------|-----------------------------------|
+| `ca-cert.pem`      | CA certificate         | `scripts/gen-rpyc-certs.sh`      |
+| `ca-key.pem`       | CA private key (keep secret) | `scripts/gen-rpyc-certs.sh` |
+| `server-cert.pem`  | Server certificate     | `scripts/gen-rpyc-certs.sh`      |
+| `server-key.pem`   | Server private key (keep secret) | `scripts/gen-rpyc-certs.sh` |
+
+Generate with:
+
+```bash
+./scripts/gen-rpyc-certs.sh ./rpyc-certs
+```
+
+This produces 4096-bit RSA certificates valid for 10 years with full X.509 v3 extensions (SKI, AKI, KeyUsage, ExtendedKeyUsage) required by Python 3.14+.
+
+### 8.6 Netref Callback Caveats
+
+Listener callbacks (`register_status_listener`, `register_error_listener`, `register_reply_listener`) are implemented as RPyC netrefs — the callback function is defined on the client side but invoked by the server.
+
+**What works:**
+- Plain functions, lambdas, and instance methods all work as callbacks
+- Multiple callbacks can be registered simultaneously
+- Callbacks execute on the client side in the client's RPyC connection thread
+
+**What to watch for:**
+- **Threading:** Callbacks fire from the server's dispatch thread. Long-running callbacks block the server for that connection. Keep callbacks fast or use your own thread pool.
+- **Exceptions:** Exceptions raised in callbacks are caught and logged by `RpycTuiService` with a warning — they don't crash the server. Your callback should handle its own errors.
+- **Serialization:** Arguments passed to callbacks must be serializable by RPyC. Basic types (`str`, `int`, `list`, `dict`), `bytearray`, and netrefs work. Custom objects may need explicit serialization.
+- **No retroactive events:** Register a callback before events occur. Events between `start()` and callback registration are lost.
+
+### 8.7 Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| `ConnectionRefusedError` | Server not running | Check `--rpyc-host` and `--rpyc-port` |
+| `EOFError: connection closed by peer` | Auth token wrong or missing | Verify `--rpyc-token` matches client code |
+| `ssl.SSLError: certificate verify failed` | CA cert not trusted | Pass correct CA cert path to client |
+| Callback not firing | Listener registered after event | Register before `start()` |
+| `RuntimeError: Script runner not started` | `run()` called before `start()` | Call `svc.start()` before `svc.run()` |
+| Slow RPC calls | Netref latency over network | Keep scripts small, use batch operations |

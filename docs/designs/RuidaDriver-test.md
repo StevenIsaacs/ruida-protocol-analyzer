@@ -655,16 +655,7 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Steps** | 1. Run `rpa integration-test.log`.<br>2. Examine the decoded output for the GET_SETTING command and its reply. |
 | **Expected result** | Decoded output shows the command mnemonic (`GET_SETTING`), memory address (`MEM_CARD_ID`), and the reply value. |
 
-### Test 6.3: `rpa.py --on-the-fly` Live Capture [ ]
-
-| Field | Value |
-|-------|-------|
-| **Objective** | Verify that `rpa.py --on-the-fly --ip <ip>` captures and decodes live traffic. |
-| **Prerequisites** | Controller on network. |
-| **Steps** | 1. In one terminal, run: `rpa.py --on-the-fly --ip 192.168.1.100`.<br>2. In another terminal, run TUI and execute `GET_SETTING MEM_CARD_ID`.<br>3. Observe the `--on-the-fly` output. |
-| **Expected result** | `rpa.py` shows live decoded commands and replies as they occur. |
-
-### Test 6.4: Round-Trip — Script → Encode → Transmit → Capture → Decode [ ]
+### Test 6.3: Round-Trip — Script → Encode → Transmit → Capture → Decode [ ]
 
 | Field | Value |
 |-------|-------|
