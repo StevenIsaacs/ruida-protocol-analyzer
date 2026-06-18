@@ -469,6 +469,13 @@ class RdDriver:
 
         self._runner_thread.join(timeout=2.0)
 
+        # Drain any accumulated scripts to free memory
+        while not self._script_queue.empty():
+            try:
+                self._script_queue.get_nowait()
+            except queue.Empty:
+                break
+
         # Clean up listeners
         self._session.status.unregister_status_listener(self._on_status_event)
         self._session.transport.unregister_reply_listener(self._on_reply)
@@ -581,6 +588,12 @@ class RdDriver:
                     # Not connected: requeue script for retry, notify via status listener
                     self._script_queue.put((script, auto_checksum))
                     self._notify_script_skipped()
+                    # Backoff to break tight cycle when machine is offline.
+                    # Without this sleep, the immediately-available requeued item
+                    # causes a 100% CPU tight loop allocating/discarding ScriptParser
+                    # and encoder objects.  The 100ms yield allows Python's GC to
+                    # run and reduces memory pressure.
+                    self._shutdown.wait(0.1)
             except Exception as exc:
                 # Log error, notify, continue to next script
                 self._notify_script_error(str(exc))

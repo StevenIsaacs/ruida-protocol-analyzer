@@ -42,7 +42,7 @@ class RdTransport:
         self._use_gross_timeout = False
 
         # Queues for handshake thread
-        self._send_queue: queue.Queue[bytearray] = queue.Queue()
+        self._send_queue: queue.Queue[bytearray] = queue.Queue(maxsize=256)
         self._shutdown_event = threading.Event()
 
         # Listeners
@@ -101,6 +101,18 @@ class RdTransport:
             self._handshake_thread.join(timeout=2.0)
         if self._transport:
             self._transport.close()
+
+        # Drain any pending sends so stale data doesn't linger
+        while not self._send_queue.empty():
+            try:
+                self._send_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        # Clear listener lists — prevents stale references on reuse
+        self._status_listeners.clear()
+        self._reply_listeners.clear()
+
         self._notify_status(TransportEvent.CLOSED)
 
     def drain(self) -> None:
