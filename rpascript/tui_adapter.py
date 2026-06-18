@@ -46,6 +46,8 @@ from rpascript.interpreter import ScriptParser, reconstruct_script_line
 from ruidadriver.rd_status import RdStatusEvent
 from ruidadriver.ruida_driver import RdDriver, StatusDict
 
+from rpyc.utils.server import ThreadedServer
+
 _log = logging.getLogger(__name__)
 
 
@@ -273,7 +275,7 @@ class TuiAdapter(App):
         "stop",
         "plot",
     )
-    _NORMAL_COMMANDS: tuple[str, ...] = ("session",)
+    _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
 
     CSS = """
     #main-container {
@@ -365,6 +367,12 @@ class TuiAdapter(App):
         self._tail_script: list[str] = []
         self._session_connected = asyncio.Event()
         self._session_start_cancel = asyncio.Event()
+        self._last_server_host: str = "localhost"
+        self._last_server_port: int = 18812
+        self._last_server_cert: str | None = None
+        self._last_server_key: str | None = None
+        self._last_server_token: str | None = None
+        self._rpyc_server: ThreadedServer | None = None
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
         )
@@ -376,6 +384,8 @@ class TuiAdapter(App):
             "quit": "Exit the TUI",
             "log": "Toggle display of status/reply messages (on|off|status)",
             "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
+            "server": "Start or stop the RPC server. "
+            "Server commands: start host=<IP> port=<N> cert=<path> key=<path> token=<token>, or stop",
             "head": "Load a script file to prepend to job on execution",
             "import": "Import tshark <file> [magic=0xNN] as a script",
             "tail": "Load a script file to append to job on execution",
@@ -585,7 +595,11 @@ class TuiAdapter(App):
                     self._log_error(f"Invalid GET_SETTING: {reason}")
                     return
 
-            if cmd["type"] == "SESSION_START":
+            if cmd["type"] == "SERVER_START":
+                asyncio.create_task(self._start_server(**cmd["params"]))
+            elif cmd["type"] == "SERVER_STOP":
+                await self._stop_server()
+            elif cmd["type"] == "SESSION_START":
                 asyncio.create_task(self._start_session(**cmd["params"]))
             elif cmd["type"] == "SESSION_END":
                 await self._stop_session()
@@ -1751,6 +1765,87 @@ class TuiAdapter(App):
             self._log_error(f"Error stopping session: {e}")
             self._session_connected.clear()
             self._ruida_driver = None
+
+    async def _start_server(
+        self, host: str | None = None, port: int | None = None,
+        cert: str | None = None, key: str | None = None,
+        token: str | None = None,
+    ) -> None:
+        """Start the RPyC server in a background thread.
+
+        Resolves None params against last-used values so params persist
+        across server start/stop cycles.
+
+        Localhost/127.0.0.1 connections skip TLS and authentication.
+        """
+        # Resolve None params against last-used values
+        if host is None:
+            host = self._last_server_host
+        if port is None:
+            port = self._last_server_port
+        if cert is None:
+            cert = self._last_server_cert
+        if key is None:
+            key = self._last_server_key
+        if token is None:
+            token = self._last_server_token
+
+        if self._rpyc_server is not None:
+            self._log_error("RPC server is already running. Use 'server stop' first.")
+            return
+
+        # Store last-used values
+        self._last_server_host = host
+        self._last_server_port = port
+        self._last_server_cert = cert
+        self._last_server_key = key
+        self._last_server_token = token
+
+        # Localhost skips TLS and auth
+        is_local = host in ("127.0.0.1", "::1", "localhost")
+        if is_local:
+            cert = None
+            key = None
+            token = None
+
+        from rpalib.rpyc_service import start_rpyc_server
+
+        def _run():
+            """Create, register, and start the RPyC server (blocking)."""
+            server = start_rpyc_server(
+                host=host,
+                port=port,
+                cert_path=cert,
+                key_path=key,
+                token=token,
+                auto_start=False,
+            )
+            self._rpyc_server = server
+            self.call_from_thread(
+                self._log_info,
+                f"RPC server started on {host}:{port}",
+            )
+            server.start()  # Blocks until server stops
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        self._log_info(f"Starting RPC server on {host}:{port}...")
+
+    async def _stop_server(self) -> None:
+        """Stop the RPyC server."""
+        if self._rpyc_server is None:
+            self._log_info("No RPC server running.")
+            return
+
+        host = self._last_server_host
+        port = self._last_server_port
+        server = self._rpyc_server
+        self._rpyc_server = None
+        try:
+            server.stop()
+            self._log_info(f"RPC server on {host}:{port} stopped.")
+        except Exception as e:
+            self._log_error(f"Error stopping RPC server: {e}")
 
     async def _teardown_session(self) -> None:
         """Tear down the current session (stop driver, disconnect).

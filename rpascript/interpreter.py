@@ -64,6 +64,16 @@ def reconstruct_script_line(cmd: dict) -> str:
     if cmd_type == "SESSION_END":
         return "session end"
 
+    if cmd_type == "SERVER_START":
+        params = cmd.get("params", {})
+        tokens = ["server", "start"]
+        for k, v in params.items():
+            tokens.append(f"{k}={v}" if v is not None else f"{k}=none")
+        return " ".join(tokens)
+
+    if cmd_type == "SERVER_STOP":
+        return "server stop"
+
     if cmd_type == "DELAY":
         params = cmd.get("params", [])
         return f"delay {params[0]}" if params else "delay 0s"
@@ -243,6 +253,48 @@ class ScriptParser:
             else:
                 raise ValueError(
                     f'{line_num}: Unknown session action "{action}". Use "start" or "end".'
+                )
+
+        # --- Server meta-commands (RPC server control) ---
+        if tokens[0].lower() == "server":
+            if len(tokens) < 2:
+                raise ValueError(
+                    f'{line_num}: "server" requires an action: start or stop'
+                )
+            action = tokens[1].lower()
+            if action == "start":
+                kwargs = {}
+                for token in tokens[2:]:
+                    key, _, val = token.partition("=")
+                    kwargs[key.lower()] = None if val.lower() == "none" else val
+                # Parse port as int if provided
+                if "port" in kwargs:
+                    try:
+                        kwargs["port"] = int(kwargs["port"])
+                    except ValueError:
+                        raise ValueError(
+                            f'{line_num}: Invalid port value "{kwargs["port"]}"'
+                        )
+                return {
+                    "type": "SERVER_START",
+                    "mnemonic": "SERVER_START",
+                    "params": kwargs,
+                    "expected": None,
+                    "line_num": line_num,
+                    "raw": raw,
+                }
+            elif action == "stop":
+                return {
+                    "type": "SERVER_STOP",
+                    "mnemonic": "SERVER_STOP",
+                    "params": [],
+                    "expected": None,
+                    "line_num": line_num,
+                    "raw": raw,
+                }
+            else:
+                raise ValueError(
+                    f'{line_num}: Unknown server action "{action}". Use "start" or "stop".'
                 )
 
         # --- NEW_PACKET directive (per-packet boundary marker) ---

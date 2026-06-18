@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rpa-script",
         description="Generate Ruida protocol output from .rds scripts or launch interactive TUI.",
-        epilog="Examples: rpa-script myscript.rds | python rpa.py -   |   rpa-script --tui   |   rpa-script --rpyc-host 0.0.0.0",
+        epilog="Examples: rpa-script myscript.rds | python rpa.py -   |   rpa-script --tui",
     )
     parser.add_argument(
         "script",
@@ -44,33 +44,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--rpyc-host",
-        default=None,
-        help="Start in RPC server mode on this host address (e.g., 0.0.0.0). "
-        "When set, starts RPyC server instead of TUI.",
-    )
-    parser.add_argument(
-        "--rpyc-port",
-        type=int,
-        default=18812,
-        help="Port for the RPyC server (default: 18812).",
-    )
-    parser.add_argument(
-        "--rpyc-cert",
-        default=None,
-        help="Path to TLS certificate file for RPyC server.",
-    )
-    parser.add_argument(
-        "--rpyc-key",
-        default=None,
-        help="Path to TLS private key file for RPyC server.",
-    )
-    parser.add_argument(
-        "--rpyc-token",
-        default=None,
-        help="Authentication token for RPyC connections.",
-    )
-    parser.add_argument(
         "-v",
         "--version",
         action="version",
@@ -94,23 +67,6 @@ def main() -> None:
                 "Use Ctrl+L to load scripts within the TUI."
             )
         run_tui()
-        return
-
-    # RPC server mode
-    if args.rpyc_host:
-        from rpalib.rpyc_service import start_rpyc_server
-
-        print(
-            f"Starting RPyC server on {args.rpyc_host}:{args.rpyc_port}...",
-            file=sys.stderr,
-        )
-        start_rpyc_server(
-            host=args.rpyc_host,
-            port=args.rpyc_port,
-            cert_path=args.rpyc_cert,
-            key_path=args.rpyc_key,
-            token=args.rpyc_token,
-        )
         return
 
     # Script argument is required when not in TUI mode

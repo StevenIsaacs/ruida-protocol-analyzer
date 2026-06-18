@@ -517,30 +517,36 @@ This section covers the RPyC (Remote Python Call) integration path, which makes 
 
 ### 8.2 Starting the RPC Server
 
-The RPC server is started via `rpa-script --rpyc-host`:
+The RPC server is started from within the TUI using the `server start` command:
 
 ```bash
 # Minimal (localhost, no auth)
-rpa-script --rpyc-host 127.0.0.1
+server start
 
-# With authentication token
-rpa-script --rpyc-host 0.0.0.0 --rpyc-token "s3cret!t0k3n"
+# Custom port
+server start port=18812
+
+# With authentication token (remote access)
+server start host=0.0.0.0 token="s3cret!t0k3n"
 
 # With TLS encryption
-./scripts/gen-rpyc-certs.sh ./rpyc-certs
-rpa-script --rpyc-host 0.0.0.0 \
-    --rpyc-cert ./rpyc-certs/server-cert.pem \
-    --rpyc-key ./rpyc-certs/server-key.pem \
-    --rpyc-token "s3cret!t0k3n"
+server start host=0.0.0.0 \
+    cert=./rpyc-certs/server-cert.pem \
+    key=./rpyc-certs/server-key.pem \
+    token="s3cret!t0k3n"
 ```
 
-| Argument       | Default      | Description                                    |
-|----------------|--------------|------------------------------------------------|
-| `--rpyc-host`  | (none)       | Bind address. When set, starts RPC server mode |
-| `--rpyc-port`  | `18812`      | TCP port                                       |
-| `--rpyc-cert`  | (none)       | TLS certificate path (enables TLS)             |
-| `--rpyc-key`   | (none)       | TLS private key path                           |
-| `--rpyc-token` | (none)       | Auth token (empty = localhost-only without auth)|
+To stop the server, use `server stop` from within the TUI.
+
+| Parameter | Default      | Description                                    |
+|-----------|--------------|------------------------------------------------|
+| `host`    | `localhost`  | Bind address. `localhost`/`127.0.0.1` skips auth/TLS |
+| `port`    | `18812`      | TCP port                                       |
+| `cert`    | (none)       | TLS certificate path (ignored if localhost)    |
+| `key`     | (none)       | TLS private key path (ignored if localhost)    |
+| `token`   | (none)       | Auth token (ignored if localhost)              |
+
+Parameters persist across `server start`/`stop` cycles — omitted values reuse the previous invocation's values.
 
 ### 8.3 Client Connection Example
 
@@ -643,8 +649,8 @@ Listener callbacks (`register_status_listener`, `register_error_listener`, `regi
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| `ConnectionRefusedError` | Server not running | Check `--rpyc-host` and `--rpyc-port` |
-| `EOFError: connection closed by peer` | Auth token wrong or missing | Verify `--rpyc-token` matches client code |
+| `ConnectionRefusedError` | Server not running | Check `host` and `port` in `server start` |
+| `EOFError: connection closed by peer` | Auth token wrong or missing | Verify `token` in `server start` matches client code |
 | `ssl.SSLError: certificate verify failed` | CA cert not trusted | Pass correct CA cert path to client |
 | Callback not firing | Listener registered after event | Register before `start()` |
 | `RuntimeError: Script runner not started` | `run()` called before `start()` | Call `svc.start()` before `svc.run()` |

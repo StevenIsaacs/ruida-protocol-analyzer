@@ -40,6 +40,21 @@ session end
 - These are processed by `RdDriver.start()` / `RdDriver.stop()`, not
   sent to the controller as commands.
 
+### Server Meta-Commands
+
+```rds
+server start host=127.0.0.1
+server start host=0.0.0.0 port=18812 cert=server.pem key=server.key token=mytoken
+server stop
+```
+
+- `server start` — Starts the RPyC remote control server. If `host` is
+  `localhost` or `127.0.0.1`, TLS and authentication are disabled.
+- `server stop` — Stops the running RPyC server.
+- Parameters from previous `server start` are reused when omitted.
+- These are processed by `start_rpyc_server()` / `server.stop()`, not
+  sent to the controller as commands.
+
 ### NEW_PACKET Directive
 
 ```rds

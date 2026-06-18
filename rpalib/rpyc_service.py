@@ -123,6 +123,7 @@ def start_rpyc_server(
     key_path: str | None = None,
     ca_path: str | None = None,
     token: str | None = None,
+    auto_start: bool = True,
 ) -> ThreadedServer:
     """Start the RPyC server.
 
@@ -134,6 +135,8 @@ def start_rpyc_server(
         key_path: Path to TLS private key.
         ca_path: Path to CA certificate for client cert verification.
         token: Authentication token. Empty/None allows localhost without token.
+        auto_start: Whether to call server.start() immediately (default: True).
+                    Set to False to start the server manually later.
 
     Returns:
         The started ThreadedServer instance.
@@ -177,7 +180,8 @@ def start_rpyc_server(
         "yes" if cert_path else "no",
         "yes" if token else "no",
     )
-    server.start()
+    if auto_start:
+        server.start()
     return server
 
 
