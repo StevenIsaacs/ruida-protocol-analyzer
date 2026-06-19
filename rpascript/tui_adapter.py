@@ -879,6 +879,8 @@ class TuiAdapter(App):
             "[bold]Ruida Commands[/bold] (no prefix):\n"
             "  session start udp=<IP> usb=<device> to=<timeout>  Connect to a controller (to: optional, e.g. 5s or 5000ms)\n"
             "  session end               Disconnect\n"
+            "  server start host=<IP> port=<N>  Start the RPC server\n"
+            "  server stop                Stop the RPC server\n"
             "  <rpascript command>       Send command to controller\n"
             "\n"
             "[bold]Flow Control[/bold] (for loaded scripts):\n"
