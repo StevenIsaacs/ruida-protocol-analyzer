@@ -222,6 +222,32 @@ class RdDriver:
         with self._lock:
             self._reply_listeners.append(listener)
 
+    def unregister_status_listener(
+        self, listener: Callable[[RdStatusEvent | StatusDict], None]
+    ) -> None:
+        """Remove a previously registered status listener. Thread-safe."""
+        with self._lock:
+            try:
+                self._status_listeners.remove(listener)
+            except ValueError:
+                pass
+
+    def unregister_error_listener(self, listener: Callable[[str], None]) -> None:
+        """Remove a previously registered error listener. Thread-safe."""
+        with self._lock:
+            try:
+                self._error_listeners.remove(listener)
+            except ValueError:
+                pass
+
+    def unregister_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
+        """Remove a previously registered reply listener. Thread-safe."""
+        with self._lock:
+            try:
+                self._reply_listeners.remove(listener)
+            except ValueError:
+                pass
+
     # ---- Internal Callbacks ----
 
     def _on_status_event(self, event: RdStatusEvent | StatusDict) -> None:

@@ -2437,6 +2437,41 @@ class TuiAdapter(App):
         self._ruida_driver.register_reply_listener(listener)
         self._log_info(f"[EMU] register_reply_listener({listener!r})")
 
+    def unregister_status_listener(
+        self, listener: Callable[[RdStatusEvent | StatusDict], None]
+    ) -> None:
+        """Remove a previously registered status listener.
+
+        Silently no-ops if the driver is not active (e.g., disconnected).
+        """
+        if self._ruida_driver is not None:
+            self._ruida_driver.unregister_status_listener(listener)
+            self._log_info(f"[EMU] unregister_status_listener({listener!r})")
+        else:
+            self._log_info(f"[EMU] unregister_status_listener skipped (no driver)")
+
+    def unregister_error_listener(self, listener: Callable[[str], None]) -> None:
+        """Remove a previously registered error listener.
+
+        Silently no-ops if the driver is not active (e.g., disconnected).
+        """
+        if self._ruida_driver is not None:
+            self._ruida_driver.unregister_error_listener(listener)
+            self._log_info(f"[EMU] unregister_error_listener({listener!r})")
+        else:
+            self._log_info(f"[EMU] unregister_error_listener skipped (no driver)")
+
+    def unregister_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
+        """Remove a previously registered reply listener.
+
+        Silently no-ops if the driver is not active (e.g., disconnected).
+        """
+        if self._ruida_driver is not None:
+            self._ruida_driver.unregister_reply_listener(listener)
+            self._log_info(f"[EMU] unregister_reply_listener({listener!r})")
+        else:
+            self._log_info(f"[EMU] unregister_reply_listener skipped (no driver)")
+
     def cancel_script(self) -> None:
         """Cancel the currently running script.
 
