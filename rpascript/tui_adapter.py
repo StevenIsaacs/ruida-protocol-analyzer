@@ -361,6 +361,7 @@ class TuiAdapter(App):
             ),
             "parser": lambda: self._parser,
             "decoder": lambda: self._decoder,
+            "rpc": lambda: self._rpyc_server,
         }
         self._loaded_script: list[str] = []
         self._head_script: list[str] = []
@@ -874,7 +875,7 @@ class TuiAdapter(App):
             "[bold]Introspection[/bold] (prefix with ?):\n"
             "  ?<object>[.<attr>] [args...]  Inspect or call objects\n"
             "  ?                 List available introspection objects\n"
-            "  Available: session, transport, driver, status, parser, decoder\n"
+            "  Available: session, transport, driver, status, parser, decoder, rpc\n"
             "\n"
             "[bold]Ruida Commands[/bold] (no prefix):\n"
             "  session start udp=<IP> usb=<device> to=<timeout>  Connect to a controller (to: optional, e.g. 5s or 5000ms)\n"
@@ -1815,6 +1816,7 @@ class TuiAdapter(App):
         def _run():
             """Create, register, and start the RPyC server (blocking)."""
             server = start_rpyc_server(
+                self,
                 host=host,
                 port=port,
                 cert_path=cert,

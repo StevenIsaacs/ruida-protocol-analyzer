@@ -35,15 +35,15 @@ class RpycTuiService(rpyc.Service):
         try:
             host, port = conn._channel.stream.sock.getpeername()[:2]
         except Exception as exc:
-            _log.warning("[EMU] Failed to get client peer address: %s", exc)
+            self._adapter._log_warning(f"RPC client connect - failed to get peer: {exc}")
             host, port = "unknown", 0
         self._client_peer.value = f"{host}:{port}"
-        _log.info("[EMU] RPC client connected from %s:%s", host, port)
+        self._adapter._log_info(f"RPC client connected from {host}:{port}")
 
     def on_disconnect(self, conn):
         """Log when a client disconnects."""
         peer = getattr(self._client_peer, 'value', 'unknown:0')
-        _log.info("[EMU] RPC client disconnected (%s)", peer)
+        self._adapter._log_info(f"RPC client disconnected ({peer})")
 
     # --- Lifecycle ---
 
