@@ -2402,7 +2402,7 @@ class TuiAdapter(App):
         # Store for /list access
         self._loaded_script = list(script)
 
-        self.run_script(script, auto_checksum=auto_checksum)
+        self.run_script(self._loaded_script, auto_checksum=auto_checksum)
 
     def register_status_listener(
         self, listener: Callable[[RdStatusEvent | StatusDict], None]

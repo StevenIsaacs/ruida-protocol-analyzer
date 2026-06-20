@@ -56,16 +56,25 @@ class RpycTuiService(rpyc.Service):
         self._adapter.stop()
 
     def exposed_run(self, script: list[str], auto_checksum: bool = False) -> Any:
-        _log.info("[EMU] RPC run(script=%d lines, auto_checksum=%s)", len(script), auto_checksum)
-        # Run in background thread so RPyC handler doesn't block
-        def _run():
-            try:
-                self._adapter.run(script, auto_checksum=auto_checksum)
-            except Exception as e:
-                _log.error("[EMU] RPC run failed: %s", e)
-
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+        # Convert netref to local list on the handler thread, where the RPyC
+        # connection is alive. RPyC passes lists by reference (netref), not by
+        # value — only tuples and simple types are brine-dumpable. Iterating a
+        # netref from a background thread or after the handler returns is fragile.
+        local_script = list(script)
+        _log.info(
+            "[EMU] RPC run(script=%d lines, auto_checksum=%s)",
+            len(local_script),
+            auto_checksum,
+        )
+        # The adapter's run_script() internally uses call_from_thread() to
+        # bridge to the TUI event loop thread, then calls driver.run() which
+        # queues the script and returns quickly. No separate background thread
+        # needed — the handler thread blocks briefly via call_from_thread's
+        # future.result() and the TUI thread executes the driver call.
+        try:
+            self._adapter.run(local_script, auto_checksum=auto_checksum)
+        except Exception as e:
+            _log.error("[EMU] RPC run failed: %s", e)
         return None
 
     # --- Listeners (netref callbacks) ---
