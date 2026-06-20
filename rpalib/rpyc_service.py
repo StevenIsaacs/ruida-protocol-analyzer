@@ -28,6 +28,22 @@ class RpycTuiService(rpyc.Service):
     def __init__(self, tui_adapter: TuiAdapter | None = None):
         self._adapter = tui_adapter or TuiAdapter()
         self._lock = threading.Lock()
+        self._client_peer = threading.local()
+
+    def on_connect(self, conn):
+        """Log when a client connects."""
+        try:
+            host, port = conn._channel.stream.sock.getpeername()[:2]
+        except Exception as exc:
+            _log.warning("[EMU] Failed to get client peer address: %s", exc)
+            host, port = "unknown", 0
+        self._client_peer.value = f"{host}:{port}"
+        _log.info("[EMU] RPC client connected from %s:%s", host, port)
+
+    def on_disconnect(self, conn):
+        """Log when a client disconnects."""
+        peer = getattr(self._client_peer, 'value', 'unknown:0')
+        _log.info("[EMU] RPC client disconnected (%s)", peer)
 
     # --- Lifecycle ---
 

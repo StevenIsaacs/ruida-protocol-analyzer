@@ -570,7 +570,7 @@ class TuiAdapter(App):
             self._script_count += 1
 
             # Pre-encode regular commands to show wire-format bytes in the log
-            if cmd["type"] not in ("SESSION_START", "SESSION_END", "DELAY", "WAIT"):
+            if cmd["type"] not in ("SESSION_START", "SESSION_END", "SERVER_START", "SERVER_STOP", "DELAY", "WAIT"):
                 try:
                     encoded = encode_command(
                         cmd,
@@ -1844,7 +1844,7 @@ class TuiAdapter(App):
         server = self._rpyc_server
         self._rpyc_server = None
         try:
-            server.stop()
+            server.close()
             self._log_info(f"RPC server on {host}:{port} stopped.")
         except Exception as e:
             self._log_error(f"Error stopping RPC server: {e}")
