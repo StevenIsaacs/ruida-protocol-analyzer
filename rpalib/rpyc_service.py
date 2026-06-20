@@ -76,7 +76,7 @@ class RpycTuiService(rpyc.Service):
     # --- Lifecycle ---
 
     def exposed_start(self, udp_host: str | None = None, usb_device: str | None = None) -> bool:
-        self._adapter._log_info("[EMU] RPC start(udp_host=%r, usb_device=%r)", udp_host, usb_device)
+        self._adapter._log_info(f"[EMU] RPC start(udp_host={udp_host!r}, usb_device={usb_device!r})")
         return self._adapter.start(udp_host=udp_host, usb_device=usb_device)
 
     def exposed_stop(self) -> None:
@@ -89,11 +89,7 @@ class RpycTuiService(rpyc.Service):
         # value — only tuples and simple types are brine-dumpable. Iterating a
         # netref from a background thread or after the handler returns is fragile.
         local_script = list(script)
-        self._adapter._log_info(
-            "[EMU] RPC run(script=%d lines, auto_checksum=%s)",
-            len(local_script),
-            auto_checksum,
-        )
+        self._adapter._log_info(f"[EMU] RPC run(script={len(local_script)} lines, auto_checksum={auto_checksum})")
         # The adapter's run_script() internally uses call_from_thread() to
         # bridge to the TUI event loop thread, then calls driver.run() which
         # queues the script and returns quickly. No separate background thread
@@ -108,7 +104,7 @@ class RpycTuiService(rpyc.Service):
     # --- Listeners (netref callbacks) ---
 
     def exposed_register_status_listener(self, listener: Callable) -> None:
-        self._adapter._log_info("[EMU] RPC register_status_listener(%r)", listener)
+        self._adapter._log_info(f"[EMU] RPC register_status_listener({listener!r})")
         def wrapper(event):
             try:
                 # Convert non-serializable types to brine-dumpable forms
@@ -128,7 +124,7 @@ class RpycTuiService(rpyc.Service):
         self._adapter.register_status_listener(wrapper)
 
     def exposed_register_error_listener(self, listener: Callable) -> None:
-        self._adapter._log_info("[EMU] RPC register_error_listener(%r)", listener)
+        self._adapter._log_info(f"[EMU] RPC register_error_listener({listener!r})")
         def wrapper(msg):
             try:
                 listener(msg)
@@ -141,7 +137,7 @@ class RpycTuiService(rpyc.Service):
         self._adapter.register_error_listener(wrapper)
 
     def exposed_register_reply_listener(self, listener: Callable) -> None:
-        self._adapter._log_info("[EMU] RPC register_reply_listener(%r)", listener)
+        self._adapter._log_info(f"[EMU] RPC register_reply_listener({listener!r})")
         def wrapper(replies):
             try:
                 # list[str] is not brine-dumpable; tuple[str, ...] is
@@ -162,29 +158,29 @@ class RpycTuiService(rpyc.Service):
 
     def exposed_is_connected(self) -> bool:
         result = self._adapter.is_connected
-        self._adapter._log_info("[EMU] RPC is_connected -> %s", result)
+        self._adapter._log_info(f"[EMU] RPC is_connected -> {result}")
         return result
 
     def exposed_machine_status(self) -> dict[int, Any]:
         result = self._adapter.machine_status
-        self._adapter._log_info("[EMU] RPC machine_status -> %d items", len(result))
+        self._adapter._log_info(f"[EMU] RPC machine_status -> {len(result)} items")
         return result
 
     # --- Static format utilities ---
 
     @staticmethod
     def exposed_format_reply_value(address: int, raw_reply: bytearray) -> tuple:
-        self._adapter._log_info("[EMU] RPC format_reply_value(addr=0x%04X, raw_len=%d)", address, len(raw_reply))
+        self._adapter._log_info(f"[EMU] RPC format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
         return TuiAdapter.format_reply_value(address, raw_reply)
 
     @staticmethod
     def exposed_format_reply(reply: bytearray) -> str:
-        self._adapter._log_info("[EMU] RPC format_reply(len=%d)", len(reply))
+        self._adapter._log_info(f"[EMU] RPC format_reply(len={len(reply)})")
         return TuiAdapter.format_reply(reply)
 
     @staticmethod
     def exposed_format_reply_list(replies: list[bytearray]) -> list[str]:
-        self._adapter._log_info("[EMU] RPC format_reply_list(count=%d)", len(replies))
+        self._adapter._log_info(f"[EMU] RPC format_reply_list(count={len(replies)})")
         return TuiAdapter.format_reply_list(replies)
 
 
