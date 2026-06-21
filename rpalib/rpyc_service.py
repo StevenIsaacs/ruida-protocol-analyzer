@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import queue
 import threading
 from typing import Any, Callable
 
@@ -30,6 +31,53 @@ class RpycTuiService(rpyc.Service):
         self._lock = threading.Lock()
         self._client_peer = threading.local()
         self._registered_wrappers = threading.local()
+        # Shared callback queue — single thread prevents lock contention on RPyC netrefs
+        self._callback_queue: queue.Queue = queue.Queue(maxsize=100)
+        self._callback_thread = threading.Thread(target=self._callback_loop, daemon=True)
+        self._callback_thread.start()
+
+    def _ensure_callback_thread(self) -> None:
+        """Shared callback thread started in __init__. No-op."""
+
+    def _callback_loop(self) -> None:
+        """Process queued callbacks one at a time on a single background thread.
+
+        Uses rpyc.async_() for non-blocking netref calls — sends the request
+        and returns immediately. Prevents backpressure on the callback queue
+        when the client is slow to serve the connection.
+        """
+        while True:
+            try:
+                listener, arg = self._callback_queue.get(timeout=1.0)
+                try:
+                    # Non-blocking netref call — fire and forget
+                    async_listener = rpyc.async_(listener)
+                    async_listener(arg)
+                except Exception as e:
+                    self._adapter._log_warning(f"[EMU] callback: {e}")
+            except queue.Empty:
+                continue
+            except Exception as e:
+                self._adapter._log_warning(f"[EMU] callback loop: {e}")
+
+    def _fire_async(self, listener: Callable, arg: Any, label: str) -> None:
+        """Queue a callback for async delivery on the shared callback thread.
+
+        The callback thread uses rpyc.async_() for truly non-blocking
+        netref calls, so queued events are processed rapidly without
+        waiting for client responses. Queue overflow drains oldest events.
+        """
+        self._ensure_callback_thread()
+        try:
+            self._callback_queue.put_nowait((listener, arg))
+        except queue.Full:
+            # Drop the oldest event to make room for the newest
+            try:
+                self._callback_queue.get_nowait()
+                self._callback_queue.put_nowait((listener, arg))
+            except queue.Empty:
+                pass  # raced with consumer — event was already processed
+            self._adapter._log_warning(f"[EMU] {label} overflow: oldest callback dropped (queue full)")
 
     def on_connect(self, conn):
         """Log when a client connects."""
@@ -69,7 +117,7 @@ class RpycTuiService(rpyc.Service):
                             f"RPC disconnect cleanup ({unregister_name}): {exc}"
                         )
                     except Exception:
-                        pass
+                        pass  # Cleanup path — nothing actionable if logging fails
             # Clear the list
             listeners.clear()
 
@@ -114,7 +162,8 @@ class RpycTuiService(rpyc.Service):
                     converted = dict(event)  # StatusDict → plain dict
                 else:
                     converted = event.name   # RdStatusEvent enum → str name
-                listener(converted)
+                # Fire on background thread to avoid blocking status monitor
+                self._fire_async(listener, converted, "status")
             except Exception as e:
                 self._adapter._log_warning(f"[EMU] status callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
@@ -127,7 +176,8 @@ class RpycTuiService(rpyc.Service):
         self._adapter._log_info(f"[EMU] RPC register_error_listener({listener!r})")
         def wrapper(msg):
             try:
-                listener(msg)
+                # Fire on background thread to avoid blocking caller
+                self._fire_async(listener, msg, "error")
             except Exception as e:
                 self._adapter._log_warning(f"[EMU] error callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
@@ -141,7 +191,9 @@ class RpycTuiService(rpyc.Service):
         def wrapper(replies):
             try:
                 # list[str] is not brine-dumpable; tuple[str, ...] is
-                listener(tuple(replies))
+                converted = tuple(replies)
+                # Fire on background thread to avoid blocking caller
+                self._fire_async(listener, converted, "reply")
             except Exception as e:
                 self._adapter._log_warning(f"[EMU] reply callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
@@ -168,18 +220,15 @@ class RpycTuiService(rpyc.Service):
 
     # --- Static format utilities ---
 
-    @staticmethod
-    def exposed_format_reply_value(address: int, raw_reply: bytearray) -> tuple:
+    def exposed_format_reply_value(self, address: int, raw_reply: bytearray) -> tuple:
         self._adapter._log_info(f"[EMU] RPC format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
         return TuiAdapter.format_reply_value(address, raw_reply)
 
-    @staticmethod
-    def exposed_format_reply(reply: bytearray) -> str:
+    def exposed_format_reply(self, reply: bytearray) -> str:
         self._adapter._log_info(f"[EMU] RPC format_reply(len={len(reply)})")
         return TuiAdapter.format_reply(reply)
 
-    @staticmethod
-    def exposed_format_reply_list(replies: list[bytearray]) -> list[str]:
+    def exposed_format_reply_list(self, replies: list[bytearray]) -> list[str]:
         self._adapter._log_info(f"[EMU] RPC format_reply_list(count={len(replies)})")
         return TuiAdapter.format_reply_list(replies)
 
