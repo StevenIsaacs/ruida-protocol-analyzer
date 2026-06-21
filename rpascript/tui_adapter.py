@@ -2355,14 +2355,14 @@ class TuiAdapter(App):
             self._ruida_driver.register_reply_listener(self.on_reply_data)
         result = self._ruida_driver.start(udp_host=udp_host, usb_device=usb_device)
         self._log_info(
-            f"[EMU] driver.start(udp_host={udp_host!r}, usb_device={usb_device!r}) -> {result}"
+            f"[RPC] driver.start(udp_host={udp_host!r}, usb_device={usb_device!r}) -> {result}"
         )
         return result
 
     def stop(self) -> None:
         """AppAdapter interface — stop the driver if running."""
         if self._ruida_driver is not None:
-            self._log_info("[EMU] driver.stop()")
+            self._log_info("[RPC] driver.stop()")
             self._ruida_driver.stop()
             self._ruida_driver = None
 
@@ -2397,7 +2397,7 @@ class TuiAdapter(App):
             preview = " / ".join(script)
         else:
             preview = " / ".join(script[:3]) + f" ... ({len(script)} lines)"
-        self._log_info(f"[EMU] driver.run({preview})")
+        self._log_info(f"[RPC] driver.run({preview})")
 
         # Store for /list access
         self._loaded_script = list(script)
@@ -2415,7 +2415,7 @@ class TuiAdapter(App):
         if self._ruida_driver is None:
             raise RuntimeError("No active driver. Call start() first.")
         self._ruida_driver.register_status_listener(listener)
-        self._log_info(f"[EMU] register_status_listener({listener!r})")
+        self._log_info(f"[RPC] register_status_listener({listener!r})")
 
     def register_error_listener(self, listener: Callable[[str], None]) -> None:
         """Register an error listener.
@@ -2425,7 +2425,7 @@ class TuiAdapter(App):
         if self._ruida_driver is None:
             raise RuntimeError("No active driver. Call start() first.")
         self._ruida_driver.register_error_listener(listener)
-        self._log_info(f"[EMU] register_error_listener({listener!r})")
+        self._log_info(f"[RPC] register_error_listener({listener!r})")
 
     def register_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
         """Register a reply listener.
@@ -2435,7 +2435,7 @@ class TuiAdapter(App):
         if self._ruida_driver is None:
             raise RuntimeError("No active driver. Call start() first.")
         self._ruida_driver.register_reply_listener(listener)
-        self._log_info(f"[EMU] register_reply_listener({listener!r})")
+        self._log_info(f"[RPC] register_reply_listener({listener!r})")
 
     def unregister_status_listener(
         self, listener: Callable[[RdStatusEvent | StatusDict], None]
@@ -2446,9 +2446,9 @@ class TuiAdapter(App):
         """
         if self._ruida_driver is not None:
             self._ruida_driver.unregister_status_listener(listener)
-            self._log_info(f"[EMU] unregister_status_listener({listener!r})")
+            self._log_info(f"[RPC] unregister_status_listener({listener!r})")
         else:
-            self._log_info(f"[EMU] unregister_status_listener skipped (no driver)")
+            self._log_info(f"[RPC] unregister_status_listener skipped (no driver)")
 
     def unregister_error_listener(self, listener: Callable[[str], None]) -> None:
         """Remove a previously registered error listener.
@@ -2457,9 +2457,9 @@ class TuiAdapter(App):
         """
         if self._ruida_driver is not None:
             self._ruida_driver.unregister_error_listener(listener)
-            self._log_info(f"[EMU] unregister_error_listener({listener!r})")
+            self._log_info(f"[RPC] unregister_error_listener({listener!r})")
         else:
-            self._log_info(f"[EMU] unregister_error_listener skipped (no driver)")
+            self._log_info(f"[RPC] unregister_error_listener skipped (no driver)")
 
     def unregister_reply_listener(self, listener: Callable[[list[str]], None]) -> None:
         """Remove a previously registered reply listener.
@@ -2468,9 +2468,9 @@ class TuiAdapter(App):
         """
         if self._ruida_driver is not None:
             self._ruida_driver.unregister_reply_listener(listener)
-            self._log_info(f"[EMU] unregister_reply_listener({listener!r})")
+            self._log_info(f"[RPC] unregister_reply_listener({listener!r})")
         else:
-            self._log_info(f"[EMU] unregister_reply_listener skipped (no driver)")
+            self._log_info(f"[RPC] unregister_reply_listener skipped (no driver)")
 
     def cancel_script(self) -> None:
         """Cancel the currently running script.
@@ -2479,7 +2479,7 @@ class TuiAdapter(App):
         """
         if self._ruida_driver is not None:
             self._ruida_driver.cancel_script()
-            self._log_info("[EMU] cancel_script()")
+            self._log_info("[RPC] cancel_script()")
 
     @property
     def is_connected(self) -> bool:
@@ -2488,7 +2488,7 @@ class TuiAdapter(App):
         Emulates RdDriver.is_connected.
         """
         result = self._ruida_driver is not None and self._ruida_driver.is_connected
-        self._log_info(f"[EMU] is_connected -> {result}")
+        self._log_info(f"[RPC] is_connected -> {result}")
         return result
 
     @property
@@ -2498,10 +2498,10 @@ class TuiAdapter(App):
         Emulates RdDriver.machine_status.
         """
         if self._ruida_driver is None:
-            self._log_info("[EMU] machine_status -> {} (no driver)")
+            self._log_info("[RPC] machine_status -> {} (no driver)")
             return {}
         result = self._ruida_driver.machine_status
-        self._log_info(f"[EMU] machine_status -> {len(result)} items")
+        self._log_info(f"[RPC] machine_status -> {len(result)} items")
         return result
 
     @staticmethod
@@ -2512,7 +2512,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply_value().
         """
-        _log.info(f"[EMU] format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
+        _log.info(f"[RPC] format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
         return RdDriver.format_reply_value(address, raw_reply)
 
     @staticmethod
@@ -2521,7 +2521,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply().
         """
-        _log.info(f"[EMU] format_reply(len={len(reply)})")
+        _log.info(f"[RPC] format_reply(len={len(reply)})")
         return RdDriver.format_reply(reply)
 
     @staticmethod
@@ -2530,7 +2530,7 @@ class TuiAdapter(App):
 
         Emulates RdDriver.format_reply_list().
         """
-        _log.info(f"[EMU] format_reply_list(count={len(replies)})")
+        _log.info(f"[RPC] format_reply_list(count={len(replies)})")
         return RdDriver.format_reply_list(replies)
 
     # ------------------------------------------------------------------

@@ -54,11 +54,11 @@ class RpycTuiService(rpyc.Service):
                     async_listener = rpyc.async_(listener)
                     async_listener(arg)
                 except Exception as e:
-                    self._adapter._log_warning(f"[EMU] callback: {e}")
+                    self._adapter._log_warning(f"[RPC] callback: {e}")
             except queue.Empty:
                 continue
             except Exception as e:
-                self._adapter._log_warning(f"[EMU] callback loop: {e}")
+                self._adapter._log_warning(f"[RPC] callback loop: {e}")
 
     def _fire_async(self, listener: Callable, arg: Any, label: str) -> None:
         """Queue a callback for async delivery on the shared callback thread.
@@ -77,7 +77,7 @@ class RpycTuiService(rpyc.Service):
                 self._callback_queue.put_nowait((listener, arg))
             except queue.Empty:
                 pass  # raced with consumer — event was already processed
-            self._adapter._log_warning(f"[EMU] {label} overflow: oldest callback dropped (queue full)")
+            self._adapter._log_warning(f"[RPC] {label} overflow: oldest callback dropped (queue full)")
 
     def on_connect(self, conn):
         """Log when a client connects."""
@@ -124,11 +124,11 @@ class RpycTuiService(rpyc.Service):
     # --- Lifecycle ---
 
     def exposed_start(self, udp_host: str | None = None, usb_device: str | None = None) -> bool:
-        self._adapter._log_info(f"[EMU] RPC start(udp_host={udp_host!r}, usb_device={usb_device!r})")
+        self._adapter._log_info(f"[RPC] RPC start(udp_host={udp_host!r}, usb_device={usb_device!r})")
         return self._adapter.start(udp_host=udp_host, usb_device=usb_device)
 
     def exposed_stop(self) -> None:
-        self._adapter._log_info("[EMU] RPC stop()")
+        self._adapter._log_info("[RPC] RPC stop()")
         self._adapter.stop()
 
     def exposed_run(self, script: list[str], auto_checksum: bool = False) -> Any:
@@ -137,7 +137,7 @@ class RpycTuiService(rpyc.Service):
         # value — only tuples and simple types are brine-dumpable. Iterating a
         # netref from a background thread or after the handler returns is fragile.
         local_script = list(script)
-        self._adapter._log_info(f"[EMU] RPC run(script={len(local_script)} lines, auto_checksum={auto_checksum})")
+        self._adapter._log_info(f"[RPC] RPC run(script={len(local_script)} lines, auto_checksum={auto_checksum})")
         # The adapter's run_script() internally uses call_from_thread() to
         # bridge to the TUI event loop thread, then calls driver.run() which
         # queues the script and returns quickly. No separate background thread
@@ -146,13 +146,13 @@ class RpycTuiService(rpyc.Service):
         try:
             self._adapter.run(local_script, auto_checksum=auto_checksum)
         except Exception as e:
-            self._adapter._log_error("[EMU] RPC run failed: %s", e)
+            self._adapter._log_error("[RPC] RPC run failed: %s", e)
         return None
 
     # --- Listeners (netref callbacks) ---
 
     def exposed_register_status_listener(self, listener: Callable) -> None:
-        self._adapter._log_info(f"[EMU] RPC register_status_listener({listener!r})")
+        self._adapter._log_info(f"[RPC] RPC register_status_listener({listener!r})")
         def wrapper(event):
             try:
                 # Convert non-serializable types to brine-dumpable forms
@@ -165,7 +165,7 @@ class RpycTuiService(rpyc.Service):
                 # Fire on background thread to avoid blocking status monitor
                 self._fire_async(listener, converted, "status")
             except Exception as e:
-                self._adapter._log_warning(f"[EMU] status callback error: {e}")
+                self._adapter._log_warning(f"[RPC] status callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
         if not hasattr(self._registered_wrappers, 'status'):
             self._registered_wrappers.status = []
@@ -173,13 +173,13 @@ class RpycTuiService(rpyc.Service):
         self._adapter.register_status_listener(wrapper)
 
     def exposed_register_error_listener(self, listener: Callable) -> None:
-        self._adapter._log_info(f"[EMU] RPC register_error_listener({listener!r})")
+        self._adapter._log_info(f"[RPC] RPC register_error_listener({listener!r})")
         def wrapper(msg):
             try:
                 # Fire on background thread to avoid blocking caller
                 self._fire_async(listener, msg, "error")
             except Exception as e:
-                self._adapter._log_warning(f"[EMU] error callback error: {e}")
+                self._adapter._log_warning(f"[RPC] error callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
         if not hasattr(self._registered_wrappers, 'error'):
             self._registered_wrappers.error = []
@@ -187,7 +187,7 @@ class RpycTuiService(rpyc.Service):
         self._adapter.register_error_listener(wrapper)
 
     def exposed_register_reply_listener(self, listener: Callable) -> None:
-        self._adapter._log_info(f"[EMU] RPC register_reply_listener({listener!r})")
+        self._adapter._log_info(f"[RPC] RPC register_reply_listener({listener!r})")
         def wrapper(replies):
             try:
                 # list[str] is not brine-dumpable; tuple[str, ...] is
@@ -195,7 +195,7 @@ class RpycTuiService(rpyc.Service):
                 # Fire on background thread to avoid blocking caller
                 self._fire_async(listener, converted, "reply")
             except Exception as e:
-                self._adapter._log_warning(f"[EMU] reply callback error: {e}")
+                self._adapter._log_warning(f"[RPC] reply callback error: {e}")
         # Store wrapper per-connection for disconnect cleanup
         if not hasattr(self._registered_wrappers, 'reply'):
             self._registered_wrappers.reply = []
@@ -203,33 +203,33 @@ class RpycTuiService(rpyc.Service):
         self._adapter.register_reply_listener(wrapper)
 
     def exposed_cancel_script(self) -> None:
-        self._adapter._log_info("[EMU] RPC cancel_script()")
+        self._adapter._log_info("[RPC] RPC cancel_script()")
         self._adapter.cancel_script()
 
     # --- Properties ---
 
     def exposed_is_connected(self) -> bool:
         result = self._adapter.is_connected
-        self._adapter._log_info(f"[EMU] RPC is_connected -> {result}")
+        self._adapter._log_info(f"[RPC] RPC is_connected -> {result}")
         return result
 
     def exposed_machine_status(self) -> dict[int, Any]:
         result = self._adapter.machine_status
-        self._adapter._log_info(f"[EMU] RPC machine_status -> {len(result)} items")
+        self._adapter._log_info(f"[RPC] RPC machine_status -> {len(result)} items")
         return result
 
     # --- Static format utilities ---
 
     def exposed_format_reply_value(self, address: int, raw_reply: bytearray) -> tuple:
-        self._adapter._log_info(f"[EMU] RPC format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
+        self._adapter._log_info(f"[RPC] RPC format_reply_value(addr=0x{address:04X}, raw_len={len(raw_reply)})")
         return TuiAdapter.format_reply_value(address, raw_reply)
 
     def exposed_format_reply(self, reply: bytearray) -> str:
-        self._adapter._log_info(f"[EMU] RPC format_reply(len={len(reply)})")
+        self._adapter._log_info(f"[RPC] RPC format_reply(len={len(reply)})")
         return TuiAdapter.format_reply(reply)
 
     def exposed_format_reply_list(self, replies: list[bytearray]) -> list[str]:
-        self._adapter._log_info(f"[EMU] RPC format_reply_list(count={len(replies)})")
+        self._adapter._log_info(f"[RPC] RPC format_reply_list(count={len(replies)})")
         return TuiAdapter.format_reply_list(replies)
 
 

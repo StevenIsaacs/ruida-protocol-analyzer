@@ -185,7 +185,6 @@ The `TuiAdapter` class in `rpascript/tui_adapter.py` wraps `RdDriver` with an em
 
 ### 3.1 Delegated API
 
-All 9 API items delegate to the underlying `RdDriver` instance with `[EMU]` logging:
 
 | Method | Signature | Notes |
 |--------|-----------|-------|
@@ -505,7 +504,7 @@ This section covers the RPyC (Remote Python Call) integration path, which makes 
 │  │  TuiAdapter                                    │   │
 │  │  • Emulates RdDriver API                       │   │
 │  │  • Manages driver lifecycle                    │   │
-│  │  • All calls logged with [EMU] prefix          │   │
+│  │  • All calls logged with [RPC] prefix          │   │
 │  └────────────┬─────────────────────────────────┘   │
 │  ┌────────────┴─────────────────────────────────┐   │
 │  │  RdDriver                                     │   │
