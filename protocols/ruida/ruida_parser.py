@@ -538,11 +538,13 @@ class RdParser:
                     self.out.verbose(f"Decoded parameter {self.which_param}={_r}.")
                     self.decoded += " " + _r
                     # A controller memory reference requires special handling.
-                    if (
-                        "mt" in self.param_list[self.which_param]
-                        and self.sub_command == 0x00
-                    ):
-                        self._enter_state("mt_command")
+                    if "mt" in self.param_list[self.which_param] and self.sub_command == 0x00:
+                        if self.remaining == 0:
+                            self._enter_state("mt_command")
+                        else:
+                            # More commands remain in this packet — continue
+                            # processing them before entering memory transfer.
+                            self._enter_state("expect_command")
                         return self.decoded
                     elif (
                         "index" in self.param_list[self.which_param]
