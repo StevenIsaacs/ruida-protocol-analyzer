@@ -180,7 +180,7 @@ class RdDecoder:
 
     def rd_rapid(self, data: bytearray):
         self.value = self.to_int(data)
-        return rdap.ROT[data[0]]
+        return rdap.ROT.get(data[0], f"RAPID_UNKNOWN: 0x{data[0]:02X}")
 
     def rd_on_off(self, data: bytearray):
         if data[0]:
