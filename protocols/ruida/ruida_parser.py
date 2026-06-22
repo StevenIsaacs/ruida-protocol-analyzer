@@ -314,7 +314,10 @@ class RdParser:
                         self.mt_address_msb, self.mt_address_lsb, self.mt_values
                     )
                     self.out.verbose("Reply decoded.")
-                    self._enter_state("expect_command")
+                    if self.remaining == 0:
+                        self._enter_state("expect_command")
+                    else:
+                        self._enter_state("mt_command")
                     return self.decoded
                 else:
                     self.which_param = _next
