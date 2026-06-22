@@ -906,32 +906,35 @@ class TuiAdapter(App):
             )
             return
         args = parts[1] if len(parts) > 1 else ""
-        if cmd == "help":
-            self._log_info(self._handle_help())
-        elif cmd == "load":
-            self._cmd_load(args)
-        elif cmd == "exec":
-            self._cmd_exec(args)
-        elif cmd == "clear":
-            self._cmd_clear()
-        elif cmd == "quit":
-            self._cmd_quit()
-        elif cmd == "log":
-            self._cmd_log(args)
-        elif cmd == "head":
-            self._cmd_head(args)
-        elif cmd == "import":
-            self._cmd_import(args)
-        elif cmd == "tail":
-            self._cmd_tail(args)
-        elif cmd == "list":
-            self._cmd_list(args)
-        elif cmd == "save":
-            self._cmd_save(args)
-        elif cmd == "stop":
-            self._cmd_stop(args)
-        elif cmd == "plot":
-            self._cmd_plot(args)
+        try:
+            if cmd == "help":
+                self._log_info(self._handle_help())
+            elif cmd == "load":
+                self._cmd_load(args)
+            elif cmd == "exec":
+                self._cmd_exec(args)
+            elif cmd == "clear":
+                self._cmd_clear()
+            elif cmd == "quit":
+                self._cmd_quit()
+            elif cmd == "log":
+                self._cmd_log(args)
+            elif cmd == "head":
+                self._cmd_head(args)
+            elif cmd == "import":
+                self._cmd_import(args)
+            elif cmd == "tail":
+                self._cmd_tail(args)
+            elif cmd == "list":
+                self._cmd_list(args)
+            elif cmd == "save":
+                self._cmd_save(args)
+            elif cmd == "stop":
+                self._cmd_stop(args)
+            elif cmd == "plot":
+                self._cmd_plot(args)
+        except Exception as e:
+            self._log_error(f"Command /{cmd} failed: {e}")
 
     # ------------------------------------------------------------------
     # _ImportCollector — in-memory script line collector for /import
@@ -1064,13 +1067,13 @@ class TuiAdapter(App):
 
         output = RpaEmitter(ns)
         try:
-            fp = open(path, "r", encoding="utf-8")
-            analyzer = RuidaProtocolAnalyzer(ns, fp, output)
-            collector = self._ImportCollector()
-            analyzer.parser.on_command = collector.write_command
-            analyzer.on_new_packet = collector.on_new_packet
-            analyzer.decode()
-            script = collector.get_script()
+            with open(path, "r", encoding="utf-8") as fp:
+                analyzer = RuidaProtocolAnalyzer(ns, fp, output)
+                collector = self._ImportCollector()
+                analyzer.parser.on_command = collector.write_command
+                analyzer.on_new_packet = collector.on_new_packet
+                analyzer.decode()
+                script = collector.get_script()
         except SyntaxError as e:
             self._log_error(f"Decode error: {e}")
             return
@@ -1083,8 +1086,9 @@ class TuiAdapter(App):
         except OSError as e:
             self._log_error(f"File error: {e}")
             return
-        finally:
-            fp.close()
+        except Exception as e:
+            self._log_error(f"Unexpected error importing {path}: {e}")
+            return
 
         if not script:
             self._log_warning(f"No commands found in {path}")
