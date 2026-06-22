@@ -209,7 +209,10 @@ class RdParser:
                     self._enter_state("sync")
                 else:
                     self.which_param = _next
-                    self._enter_state("expect_reply")
+                    if self.remaining == 0:
+                        self._enter_state("expect_reply")
+                    else:
+                        self._enter_state("expect_command")
             else:
                 self.out.protocol("Invalid action marker in parameter list.")
         else:
@@ -716,7 +719,7 @@ class RdParser:
                         # This is a problem with the protocol table -- not the
                         # incoming data.
                         self.out.error(
-                            f"Unsupprted or unexpected type ({_t}) in command."
+                            f"Unsupported or unexpected type ({_t}) in command."
                         )
                         self._enter_state("sync")
                 else:
