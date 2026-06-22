@@ -7,10 +7,12 @@ with authentication and TLS support.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
-import socket
 import queue
+import socket
 import threading
+import weakref
 from typing import Any, Callable
 
 import rpyc
@@ -27,7 +29,16 @@ class RpycTuiService(rpyc.Service):
     """RPyC service wrapping TuiAdapter for remote access."""
 
     def __init__(self, tui_adapter: TuiAdapter | None = None):
-        self._adapter = tui_adapter or TuiAdapter()
+        # Keep a strong reference for the fallback (owned) adapter case.
+        # When an external adapter is provided, the caller is responsible for
+        # keeping it alive. The weakref breaks the reference cycle through
+        # `self` (RpycTuiService) → _adapter → TuiAdapter → driver → listeners
+        # → wrapper closures → self.
+        self._owned_adapter: TuiAdapter | None = None
+        if tui_adapter is None:
+            self._owned_adapter = TuiAdapter()
+            tui_adapter = self._owned_adapter
+        self._adapter_ref = weakref.ref(tui_adapter)
         self._lock = threading.Lock()
         self._client_peer = threading.local()
         self._registered_wrappers = threading.local()
@@ -36,8 +47,25 @@ class RpycTuiService(rpyc.Service):
         self._callback_thread = threading.Thread(target=self._callback_loop, daemon=True)
         self._callback_thread.start()
 
-    def _ensure_callback_thread(self) -> None:
-        """Shared callback thread started in __init__. No-op."""
+    @property
+    def _adapter(self) -> TuiAdapter:
+        """Resolve the weakref to the TuiAdapter.
+
+        Raises RuntimeError if the adapter has been garbage collected
+        (should never happen for owned-adapter or well-managed external-adapter cases).
+        """
+        adapter = self._adapter_ref()
+        if adapter is None:
+            raise RuntimeError("RpycTuiService adapter has been garbage collected")
+        return adapter
+
+    def _ensure_callback_thread_started(self) -> None:
+        """Callback thread is started eagerly in __init__.
+
+        If the daemon thread dies (e.g., due to an unhandled exception),
+        callbacks will backlog in the queue until overflow drops them.
+        No automatic restart — the service is designed to fail closed.
+        """
 
     def _callback_loop(self) -> None:
         """Process queued callbacks one at a time on a single background thread.
@@ -45,6 +73,9 @@ class RpycTuiService(rpyc.Service):
         Uses rpyc.async_() for non-blocking netref calls — sends the request
         and returns immediately. Prevents backpressure on the callback queue
         when the client is slow to serve the connection.
+
+        Terminates if the TuiAdapter has been garbage collected — continuing
+        to process callbacks with a dead adapter would cause silent failures.
         """
         while True:
             try:
@@ -53,12 +84,31 @@ class RpycTuiService(rpyc.Service):
                     # Non-blocking netref call — fire and forget
                     async_listener = rpyc.async_(listener)
                     async_listener(arg)
+                except RuntimeError:
+                    # Netref RuntimeError = client disconnected, not adapter-GC.
+                    # Log through adapter (best-effort) and continue processing
+                    # callbacks for other connected clients.
+                    try:
+                        self._adapter._log_warning(
+                            "[RPC] callback skipped: client disconnected"
+                        )
+                    except RuntimeError:
+                        raise  # Adapter GC'd — terminate
+                    continue
                 except Exception as e:
-                    self._adapter._log_warning(f"[RPC] callback: {e}")
+                    try:
+                        self._adapter._log_warning(f"[RPC] callback: {e}")
+                    except RuntimeError:
+                        raise
             except queue.Empty:
                 continue
+            except RuntimeError:
+                raise  # Re-raise RuntimeError (adapter GC'd) — let daemon thread die
             except Exception as e:
-                self._adapter._log_warning(f"[RPC] callback loop: {e}")
+                try:
+                    self._adapter._log_warning(f"[RPC] callback loop: {e}")
+                except RuntimeError:
+                    raise
 
     def _fire_async(self, listener: Callable, arg: Any, label: str) -> None:
         """Queue a callback for async delivery on the shared callback thread.
@@ -67,7 +117,7 @@ class RpycTuiService(rpyc.Service):
         netref calls, so queued events are processed rapidly without
         waiting for client responses. Queue overflow drains oldest events.
         """
-        self._ensure_callback_thread()
+        self._ensure_callback_thread_started()
         try:
             self._callback_queue.put_nowait((listener, arg))
         except queue.Full:
@@ -77,7 +127,10 @@ class RpycTuiService(rpyc.Service):
                 self._callback_queue.put_nowait((listener, arg))
             except queue.Empty:
                 pass  # raced with consumer — event was already processed
-            self._adapter._log_warning(f"[RPC] {label} overflow: oldest callback dropped (queue full)")
+            try:
+                self._adapter._log_warning(f"[RPC] {label} overflow: oldest callback dropped (queue full)")
+            except RuntimeError:
+                pass  # Adapter GC'd — nothing actionable
 
     def on_connect(self, conn):
         """Log when a client connects."""
@@ -90,36 +143,91 @@ class RpycTuiService(rpyc.Service):
         self._adapter._log_info(f"RPC client connected from {host}:{port}")
 
     def on_disconnect(self, conn):
-        """Clean up per-connection state when a client disconnects."""
+        """Clean up per-connection state when a client disconnects.
+
+        Runs cleanup in a background thread with a 5-second timeout to
+        prevent blocking the RPyC handler thread if the driver lock is
+        contended. Logs wrapper counts before/after for observability.
+        """
         peer = getattr(self._client_peer, 'value', 'unknown:0')
-        self._adapter._log_info(f"RPC client disconnected ({peer})")
+        try:
+            self._adapter._log_info(f"RPC client disconnected ({peer})")
+        except RuntimeError:
+            pass  # Adapter already GC'd — proceed with cleanup anyway
 
         # Unregister all stored wrappers to prevent stale-callback warnings
         wrappers = self._registered_wrappers
-        # Check if any wrappers were registered on this connection's thread
-        if not any(getattr(wrappers, k, None) for k in ('status', 'error', 'reply')):
-            return
-        for key, unregister_name in [
-            ('status', 'unregister_status_listener'),
-            ('error', 'unregister_error_listener'),
-            ('reply', 'unregister_reply_listener'),
-        ]:
+
+        # Capture listener lists on the handler thread BEFORE submitting to
+        # executor — threading.local() attributes are thread-specific and would
+        # be invisible from the executor thread.
+        captured: dict[str, list] = {}
+        for key in ('status', 'error', 'reply'):
             listeners = getattr(wrappers, key, [])
-            unregister = getattr(self._adapter, unregister_name, None)
-            if unregister is None:
-                continue
-            for listener in listeners:
+            captured[key] = list(listeners)  # Shallow copy for executor thread
+            listeners.clear()  # Clear handler-thread originals immediately
+
+        counts = {k: len(v) for k, v in captured.items()}
+
+        # Early exit if nothing to clean up
+        if not counts['status'] and not counts['error'] and not counts['reply']:
+            return
+
+        def _do_cleanup():
+            for key, unregister_name in [
+                ('status', 'unregister_status_listener'),
+                ('error', 'unregister_error_listener'),
+                ('reply', 'unregister_reply_listener'),
+            ]:
+                listeners = captured[key]
+                if not listeners:
+                    continue
+                # Resolve adapter fresh for each key — may raise if GC'd
                 try:
-                    unregister(listener)
-                except Exception as exc:
+                    unregister = getattr(self._adapter, unregister_name, None)
+                except RuntimeError:
+                    unregister = None
+                if unregister is None:
+                    continue
+                for listener in listeners:
                     try:
-                        self._adapter._log_warning(
-                            f"RPC disconnect cleanup ({unregister_name}): {exc}"
-                        )
-                    except Exception:
-                        pass  # Cleanup path — nothing actionable if logging fails
-            # Clear the list
-            listeners.clear()
+                        unregister(listener)
+                    except Exception as exc:
+                        try:
+                            self._adapter._log_warning(
+                                f"RPC disconnect cleanup ({unregister_name}): {exc}"
+                            )
+                        except RuntimeError:
+                            pass  # Adapter GC'd mid-cleanup — nothing actionable
+                        except Exception:
+                            pass  # Cleanup path — nothing actionable if logging fails
+
+        # Run cleanup with 5-second timeout
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            future = executor.submit(_do_cleanup)
+            try:
+                future.result(timeout=5.0)
+                try:
+                    self._adapter._log_info(
+                        f"disconnect cleanup: unregistered "
+                        f"{counts['status']} status, "
+                        f"{counts['error']} error, "
+                        f"{counts['reply']} reply wrappers"
+                    )
+                except RuntimeError:
+                    pass
+            except concurrent.futures.TimeoutError:
+                try:
+                    self._adapter._log_warning(
+                        "RPC disconnect cleanup timed out after 5s"
+                    )
+                except RuntimeError:
+                    pass
+        finally:
+            # Use shutdown(wait=False) to avoid blocking the handler thread
+            # on cleanup that hasn't completed within the timeout.
+            executor.shutdown(wait=False)
 
     # --- Lifecycle ---
 
