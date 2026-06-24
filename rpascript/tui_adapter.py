@@ -266,6 +266,7 @@ class TuiAdapter(App):
         "exec",
         "clear",
         "quit",
+        "run",
         "log",
         "head",
         "import",
@@ -375,6 +376,7 @@ class TuiAdapter(App):
         self._last_server_key: str | None = None
         self._last_server_token: str | None = None
         self._dryrun: bool = False
+        self._rd_script: list[str] | None = None  # most recent RPC-received script, for /run
         self._rpyc_server: ThreadedServer | None = None
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
@@ -385,6 +387,7 @@ class TuiAdapter(App):
             "exec": "Execute job from loaded script (/exec script for all lines)",
             "clear": "Clear all log panels, loaded script, head, and tail",
             "quit": "Exit the TUI",
+            "run": "Execute RPC-received script (only in dry-run mode). Use after /dryrun on to run a script received via RPC.",
             "log": "Toggle display of status/reply messages (on|off|status)",
             "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
             "server": "Start or stop the RPC server. "
@@ -920,6 +923,8 @@ class TuiAdapter(App):
                 self._cmd_clear()
             elif cmd == "quit":
                 self._cmd_quit()
+            elif cmd == "run":
+                self._cmd_run()
             elif cmd == "log":
                 self._cmd_log(args)
             elif cmd == "head":
@@ -1243,6 +1248,7 @@ class TuiAdapter(App):
         self._status_log.clear()
         self._reply_log.update("")
         self._loaded_script = []
+        self._rd_script = None
         self._head_script = []
         self._tail_script = []
         self._mem_initial = {}
@@ -1411,6 +1417,29 @@ class TuiAdapter(App):
             self._log_info("Dry-run mode OFF — RPC driver.run() will execute normally")
         else:
             self._log_error("Usage: /dryrun on|off")
+
+    def _cmd_run(self) -> None:
+        """Execute the most recent RPC-received script (only in dry-run mode).
+
+        Runs the entire script — not just the job portion.
+        """
+        if not self._dryrun:
+            self._log_error(
+                "Dry-run mode is off. Use /dryrun on first."
+            )
+            return
+        if self._rd_script is None:
+            self._log_error(
+                "No RPC script received. Enable /dryrun on and send a script via RPC first."
+            )
+            return
+        if self._ruida_driver is None:
+            self._log_error(
+                "No active session. Use 'session start udp=<IP> usb=<device>' first."
+            )
+            return
+        self._log_info(f"Executing {len(self._rd_script)} RPC-received lines...")
+        self.run_script(self._rd_script, auto_checksum=True)
 
     def _cmd_plot(self, args: str = "") -> None:
         """Plot the loaded script in a Bokeh visualization."""
@@ -2422,9 +2451,11 @@ class TuiAdapter(App):
 
         # Store for /list access
         self._loaded_script = list(script)
+        # Store separately so /run can find it even after /load
+        self._rd_script = list(script)
 
         if self._dryrun:
-            self._log_info("[DRY-RUN] Script execution skipped — call driver.run() to execute")
+            self._log_info("[DRY-RUN] Script execution skipped — use /run to execute")
             return
 
         self.run_script(self._loaded_script, auto_checksum=auto_checksum)
