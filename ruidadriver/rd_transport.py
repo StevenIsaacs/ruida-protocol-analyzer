@@ -59,7 +59,7 @@ class RdTransport:
         self,
         magic: int = 0x88,
         chunk_size: int = 1024,
-        timeout: int = 250,
+        timeout: int = 1000,
         gross_timeout: int = 15000,
     ) -> None:
         """Configure transport parameters. Must be called before open()."""
