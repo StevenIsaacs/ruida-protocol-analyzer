@@ -76,10 +76,12 @@ class RdTransport:
             usb_device: USB device path. Empty string reuses value from a previous `open()` call.
         """
         if udp_host:
-            self._udp = UdpTransport()
+            if self._udp is None:
+                self._udp = UdpTransport()
             self._udp_host = udp_host
         if usb_device:
-            self._usb = UsbTransport()
+            if self._usb is None:
+                self._usb = UsbTransport()
             self._usb_device = usb_device
 
         if self._usb and self._usb.open(self._usb_device):
