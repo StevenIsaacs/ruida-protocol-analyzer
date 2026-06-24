@@ -273,6 +273,7 @@ class TuiAdapter(App):
         "list",
         "save",
         "stop",
+        "dryrun",
         "plot",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
@@ -373,6 +374,7 @@ class TuiAdapter(App):
         self._last_server_cert: str | None = None
         self._last_server_key: str | None = None
         self._last_server_token: str | None = None
+        self._dryrun: bool = False
         self._rpyc_server: ThreadedServer | None = None
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
@@ -393,6 +395,7 @@ class TuiAdapter(App):
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
             "save": "Save composed job to a file (/save job <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
+            "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
             "plot": "Plot loaded script moves in a Bokeh visualization",
         }
         self._suggest_matches: list[str] = []
@@ -931,6 +934,8 @@ class TuiAdapter(App):
                 self._cmd_save(args)
             elif cmd == "stop":
                 self._cmd_stop(args)
+            elif cmd == "dryrun":
+                self._cmd_dryrun(args)
             elif cmd == "plot":
                 self._cmd_plot(args)
         except Exception as e:
@@ -1394,6 +1399,18 @@ class TuiAdapter(App):
             self._log_info("Script execution stopped")
         else:
             self._log_info("Nothing to stop")
+
+    def _cmd_dryrun(self, args: str = "") -> None:
+        """Toggle dry-run mode (on|off)."""
+        arg = args.strip().lower()
+        if arg == "on":
+            self._dryrun = True
+            self._log_info("Dry-run mode ON — RPC driver.run() will only log to TUI")
+        elif arg == "off":
+            self._dryrun = False
+            self._log_info("Dry-run mode OFF — RPC driver.run() will execute normally")
+        else:
+            self._log_error("Usage: /dryrun on|off")
 
     def _cmd_plot(self, args: str = "") -> None:
         """Plot the loaded script in a Bokeh visualization."""
@@ -2405,6 +2422,10 @@ class TuiAdapter(App):
 
         # Store for /list access
         self._loaded_script = list(script)
+
+        if self._dryrun:
+            self._log_info("[DRY-RUN] Script execution skipped — call driver.run() to execute")
+            return
 
         self.run_script(self._loaded_script, auto_checksum=auto_checksum)
 
