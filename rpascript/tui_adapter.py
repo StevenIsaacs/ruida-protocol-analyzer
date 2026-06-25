@@ -149,7 +149,7 @@ class ErrorScreen(ModalScreen):
         self.app.exit(return_code=1)
 
 
-def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -> tuple[int, bool]:
+def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500, _level: int = 0) -> tuple[int, int]:
     """Recursively compute deep memory footprint of an object.
 
     Walks __dict__, __slots__, and container items (dict, list, tuple, set)
@@ -164,7 +164,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
         seen: Set of object ids already visited (for cycle detection).
 
     Returns:
-        Tuple of (total deep size in bytes, True if depth limit was exceeded).
+        Tuple of (total deep size in bytes, maximum walk depth level reached).
     """
     _PRIMITIVE_TYPES = (int, float, str, bytes, bool, type(None))
     _STOP_TYPES = (
@@ -185,7 +185,7 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
 
     obj_id = id(obj)
     if obj_id in seen:
-        return (0, False)
+        return (0, _level)
     seen.add(obj_id)
 
     # Base size of the object itself
@@ -196,29 +196,29 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
 
     # Stop recursion at primitives, shared runtime types, or depth limit
     if isinstance(obj, _PRIMITIVE_TYPES + _STOP_TYPES):
-        return (total, False)
+        return (total, _level)
     if _depth <= 0:
-        return (total, True)
+        return (total, _level)
 
     # Walk based on container type
-    depth_hit = False
+    max_depth = _level
     if isinstance(obj, dict):
         for k, v in list(obj.items()):
-            ks, kh = _deep_getsizeof(k, seen, _depth - 1)
-            vs, vh = _deep_getsizeof(v, seen, _depth - 1)
+            ks, kd = _deep_getsizeof(k, seen, _depth - 1, _level + 1)
+            vs, vd = _deep_getsizeof(v, seen, _depth - 1, _level + 1)
             total += ks + vs
-            depth_hit = depth_hit or kh or vh
+            max_depth = max(max_depth, kd, vd)
     elif isinstance(obj, (list, tuple, set, frozenset)):
         for item in list(obj):
-            item_s, item_h = _deep_getsizeof(item, seen, _depth - 1)
+            item_s, item_d = _deep_getsizeof(item, seen, _depth - 1, _level + 1)
             total += item_s
-            depth_hit = depth_hit or item_h
+            max_depth = max(max_depth, item_d)
 
     # Walk instance attributes via __dict__ and __slots__
     if hasattr(obj, '__dict__') and obj.__dict__ is not None:
-        d_s, d_h = _deep_getsizeof(obj.__dict__, seen, _depth - 1)
+        d_s, d_d = _deep_getsizeof(obj.__dict__, seen, _depth - 1, _level + 1)
         total += d_s
-        depth_hit = depth_hit or d_h
+        max_depth = max(max_depth, d_d)
 
     for _cls in type(obj).__mro__:
         slots = getattr(_cls, '__slots__', ())
@@ -230,13 +230,13 @@ def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500) -
             if hasattr(obj, slot):
                 try:
                     val = getattr(obj, slot)
-                    v_s, v_h = _deep_getsizeof(val, seen, _depth - 1)
+                    v_s, v_d = _deep_getsizeof(val, seen, _depth - 1, _level + 1)
                     total += v_s
-                    depth_hit = depth_hit or v_h
+                    max_depth = max(max_depth, v_d)
                 except (AttributeError, TypeError):
                     continue
 
-    return (total, depth_hit)
+    return (total, max_depth)
 
 
 class TuiAdapter(App):
@@ -442,8 +442,8 @@ class TuiAdapter(App):
         self._mem_timer: Any = None
 
         # GC object counter state
-        self._gc_prev: dict[str, tuple[int, int, bool]] | None = None
-        self._gc_initial: dict[str, tuple[int, int, bool]] = {}
+        self._gc_prev: dict[str, tuple[int, int, int]] | None = None
+        self._gc_initial: dict[str, tuple[int, int, int]] = {}
 
     # ------------------------------------------------------------------
     # Textual App lifecycle
@@ -2743,14 +2743,14 @@ class TuiAdapter(App):
         return f"{hdr_line}\n{mem_line}\n{chg_line}\n{tot_line}"
 
     @staticmethod
-    def _count_gc_objects() -> dict[str, tuple[int, int, bool]]:
+    def _count_gc_objects() -> dict[str, tuple[int, int, int]]:
         """Count GC-tracked Ruida PA class instances and their total memory.
 
         Calls gc.collect(), then iterates gc.get_objects(), filtering to
         classes whose __module__ starts with a Ruida PA package prefix.
 
         Returns:
-            dict mapping class name -> (instance_count, total_bytes, depth_exceeded),
+            dict mapping class name -> (instance_count, total_bytes, max_depth),
             sorted by total_bytes descending, truncated to top 20.
             Empty dict if gc.collect() itself fails (fail-silent).
         """
@@ -2759,7 +2759,7 @@ class TuiAdapter(App):
         except (AttributeError, TypeError, OSError):
             return {}
 
-        counter: dict[str, tuple[int, int, bool]] = {}
+        counter: dict[str, tuple[int, int, int]] = {}
         for obj in gc.get_objects():
             try:
                 mod = type(obj).__module__
@@ -2769,9 +2769,9 @@ class TuiAdapter(App):
                 ):
                     continue
                 cls_name = type(obj).__name__
-                count, mem, depth_hit = counter.get(cls_name, (0, 0, False))
-                obj_mem, obj_hit = _deep_getsizeof(obj)
-                counter[cls_name] = (count + 1, mem + obj_mem, depth_hit or obj_hit)
+                count, mem, depth = counter.get(cls_name, (0, 0, 0))
+                obj_mem, obj_depth = _deep_getsizeof(obj)
+                counter[cls_name] = (count + 1, mem + obj_mem, max(depth, obj_depth))
             except (AttributeError, TypeError, OSError):
                 continue  # Skip objects that cause errors during inspection
 
@@ -2786,16 +2786,16 @@ class TuiAdapter(App):
 
     @staticmethod
     def _render_gc_display(
-        cur: dict[str, tuple[int, int, bool]],
-        prev: dict[str, tuple[int, int, bool]] | None,
-        initial: dict[str, tuple[int, int, bool]],
+        cur: dict[str, tuple[int, int, int]],
+        prev: dict[str, tuple[int, int, int]] | None,
+        initial: dict[str, tuple[int, int, int]],
     ) -> str:
         """Format GC object counts as a 21-line table (header + 20 data rows).
 
-        Columns: Class(15L)  Count(10R)  Mem(10R)  Change(10R)  Total(10R)
+        Columns: Class(15L)  Count(d:10R)  Mem(10R)  Change(10R)  Total(10R)
 
         Args:
-            cur: Current snapshot — {class_name: (count, mem_bytes, depth_exceeded)}
+            cur: Current snapshot — {class_name: (count, mem_bytes, max_depth)}
             prev: Previous snapshot for Change delta, or None for first update.
             initial: First snapshot for Total delta, or empty for first update.
 
@@ -2817,13 +2817,13 @@ class TuiAdapter(App):
 
         lines: list[str] = []
         for cls_name in cur:
-            cnt, mem, depth_exceeded = cur[cls_name]
+            cnt, mem, depth = cur[cls_name]
             # Change delta
             if prev is None:
                 chg = "-"
                 chg_str = f"{chg:>{col_w[3]}}"
             else:
-                _, p_mem, _ = prev.get(cls_name, (0, 0, False))
+                _, p_mem, _ = prev.get(cls_name, (0, 0, 0))
                 d = mem - p_mem
                 if d > 0:
                     chg_str = f"[yellow]{d:>+{col_w[3]}}[/yellow]"
@@ -2836,7 +2836,7 @@ class TuiAdapter(App):
                 tot = "-"
                 tot_str = f"{tot:>{col_w[4]}}"
             else:
-                i_cnt, i_mem, _ = initial.get(cls_name, (0, 0, False))
+                i_cnt, i_mem, _ = initial.get(cls_name, (0, 0, 0))
                 td = mem - i_mem
                 if td > 0:
                     tot_str = f"{td:>+{col_w[4]}}"
@@ -2846,10 +2846,11 @@ class TuiAdapter(App):
                     tot_str = f"{'0':>{col_w[4]}}"
             # Mem column
             mem_str = f"{mem:>{col_w[2]}}"
-            # Count column
-            cnt_str = f"{cnt:>{col_w[1]}}"
+            # Count column -- show count:max_depth
+            cnt_str = f"{cnt}:{depth}"
+            cnt_str = f"{cnt_str:>{col_w[1]}}"
 
-            if depth_exceeded:
+            if depth >= 500:  # Orange highlight when walk hit the recursion limit
                 cls_str = f"[orange]{cls_name:<{col_w[0]}}[/orange]"
             else:
                 cls_str = f"{cls_name:<{col_w[0]}}"
