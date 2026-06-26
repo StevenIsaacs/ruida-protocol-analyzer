@@ -377,6 +377,8 @@ class TuiAdapter(App):
         self._last_server_token: str | None = None
         self._dryrun: bool = False
         self._rd_script: list[str] | None = None  # most recent RPC-received script, for /run
+        self._plot_source: str | None = None  # source label for /plot title (filename or "[RPC]")
+        self._bokeh_apps: list[BokehApp] = []  # running Bokeh servers for /clear shutdown
         self._rpyc_server: ThreadedServer | None = None
         self._suggest_popup = RichLog(
             id="suggest-popup", highlight=True, markup=True, max_lines=10
@@ -1107,6 +1109,7 @@ class TuiAdapter(App):
 
         self._loaded_script = script
         self._log_info(f"Imported {len(script)} lines from {path}")
+        self._plot_source = os.path.basename(path)
 
     def _cmd_load(self, path: str) -> None:
         """Load a script file into memory."""
@@ -1123,6 +1126,7 @@ class TuiAdapter(App):
                 return
             self._loaded_script = lines
             self._log_info(f"Loaded {len(lines)} lines from {path}")
+            self._plot_source = os.path.basename(path)
         except FileNotFoundError:
             self._log_error(f"File not found: {path}")
         except PermissionError:
@@ -1255,6 +1259,11 @@ class TuiAdapter(App):
         self._mem_prev = None
         self._gc_initial = {}
         self._gc_prev = None
+        # Shut down any running Bokeh servers
+        for _app in self._bokeh_apps:
+            _app.shutdown()
+        self._bokeh_apps = []
+        self._plot_source = None
         self._log_info("Logs, head, and tail cleared")
 
     def _cmd_quit(self) -> None:
@@ -1459,7 +1468,7 @@ class TuiAdapter(App):
             return
 
         ns = argparse.Namespace(
-            input_file="<script>",
+            input_file=self._plot_source or "<script>",
             output_file=None,
             bokeh_port=5006,
             quiet=True,
@@ -1533,6 +1542,7 @@ class TuiAdapter(App):
                 self._log_info(
                     "Bokeh visualization: http://localhost:{}".format(bokeh_app.port)
                 )
+                self._bokeh_apps.append(bokeh_app)
             else:
                 self._log_error("Failed to start Bokeh server.")
         except Exception as e:
@@ -2453,6 +2463,7 @@ class TuiAdapter(App):
         self._loaded_script = list(script)
         # Store separately so /run can find it even after /load
         self._rd_script = list(script)
+        self._plot_source = "[RPC]"
 
         if self._dryrun:
             self._log_info("[DRY-RUN] Script execution skipped — use /run to execute")
