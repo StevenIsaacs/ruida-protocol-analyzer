@@ -3,6 +3,7 @@ _self=$(basename "$0")
 usage () {
   cat <<EOF
 Usage: $_self <file> [<options>]
+       $_self --dir <directory> [<options>]
 
 Use this script to run rpa.py to process a log file previously captured
 by the capture script. The log file is processed three times. First to produce a
@@ -13,22 +14,48 @@ The verbose decode generates an interactive Bokeh plot of all moves and cuts.
 Requires a virtual environment with Bokeh installed. Create one from requirements.txt.
 
 Parameters:
- 1 The capture file name -- not including extension. Processes <file>.log.
-    The output is written to <file>.txt, <file>-vrb.txt, and <file>.rds.
- 2 Optional command line arguments for verbose mode. Often this will be used
-    to generate a plot of all head movements. e.g.: "--plot-moves".
+  <file>       The capture file name -- without extension. Processes <file>.log.
+               Output written to <file>.txt, <file>-vrb.txt, and <file>.rds.
+  --dir, -d    Process all .log files in <directory>. Each is processed as if
+               passed individually as <file>.
+  <options>    Optional arguments for verbose mode (e.g. "--plot-moves").
 EOF
 exit 1
 }
 
-if [ "$#" -lt 1 ]; then
-    usage
+# Parse --dir flag
+if [ "$1" = "--dir" ] || [ "$1" = "-d" ]; then
+    _mode="dir"
+    shift
+    _dir="$1"
+    if [ -z "$_dir" ] || [ ! -d "$_dir" ]; then
+        echo "ERROR: Directory '$_dir' not found."
+        usage
+    fi
+    shift
+    _log_files=("$_dir"/*.log)
+    # Check if glob matched anything (returns literal pattern if no match)
+    if [ "${_log_files[0]}" = "$_dir/*.log" ]; then
+        echo "ERROR: No .log files found in $_dir."
+        usage
+    fi
+else
+    if [ "$#" -lt 1 ]; then
+        usage
+    fi
+    _file=$1
+    if [ ! -e "$_file.log" ]; then
+        echo "ERROR: The log file $_file.log does not exist."
+        usage
+    fi
+    _log_files=("$_file")
+    _mode="file"
 fi
 
-_file=$1
-if [ ! -e $_file.log ]; then
-    echo ERROR: The log file $_file.log does not exist.
-    usage
+# Capture remaining options for verbose decode
+_opts="${*:2}"  # default: single-file mode — skip file name
+if [ "$_mode" = "dir" ]; then
+    _opts="$*"  # dir mode: after shifts, $@ is all remaining options
 fi
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +78,29 @@ fi
 _rpa_cmd=rpa
 command -v rpa >/dev/null 2>&1 || _rpa_cmd="python rpa.py"
 
-$_rpa_cmd -o $_file.txt $_file.log
-$_rpa_cmd --verbose --raw --unswizzled $2 -o $_file-vrb.txt $_file.log
+_errors=0
+_success=0
+for _entry in "${_log_files[@]}"; do
+    _base=""
+    if [ "$_mode" = "dir" ]; then
+        _base="${_entry%.log}"
+    else
+        _base="$_entry"
+        _entry="$_entry.log"
+    fi
 
-$_rpa_cmd --generate-script $_file.log > /dev/null
+    if [ ! -f "$_entry" ]; then
+        echo "ERROR: Log file $_entry not found. Skipping."
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    echo "=== Processing: $_entry ==="
+    $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    $_rpa_cmd --generate-script "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    _success=$((_success + 1))
+done
+
+echo "=== Done: $_success processed, $_errors errors ==="
+exit $_errors

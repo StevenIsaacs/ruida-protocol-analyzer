@@ -11,6 +11,18 @@ try:
 except ImportError:
     BokehApp = None
 
+# Additional Bokeh imports for --save-plot
+try:
+    from bokeh.embed import file_html
+    from bokeh.models import ColumnDataSource
+    from bokeh.resources import CDN
+    from rpalib.bokeh_view import BokehView
+except ImportError:
+    file_html = None
+    ColumnDataSource = None
+    CDN = None
+    BokehView = None
+
 # --- Version detection ---
 # Prefer importlib.metadata (works when package is pip-installed or built with PyInstaller).
 # Falls back to a dev version when running rpa.py directly from source.
@@ -21,10 +33,10 @@ try:
     try:
         __version__ = _pkg_version("ruida-protocol-analyzer")
     except PackageNotFoundError:
-        __version__ = "0.8.1"
+        __version__ = "0.9.0"
 except ImportError:
     # Python < 3.8 fallback
-    __version__ = "0.8.1"
+    __version__ = "0.9.0"
 
 
 def parse_arguments():
@@ -144,6 +156,13 @@ Examples:
         help="Port for the Bokeh visualization server (default: 5006).",
     )
 
+    # Save plot to HTML file
+    parser.add_argument(
+        "--save-plot",
+        action="store_true",
+        help="Save an interactive Bokeh HTML plot and exit (no server).",
+    )
+
     # Generate .rds script file
     parser.add_argument(
         "--generate-script",
@@ -216,11 +235,11 @@ def main():
 
     bokeh_app = None
 
-    if args.plot_moves:
+    if args.plot_moves or args.save_plot:
         analyzer.parser.plot.plot.enable()
 
-        if BokehApp is None:
-            output.warning("Bokeh is not installed. Install with: pip install bokeh")
+    if args.plot_moves and BokehApp is None:
+        output.warning("Bokeh is not installed. Install with: pip install bokeh")
 
     try:
         analyzer.decode()  # Does not return until decode is complete.
@@ -230,6 +249,50 @@ def main():
 
         if script_gen is not None:
             script_gen.close()
+
+        if args.save_plot and file_html is not None:
+            # Save interactive HTML plot without starting a Bokeh server.
+            try:
+                _plot = analyzer.parser.plot.plot
+                from pathlib import Path
+
+                _plot_cds = ColumnDataSource(
+                    data=_plot.to_column_data()
+                )
+                # Determine output stem
+                if _plot.out.args.output_file:
+                    _out_stem = str(
+                        _plot.out.out_stem
+                    )
+                else:
+                    _out_stem = args.input_file
+                _view = BokehView(
+                    args,
+                    source=_plot_cds,
+                    title="All Vectors",
+                    color_lut=_plot.color_lut,
+                    out_stem=_out_stem,
+                )
+                _view.update_histograms()
+
+                # Resolve output path
+                if _out_stem:
+                    _out = Path(_out_stem).with_suffix("")
+                    _plot_path = _out.parent / f"{_out.stem}-view.html"
+                else:
+                    _plot_path = Path("ruida-session-view.html")
+
+                _html = file_html(_view.layout, CDN, title=_view.title)
+                _plot_path.write_text(_html, encoding="utf-8")
+                print(
+                    f"Interactive plot saved to {_plot_path}",
+                    file=sys.stderr,
+                )
+            except Exception as e:
+                print(
+                    f"Failed to save plot: {e}",
+                    file=sys.stderr,
+                )
 
         if args.plot_moves and BokehApp is not None:
             # File mode: start Bokeh server after output file is written.
