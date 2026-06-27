@@ -31,6 +31,8 @@ try:
 except ImportError:
     BokehApp = None
 from protocols.ruida.ruida_analyzer import RuidaProtocolAnalyzer
+from protocols.ruida.ruida_parser import RdParser
+from rpalib.rpa_swizzler import RpaSwizzler
 from rpascript.generator import ScriptGenerator
 
 from textual import on
@@ -395,7 +397,7 @@ class TuiAdapter(App):
             "server": "Start or stop the RPC server. "
             "Server commands: start host=<IP> port=<N> cert=<path> key=<path> token=<token>, or stop",
             "head": "Load a script file to prepend to job on execution",
-            "import": "Import tshark <file> [magic=0xNN] as a script",
+            "import": "Import a tshark log (.log) or RDWorks (.rd) file [magic=0xNN] as a script",
             "tail": "Load a script file to append to job on execution",
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
             "save": "Save composed job to a file (/save job <path>)",
@@ -1031,13 +1033,71 @@ class TuiAdapter(App):
             self._flush_pending()
             return self.lines
 
-    def _cmd_import(self, args: str) -> None:
-        """Import a tshark capture file as a script.
+    # ------------------------------------------------------------------
+    # _RdBinaryStream — binary stream reader for RDWorks .rd files
+    # ------------------------------------------------------------------
 
-        Decodes the tshark file in-process using the RuidaProtocolAnalyzer
-        pipeline, converts decoded commands to .rds script lines via the
-        _ImportCollector, and loads the result into _loaded_script for
-        /exec or /save.
+    class _RdBinaryStream:
+        """Reads .rd binary files and provides unswizzled bytes to the parser.
+
+        .rd file format:
+        - 10-byte header starting with b"RDWORKV" (7 known + 3 wildcard bytes)
+        - The header is NOT swizzled
+        - Remaining bytes form a continuous swizzled byte stream
+          (USB transport format: swizzled, no ACK/NAK, no packet checksum,
+          no packet boundaries).
+        """
+
+        HEADER_MAGIC = b"RDWORKV"
+        HEADER_LEN = 10
+
+        def __init__(self, path: str, magic: int = 0x88):
+            self._path = path
+            self._pos = 0
+            self._total = 0
+            self._data: bytearray = bytearray()
+            self._read_and_unswizzle(magic)
+
+        def _read_and_unswizzle(self, magic: int) -> None:
+            with open(self._path, "rb") as f:
+                raw = f.read()
+            # Test for RDWORKV header: if present, skip it; otherwise use raw as-is
+            if len(raw) < self.HEADER_LEN:
+                # Too small for a header — whole file is swizzled data
+                swizzled = bytearray(raw)
+            elif raw[:7] == self.HEADER_MAGIC:
+                swizzled = bytearray(raw[self.HEADER_LEN :])
+            else:
+                # No RDWORKV header — treat entire file as swizzled byte stream
+                swizzled = bytearray(raw)
+            if not swizzled:
+                raise ValueError(f"Empty payload in RD file: {self._path}")
+            swizzler = RpaSwizzler(magic=magic)
+            self._data = swizzler.unswizzle(swizzled)
+            self._total = len(self._data)
+
+        def next_byte(self) -> int | None:
+            if self._pos >= self._total:
+                return None
+            b = self._data[self._pos]
+            self._pos += 1
+            return b
+
+        @property
+        def take(self) -> int:
+            return self._pos
+
+        @property
+        def remaining(self) -> int:
+            return self._total - self._pos
+
+    def _cmd_import(self, args: str) -> None:
+        """Import a tshark capture file (.log) or RDWorks file (.rd) as a script.
+
+        Decodes the file in-process using the RuidaProtocolAnalyzer pipeline
+        (for .log files) or the RdBinaryStream reader + RdParser (for .rd files),
+        converts decoded commands to .rds script lines via the _ImportCollector,
+        and loads the result into _loaded_script for /exec or /save.
         """
         if not args:
             self._log_error("Usage: /import <path> [magic=0xNN]")
@@ -1064,6 +1124,9 @@ class TuiAdapter(App):
             self._log_error(f"File not found: {path}")
             return
 
+        _, ext = os.path.splitext(path)
+        ext = ext.lower()
+
         # Build minimal args namespace for the decode pipeline
         ns = argparse.Namespace(
             magic=magic,
@@ -1079,13 +1142,33 @@ class TuiAdapter(App):
 
         output = RpaEmitter(ns)
         try:
-            with open(path, "r", encoding="utf-8") as fp:
-                analyzer = RuidaProtocolAnalyzer(ns, fp, output)
+            if ext == ".rd":
+                stream = self._RdBinaryStream(path, magic=magic)
                 collector = self._ImportCollector()
-                analyzer.parser.on_command = collector.write_command
-                analyzer.on_new_packet = collector.on_new_packet
-                analyzer.decode()
+                parser = RdParser(output, path)
+                parser.on_command = collector.write_command
+                while True:
+                    b = stream.next_byte()
+                    if b is None:
+                        break
+                    parser.step(
+                        b,
+                        is_reply=False,
+                        take=stream.take,
+                        remaining=stream.remaining,
+                    )
                 script = collector.get_script()
+            elif ext in (".log", ".txt"):
+                with open(path, "r", encoding="utf-8") as fp:
+                    analyzer = RuidaProtocolAnalyzer(ns, fp, output)
+                    collector = self._ImportCollector()
+                    analyzer.parser.on_command = collector.write_command
+                    analyzer.on_new_packet = collector.on_new_packet
+                    analyzer.decode()
+                    script = collector.get_script()
+            else:
+                self._log_error(f"Unsupported file extension: {ext}")
+                return
         except SyntaxError as e:
             self._log_error(f"Decode error: {e}")
             return
@@ -1561,7 +1644,7 @@ class TuiAdapter(App):
         if cmd in ("/load", "/head", "/tail"):
             return {".rds"}
         if cmd == "/import":
-            return {".log", ".txt"}
+            return {".log", ".txt", ".rd"}
         if cmd == "/save":
             return None  # All files
         return set()  # Changed from None to set() — unknown commands show no files
