@@ -357,6 +357,17 @@ def parse_value(
     except ValueError:
         pass
 
+    # TBDU-style format values (e.g. "TBDU35:0000001b: 0x1a: 26") contain
+    # colon-separated representations of the same value. Extract the last
+    # segment (the decimal integer) for round-trip parsing.
+    if ":" in raw:
+        parts = raw.rsplit(":", 1)
+        if len(parts) == 2:
+            try:
+                return int(parts[1].strip())
+            except ValueError:
+                pass
+
     try:
         return float(raw)
     except ValueError:

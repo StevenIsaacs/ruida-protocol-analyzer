@@ -162,10 +162,11 @@ class ScriptGenerator:
                 if spec[1] == "power":
                     fmt_str = fmt_str.replace("{:.1f}", "{:.3f}")
 
-                # TBD-style debug formats (contain 'TBD' and '{' placeholders)
-                # produce complex display text that can't be decoded back.
-                # Emit the raw value as a plain integer instead.
-                if "TBD" in fmt_str and "{" in fmt_str:
+                # TBD-style debug formats with a 'tbd' decoder produce complex
+                # display text that can't be decoded back. Emit the raw value
+                # as a plain integer instead. Fixed-length TBD* types like
+                # TBDU35 have proper decoders and should use the format string.
+                if spec[1] == "tbd":
                     params.append(str(val))
                 else:
                     try:
