@@ -305,8 +305,11 @@ def main():
 
                 # Resolve output path
                 if _out_stem:
-                    _out = Path(_out_stem).with_suffix("")
-                    _plot_path = _out.parent / f"{_out.stem}-view.html"
+                    _in = Path(_out_stem)
+                    _stem = _in.stem
+                    _sfx = _in.suffix
+                    _ext_part = f"-{_sfx[1:]}" if _sfx else ""
+                    _plot_path = _in.parent / f"{_stem}{_ext_part}-view.html"
                 else:
                     _plot_path = Path("ruida-session-view.html")
 
