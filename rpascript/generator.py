@@ -9,6 +9,8 @@ script format used by rpa-script, enabling round-trip verification:
 import os
 import re
 
+import protocols.ruida.ruida_protocol as rdap
+
 
 class ScriptGenerator:
     """Generates .rds script files from decoded parser command data.
@@ -161,6 +163,11 @@ class ScriptGenerator:
                 # (see docs/plans/RuidaDriver-checksum-plan.md)
                 if spec[1] == "power":
                     fmt_str = fmt_str.replace("{:.1f}", "{:.3f}")
+
+                # Axis values should use human-readable names from the AXIS_T
+                # lookup table instead of raw numeric indices.
+                if spec[1] == "axis":
+                    val = rdap.AXIS_T.get(val, f"UNKNOWN_AXIS: 0x{val:02X}")
 
                 # TBD-style debug formats with a 'tbd' decoder produce complex
                 # display text that can't be decoded back. Emit the raw value

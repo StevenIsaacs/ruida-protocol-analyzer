@@ -31,6 +31,7 @@ _ENCODER_MAP: dict[str, str | None] = {
     "bool": "encode_bool",
     "on_off": "encode_bool",
     "rapid": "encode_uint7",
+    "axis": "encode_uint7",
     "mt": "encode_mt",
     "index": "encode_index",
     "checksum": "encode_uint35",
@@ -378,6 +379,12 @@ def parse_value(
         rev_rot = {v: k for k, v in rdap.ROT.items()}
         if raw in rev_rot:
             return rev_rot[raw]
+
+    # --- Axis label-to-value resolution ---
+    if decoder_fn == "axis":
+        rev_axis = {v: k for k, v in rdap.AXIS_T.items()}
+        if raw in rev_axis:
+            return rev_axis[raw]
 
     # --- MStat label-to-bitmask resolution ---
     # When the decoded reply is a human-readable label (e.g. 'Job Running')

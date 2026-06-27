@@ -182,6 +182,10 @@ class RdDecoder:
         self.value = self.to_int(data)
         return rdap.ROT.get(data[0], f"RAPID_UNKNOWN: 0x{data[0]:02X}")
 
+    def rd_axis(self, data: bytearray):
+        self.value = self.to_int(data)
+        return rdap.AXIS_T.get(data[0], f"UNKNOWN_AXIS: 0x{data[0]:02X}")
+
     def rd_on_off(self, data: bytearray):
         if data[0]:
             self.value = "ON"

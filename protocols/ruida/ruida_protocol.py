@@ -71,6 +71,14 @@ ROT = {
     0x03: "RAPID_LIGHT",
 }
 
+# Axis selection for PEN_OFFSET_AXIS / PART_OFFSET_AXIS.
+AXIS_T = {
+    0: "X",
+    1: "Y",
+    2: "Z",
+    3: "U",
+}
+
 # Type format strings.
 COORD_FMT = "{:.3f}mm"
 
@@ -110,6 +118,7 @@ PART = ("Part:{}", "int7", "int_7")  # or layer.
 LASER = ("Laser:{}", "int7", "int_7")  # For dual head lasers.
 VALUE = ("{}", "int7", "int_7")
 RAPID = ("Option:{}", "rapid", "int_7")
+AXIS = ("Axis:{}", "axis", "int_7")
 COLOR = ("Color:#{:06X}", "uint35", "uint_35")
 SETTING = ("Set:{:08X}", "uint35", "uint_35")
 ID = ("ID:{}", "uint14", "uint_14")
@@ -121,6 +130,7 @@ YABSCOORD = ("Y=" + COORD_FMT, "coord", "int_35")
 ZABSCOORD = ("Z=" + COORD_FMT, "coord", "int_35")
 AABSCOORD = ("A=" + COORD_FMT, "coord", "int_35")  # Should be Z?
 UABSCOORD = ("U=" + COORD_FMT, "coord", "int_35")
+RELCOORD = ("REL=" + COORD_FMT, "coord", "int_35")
 RELCOORD35 = ("Rel=" + COORD_FMT, "coord", "int_35")
 XRELCOORD35 = ("RelX=" + COORD_FMT, "coord", "int_35")
 YRELCOORD35 = ("RelY=" + COORD_FMT, "coord", "int_35")
@@ -574,15 +584,15 @@ CT = {
         0x35: ("BLOCK_X_SIZE", XABSCOORD, YABSCOORD),
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ("SET_FILE_EMPTY", UINT7),
-        0x37: ("ARRAY_EVEN_DISTANCE", TBD35, TBD35),
+        0x37: ("ARRAY_EVEN_DISTANCE", XRELCOORD35, YRELCOORD35),
         0x38: ("SET_FEED_AUTO_PAUSE", SWITCH),
         0x3A: "UNION_BLOCK_PROPERTY",
         0x50: ("DOCUMENT_TOP_LEFT", XABSCOORD, YABSCOORD),
         0x51: ("DOCUMENT_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
         0x52: ("PART_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
         0x53: ("PART_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),
-        0x54: ("PEN_OFFSET_AXIS", UINT7, ABSCOORD),
-        0x55: ("PART_OFFSET_AXIS", UINT7, ABSCOORD),
+        0x54: ("PEN_OFFSET_AXIS", AXIS, RELCOORD),
+        0x55: ("PART_OFFSET_AXIS", AXIS, RELCOORD),
         0x60: ("SET_CURRENT_ELEMENT_INDEX", UINT7),
         0x61: ("PART_EX_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
         0x62: ("PART_EX_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),
