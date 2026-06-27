@@ -1,9 +1,12 @@
 import argparse
+import os
 import sys
 import time
 
 import protocols.ruida.ruida_analyzer as rpa
 from rpalib.rpa_emitter import RpaEmitter
+from protocols.ruida.ruida_parser import RdParser
+from rpalib.rd_binary_reader import RdBinaryStream
 
 # Graceful Bokeh import: BokehApp is None if Bokeh not installed.
 try:
@@ -56,10 +59,11 @@ a file.
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s capture.log                      # Analyze existing tshark log
+  %(prog)s capture.log                      # Analyze tshark log file
+  %(prog)s capture.rd                       # Analyze RDWorks binary file
   %(prog)s -o output.txt capture.log        # Save decoded output to file
   %(prog)s --verbose --raw capture.log      # Detailed output with raw data
-  %(prog)s --magic 0x88 capture.log         # Use specific magic number
+  %(prog)s --magic 0x88 capture.rd          # Use specific magic number
         """,
     )
 
@@ -67,7 +71,7 @@ Examples:
     parser.add_argument(
         "input_file",
         nargs="?",
-        help="Tshark log file to analyze.",
+        help="Tshark log file (.log/.txt) or RDWorks binary file (.rd) to analyze.",
     )
 
     # Input file encodng.
@@ -209,14 +213,24 @@ def open_input(args):
 def main():
     """Main function with command line argument processing"""
     args = parse_arguments()
-    input_stream = open_input(args)
+
+    # Detect input type by extension
+    _, ext = os.path.splitext(args.input_file)
+    ext = ext.lower()
+    is_rd = (ext == ".rd")
 
     # Set up output handling
     output = RpaEmitter(args)
     output.open()
 
-    # Initialize analyzer with magic number if provided
-    analyzer = rpa.RuidaProtocolAnalyzer(args, input_stream, output)
+    if is_rd:
+        stream = RdBinaryStream(args.input_file, magic=args.magic)
+        parser = RdParser(output, args.input_file)
+        analyzer = None
+    else:
+        input_stream = open_input(args)
+        analyzer = rpa.RuidaProtocolAnalyzer(args, input_stream, output)
+        parser = analyzer.parser
 
     # Set up script generator if --generate-script is active
     script_gen = None
@@ -229,20 +243,34 @@ def main():
         base = args.output_file or args.input_file or "capture"
         script_path = str(Path(base).with_suffix(".rds"))
         script_gen = ScriptGenerator(script_path, source_file=args.input_file)
-        analyzer.parser.on_command = script_gen.write_command
-        analyzer.on_new_packet = script_gen.on_new_packet
+        parser.on_command = script_gen.write_command
+        if analyzer is not None:
+            analyzer.on_new_packet = script_gen.on_new_packet
         output.info(f"Generating script: {script_path}")
 
     bokeh_app = None
 
     if args.plot_moves or args.save_plot:
-        analyzer.parser.plot.plot.enable()
+        parser.plot.plot.enable()
 
     if args.plot_moves and BokehApp is None:
         output.warning("Bokeh is not installed. Install with: pip install bokeh")
 
     try:
-        analyzer.decode()  # Does not return until decode is complete.
+        if is_rd:
+            # Feed bytes from binary stream directly to the parser state machine
+            while True:
+                b = stream.next_byte()
+                if b is None:
+                    break
+                parser.step(
+                    b,
+                    is_reply=False,
+                    take=stream.take,
+                    remaining=stream.remaining,
+                )
+        else:
+            analyzer.decode()  # Does not return until decode is complete.
 
         output.info("Decode complete.\n")
         output.close()
@@ -253,7 +281,7 @@ def main():
         if args.save_plot and file_html is not None:
             # Save interactive HTML plot without starting a Bokeh server.
             try:
-                _plot = analyzer.parser.plot.plot
+                _plot = parser.plot.plot
                 from pathlib import Path
 
                 _plot_cds = ColumnDataSource(
@@ -297,7 +325,7 @@ def main():
         if args.plot_moves and BokehApp is not None:
             # File mode: start Bokeh server after output file is written.
             try:
-                bokeh_app = BokehApp(args, analyzer.parser.plot.plot)
+                bokeh_app = BokehApp(args, parser.plot.plot)
                 if bokeh_app.start(port=args.bokeh_port):
                     print(
                         "Now plotting moves. Press Ctrl+C in the terminal to exit.",
@@ -318,7 +346,10 @@ def main():
 
     except LookupError as e:
         output.critical(f"{e}")
-        output.critical("Verify incoming data is a tshark dump of a Ruida UDP session.")
+        if is_rd:
+            output.critical("Verify the .rd file is not corrupted or try --magic 0xNN.")
+        else:
+            output.critical("Verify incoming data is a tshark dump of a Ruida UDP session.")
     except SyntaxError as e:
         output.critical(f"{e}")
     except RuntimeError as e:
@@ -329,13 +360,14 @@ def main():
         sys.stderr.flush()
     except Exception as e:
         if isinstance(e, str):
-            output.verbose(f"Unhandled error: {e}")
+            output.error(f"Unhandled error: {e}")
         else:
-            output.verbose(f"Unhandled exception {e.__str__()}")
+            output.error(f"Unhandled exception {e.__str__()}")
         exit(1)
     finally:
         if bokeh_app is not None:
             bokeh_app.shutdown()
+        output.close()
         sys.stdout.flush()
 
 

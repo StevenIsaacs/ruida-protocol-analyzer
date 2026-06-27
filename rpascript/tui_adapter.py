@@ -32,7 +32,7 @@ except ImportError:
     BokehApp = None
 from protocols.ruida.ruida_analyzer import RuidaProtocolAnalyzer
 from protocols.ruida.ruida_parser import RdParser
-from rpalib.rpa_swizzler import RpaSwizzler
+from rpalib.rd_binary_reader import RdBinaryStream
 from rpascript.generator import ScriptGenerator
 
 from textual import on
@@ -1033,63 +1033,7 @@ class TuiAdapter(App):
             self._flush_pending()
             return self.lines
 
-    # ------------------------------------------------------------------
-    # _RdBinaryStream — binary stream reader for RDWorks .rd files
-    # ------------------------------------------------------------------
 
-    class _RdBinaryStream:
-        """Reads .rd binary files and provides unswizzled bytes to the parser.
-
-        .rd file format:
-        - 10-byte header starting with b"RDWORKV" (7 known + 3 wildcard bytes)
-        - The header is NOT swizzled
-        - Remaining bytes form a continuous swizzled byte stream
-          (USB transport format: swizzled, no ACK/NAK, no packet checksum,
-          no packet boundaries).
-        """
-
-        HEADER_MAGIC = b"RDWORKV"
-        HEADER_LEN = 10
-
-        def __init__(self, path: str, magic: int = 0x88):
-            self._path = path
-            self._pos = 0
-            self._total = 0
-            self._data: bytearray = bytearray()
-            self._read_and_unswizzle(magic)
-
-        def _read_and_unswizzle(self, magic: int) -> None:
-            with open(self._path, "rb") as f:
-                raw = f.read()
-            # Test for RDWORKV header: if present, skip it; otherwise use raw as-is
-            if len(raw) < self.HEADER_LEN:
-                # Too small for a header — whole file is swizzled data
-                swizzled = bytearray(raw)
-            elif raw[:7] == self.HEADER_MAGIC:
-                swizzled = bytearray(raw[self.HEADER_LEN :])
-            else:
-                # No RDWORKV header — treat entire file as swizzled byte stream
-                swizzled = bytearray(raw)
-            if not swizzled:
-                raise ValueError(f"Empty payload in RD file: {self._path}")
-            swizzler = RpaSwizzler(magic=magic)
-            self._data = swizzler.unswizzle(swizzled)
-            self._total = len(self._data)
-
-        def next_byte(self) -> int | None:
-            if self._pos >= self._total:
-                return None
-            b = self._data[self._pos]
-            self._pos += 1
-            return b
-
-        @property
-        def take(self) -> int:
-            return self._pos
-
-        @property
-        def remaining(self) -> int:
-            return self._total - self._pos
 
     def _cmd_import(self, args: str) -> None:
         """Import a tshark capture file (.log) or RDWorks file (.rd) as a script.
@@ -1143,7 +1087,7 @@ class TuiAdapter(App):
         output = RpaEmitter(ns)
         try:
             if ext == ".rd":
-                stream = self._RdBinaryStream(path, magic=magic)
+                stream = RdBinaryStream(path, magic=magic)
                 collector = self._ImportCollector()
                 parser = RdParser(output, path)
                 parser.on_command = collector.write_command
@@ -1171,6 +1115,9 @@ class TuiAdapter(App):
                 return
         except SyntaxError as e:
             self._log_error(f"Decode error: {e}")
+            return
+        except LookupError as e:
+            self._log_error(f"Command lookup error: {e}")
             return
         except ValueError as e:
             self._log_error(f"Command formatting error: {e}")
