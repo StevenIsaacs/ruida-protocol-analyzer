@@ -472,12 +472,12 @@ CT = {
     },
     0xCA: {
         0x01: {
-            0x00: "LAYER_END",
-            0x01: "WORK_MODE_1",
-            0x02: "WORK_MODE_2",
-            0x03: "WORK_MODE_3",
-            0x04: "WORK_MODE_4",
-            0x05: "WORK_MODE_6",
+            0x00: "OVERSCAN_OFF",
+            0x01: "OVERSCAN_H_BI", # Horizontal bidirectional overscan.
+            0x02: "OVERSCAN_H_UNI", # Horizontal unidirectional overscan.
+            0x03: "OVERSCAN_V_BI", # Vertical bidirectional overscan.
+            0x04: "OVERSCAN_V_UNI", # Vertical unidirectional overscan.
+            0x05: "OVERSCAN_DIAGONAL",
             0x10: "LASER_DEVICE_0",
             0x11: "LASER_DEVICE_1",
             0x12: "AIR_ASSIST_OFF",
@@ -485,18 +485,18 @@ CT = {
             0x14: "DB_HEAD",
             0x30: "EN_LASER_2_OFFSET_0",
             0x31: "EN_LASER_2_OFFSET_1",
-            0x55: "WORK_MODE_5",
+            0x55: "OVERSCAN_5",
         },
-        0x02: ("LAYER_NUMBER_PART", PART),
+        0x02: ("PART_NUMBER", PART),
         0x03: ("EN_LASER_TUBE_START", SWITCH),
         0x04: ("X_SIGN_MAP", VALUE),
-        0x05: ("LAYER_COLOR", COLOR),
-        0x06: ("LAYER_COLOR_PART", PART, COLOR),
+        0x05: ("DEFAULT_COLOR", COLOR),
+        0x06: ("PART_COLOR", PART, COLOR),
         0x10: ("EN_EX_IO", VALUE),
-        0x22: ("MAX_LAYER_PART", PART),
+        0x22: ("TOTAL_PARTS", PART),
         0x30: ("U_FILE_ID", ID),
         0x40: ("ZU_MAP", VALUE),
-        0x41: ("LAYER_SELECT", PART, UINT7),  # Source: ruida-laser
+        0x41: ("SELECT_PART", PART, UINT7),  # Source: ruida-laser
     },
     ENQ: "ENQ",
     0xD0: {  # This was discovered with LightBurn
@@ -570,7 +570,7 @@ CT = {
         0x17: ("ARRAY_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
         0x23: ("ARRAY_ADD", XABSCOORD, YABSCOORD),
         0x24: ("ARRAY_MIRROR", UINT7),
-        0x32: ("UNKNOWN E732", TBDU35, TBDU35),  # RDWorks uses this.
+        0x32: ("UNKNOWN_E732", TBDU35, TBDU35),  # RDWorks uses this.
         0x35: ("BLOCK_X_SIZE", XABSCOORD, YABSCOORD),
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ("SET_FILE_EMPTY", UINT7),
@@ -581,8 +581,8 @@ CT = {
         0x51: ("DOCUMENT_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
         0x52: ("PART_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
         0x53: ("PART_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),
-        0x54: ("PEN_OFFSET_Axis", UINT7, ABSCOORD),
-        0x55: ("LAYER_OFFSET_Axis", UINT7, ABSCOORD),
+        0x54: ("PEN_OFFSET_AXIS", UINT7, ABSCOORD),
+        0x55: ("PART_OFFSET_AXIS", UINT7, ABSCOORD),
         0x60: ("SET_CURRENT_ELEMENT_INDEX", UINT7),
         0x61: ("PART_EX_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
         0x62: ("PART_EX_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),

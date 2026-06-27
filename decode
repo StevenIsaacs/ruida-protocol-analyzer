@@ -16,7 +16,7 @@ Requires a virtual environment with Bokeh installed. Create one from requirement
 Parameters:
   <file>       The capture file name -- without extension. Processes <file>.log.
                Output written to <file>.txt, <file>-vrb.txt, and <file>.rds.
-  --dir, -d    Process all .log files in <directory>. Each is processed as if
+  --dir, -d    Process all .log and .rd files in <directory>. Each is processed as if
                passed individually as <file>.
   <options>    Optional arguments for verbose mode (e.g. "--plot-moves").
 EOF
@@ -33,10 +33,11 @@ if [ "$1" = "--dir" ] || [ "$1" = "-d" ]; then
         usage
     fi
     shift
-    _log_files=("$_dir"/*.log)
-    # Check if glob matched anything (returns literal pattern if no match)
-    if [ "${_log_files[0]}" = "$_dir/*.log" ]; then
-        echo "ERROR: No .log files found in $_dir."
+    shopt -s nullglob
+    _log_files=("$_dir"/*.log "$_dir"/*.rd)
+    shopt -u nullglob
+    if [ ${#_log_files[@]} -eq 0 ]; then
+        echo "ERROR: No .log or .rd files found in $_dir."
         usage
     fi
 else
@@ -83,7 +84,16 @@ _success=0
 for _entry in "${_log_files[@]}"; do
     _base=""
     if [ "$_mode" = "dir" ]; then
-        _base="${_entry%.log}"
+        _base="${_entry%.*}"
+        _name="${_entry##*/}"
+        _ext="${_name##*.}"
+        _suffix=""
+        if [ "$_ext" = "log" ] && [ -f "${_base}.rd" ]; then
+            _suffix="-log"
+        elif [ "$_ext" = "rd" ] && [ -f "${_base}.log" ]; then
+            _suffix="-rd"
+        fi
+        _base="${_base}${_suffix}"
     else
         _base="$_entry"
         _entry="$_entry.log"
@@ -98,7 +108,7 @@ for _entry in "${_log_files[@]}"; do
     echo "=== Processing: $_entry ==="
     $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
     $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
-    $_rpa_cmd --generate-script "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    $_rpa_cmd --generate-script -o "$_base" "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
     _success=$((_success + 1))
 done
 
