@@ -2,11 +2,16 @@ import argparse
 import os
 import sys
 import time
+from pathlib import Path
 
 import protocols.ruida.ruida_analyzer as rpa
 from rpalib.rpa_emitter import RpaEmitter
 from protocols.ruida.ruida_parser import RdParser
 from rpalib.rd_binary_reader import RdBinaryStream
+from rpascript.interpreter import ScriptParser
+from rpascript.encoding import encode_command
+from rpalib.ruida_transcoder import RdEncoder
+from rpalib.rpa_swizzler import RpaSwizzler
 
 # Graceful Bokeh import: BokehApp is None if Bokeh not installed.
 try:
@@ -64,6 +69,8 @@ Examples:
   %(prog)s -o output.txt capture.log        # Save decoded output to file
   %(prog)s --verbose --raw capture.log      # Detailed output with raw data
   %(prog)s --magic 0x88 capture.rd          # Use specific magic number
+  %(prog)s --generate-rd capture.log        # Decode and generate .rd binary
+  %(prog)s capture.rds                      # Convert .rds script to .rd binary
         """,
     )
 
@@ -174,6 +181,13 @@ Examples:
         help="Generate a .rds script file alongside the standard output for round-trip verification.",
     )
 
+    # Generate .rd binary file
+    parser.add_argument(
+        "--generate-rd",
+        action="store_true",
+        help="Generate a .rd binary file from the decoded data.",
+    )
+
     # Version
     parser.add_argument(
         "-v", "--version", action="version", version=f"%(prog)s {__version__}"
@@ -210,6 +224,51 @@ def open_input(args):
     return open(args.input_file, "r", encoding=args.input_encoding)
 
 
+def _write_rd(commands, mnemonic_map, mt_map, rd_path, magic):
+    """Encode parsed commands to binary, swizzle, and write .rd file.
+
+    Returns a summary string on success, or None on error.
+    """
+    enc = RdEncoder()
+    raw = bytearray()
+    for cmd in commands:
+        cmd_type = cmd.get("type")
+        if cmd_type in ("NEW_PACKET", "SESSION_START", "SESSION_END", "DELAY", "WAIT"):
+            continue
+        mnemonic = cmd.get("mnemonic")
+        if not mnemonic:
+            continue
+        if mnemonic.startswith("GET_"):
+            continue
+        try:
+            cmd_bytes = encode_command(cmd, mnemonic_map, mt_map, enc)
+        except (ValueError, TypeError) as e:
+            print(
+                f"Encoding failed for command '{mnemonic}' "
+                f"(params={cmd.get('params', [])!r}): {e}",
+                file=sys.stderr,
+            )
+            return None
+        raw.extend(cmd_bytes)
+
+    if not raw:
+        print("No encodable commands.", file=sys.stderr)
+        return None
+
+    swizzler = RpaSwizzler(magic=magic)
+    swizzled = swizzler.swizzle(raw)
+
+    try:
+        with open(rd_path, "wb") as f:
+            f.write(b"RDWORKV" + b"\x00" * 3)
+            f.write(swizzled)
+    except OSError as e:
+        print(f"Error writing {rd_path}: {e}", file=sys.stderr)
+        return None
+
+    return f"Wrote {len(raw)} bytes ({len(swizzled)} swizzled) to {rd_path}"
+
+
 def main():
     """Main function with command line argument processing"""
     args = parse_arguments()
@@ -218,10 +277,25 @@ def main():
     _, ext = os.path.splitext(args.input_file)
     ext = ext.lower()
     is_rd = (ext == ".rd")
+    is_rds = (ext == ".rds")
 
     # Set up output handling
     output = RpaEmitter(args)
     output.open()
+
+    # .rds input: no decode needed, parse script and generate .rd directly
+    if is_rds:
+        rd_path = str(Path(args.input_file).with_suffix(".rd"))
+        sparser = ScriptParser()
+        commands = sparser.parse_file(args.input_file)
+        result = _write_rd(commands, sparser.mnemonic_map, sparser.mt_map, rd_path, args.magic)
+        if result:
+            print(result, file=sys.stderr)
+        else:
+            print("Failed to generate .rd file.", file=sys.stderr)
+        output.close()
+        sys.stdout.flush()
+        return
 
     if is_rd:
         stream = RdBinaryStream(args.input_file, magic=args.magic)
@@ -232,21 +306,30 @@ def main():
         analyzer = rpa.RuidaProtocolAnalyzer(args, input_stream, output)
         parser = analyzer.parser
 
-    # Set up script generator if --generate-script is active
+    # Derive output base for script file generation
+    base = args.output_file or args.input_file or "capture"
+
+    # Set up script generator
+    if args.generate_rd:
+        args.generate_script = True  # Auto-enable --generate-script
     script_gen = None
     if getattr(args, "generate_script", False):
-        from pathlib import Path
-
         from rpascript.generator import ScriptGenerator
 
-        # Derive .rds path from output file or input file
-        base = args.output_file or args.input_file or "capture"
         script_path = str(Path(base).with_suffix(".rds"))
         script_gen = ScriptGenerator(script_path, source_file=args.input_file)
         parser.on_command = script_gen.write_command
         if analyzer is not None:
             analyzer.on_new_packet = script_gen.on_new_packet
         output.info(f"Generating script: {script_path}")
+
+    # Derive .rd output path for --generate-rd
+    rd_path = None
+    if args.generate_rd:
+        if is_rd:
+            rd_path = str(Path(str(base) + "-reencoded").with_suffix(".rd"))
+        else:
+            rd_path = str(Path(base).with_suffix(".rd"))
 
     bokeh_app = None
 
@@ -278,11 +361,20 @@ def main():
         if script_gen is not None:
             script_gen.close()
 
+        if args.generate_rd and rd_path:
+            # Read generated .rds back, encode to .rd binary
+            sparser = ScriptParser()
+            commands = sparser.parse_file(script_path)
+            result = _write_rd(commands, sparser.mnemonic_map, sparser.mt_map, rd_path, args.magic)
+            if result:
+                print(result, file=sys.stderr)
+            else:
+                print(f"Failed to generate {rd_path}.", file=sys.stderr)
+
         if args.save_plot and file_html is not None:
             # Save interactive HTML plot without starting a Bokeh server.
             try:
                 _plot = parser.plot.plot
-                from pathlib import Path
 
                 _plot_cds = ColumnDataSource(
                     data=_plot.to_column_data()
