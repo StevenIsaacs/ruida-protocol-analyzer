@@ -408,6 +408,13 @@ def parse_value(
         if result or parts == [""]:
             return result
 
+    # --- Card ID name-to-value resolution ---
+    if decoder_fn == "card_id":
+        numeric_id = rdap.CARD_IDS_BY_NAME.get(raw)
+        if numeric_id is None:
+            raise ValueError(f"Unknown card model name: {raw!r}")
+        return numeric_id
+
     # --- Fallback: return as string ---
     return raw
 

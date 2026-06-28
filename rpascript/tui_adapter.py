@@ -34,6 +34,7 @@ from protocols.ruida.ruida_analyzer import RuidaProtocolAnalyzer
 from protocols.ruida.ruida_parser import RdParser
 from rpalib.rd_binary_reader import RdBinaryStream
 from rpascript.generator import ScriptGenerator
+from rpalib.rpa_swizzler import RpaSwizzler
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -272,6 +273,7 @@ class TuiAdapter(App):
         "log",
         "head",
         "import",
+        "export",
         "tail",
         "list",
         "save",
@@ -398,6 +400,7 @@ class TuiAdapter(App):
             "Server commands: start host=<IP> port=<N> cert=<path> key=<path> token=<token>, or stop",
             "head": "Load a script file to prepend to job on execution",
             "import": "Import a tshark log (.log) or RDWorks (.rd) file [magic=0xNN] as a script",
+            "export": "Export loaded script as .rd binary file (/export [path])",
             "tail": "Load a script file to append to job on execution",
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
             "save": "Save composed job to a file (/save job <path>)",
@@ -923,6 +926,8 @@ class TuiAdapter(App):
                 self._cmd_load(args)
             elif cmd == "exec":
                 self._cmd_exec(args)
+            elif cmd == "export":
+                self._cmd_export(args)
             elif cmd == "clear":
                 self._cmd_clear()
             elif cmd == "quit":
@@ -1279,6 +1284,108 @@ class TuiAdapter(App):
             return []
         return self._head_script + job + self._tail_script
 
+    def _cmd_export(self, args: str) -> None:
+        """Export the loaded script as an .rd binary file.
+
+        Derives the default filename from the source of the loaded script
+        (e.g., capture.log → capture.rd). If the file exists, logs an
+        error asking the user to specify a different path.
+        """
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load <path> first.")
+            return
+
+        # Parse optional magic argument
+        magic = 0x88
+        if args:
+            tokens = args.split()
+            path_arg = tokens[0]
+            for tok in tokens[1:]:
+                if tok.startswith("magic="):
+                    try:
+                        val = tok.split("=", 1)[1]
+                        if val.lower().startswith("0x"):
+                            magic = int(val, 16) & 0xFF
+                        else:
+                            raise ValueError
+                    except (ValueError, IndexError):
+                        self._log_error(f"Invalid magic number: {tok}")
+                        return
+        else:
+            path_arg = ""
+
+        # Derive export path
+        if path_arg:
+            export_path = os.path.expanduser(path_arg)
+        elif self._plot_source and self._plot_source != "[RPC]":
+            base, _ = os.path.splitext(self._plot_source)
+            export_path = f"{base}.rd"
+        else:
+            self._log_error(
+                "No source to derive filename from. Specify a path: /export <path>"
+            )
+            return
+
+        # Check if file exists
+        if os.path.exists(export_path):
+            self._log_error(
+                f"File exists: {export_path}. Specify a different path: /export <path>"
+            )
+            return
+
+        # Parse the loaded script into command dicts
+        parsed = self._parser.parse_lines(self._loaded_script)
+        if not parsed:
+            self._log_error("No commands found in script.")
+            return
+
+        # Encode commands to raw bytes (continuous USB stream, no packet boundaries)
+        enc = RdEncoder()
+        raw = bytearray()
+        for cmd in parsed:
+            cmd_type = cmd.get("type")
+            if cmd_type in ("NEW_PACKET", "SESSION_START", "SESSION_END", "DELAY", "WAIT"):
+                continue
+            mnemonic = cmd.get("mnemonic")
+            if not mnemonic:
+                continue
+            # Skip read-only query commands (GET_SETTING, GET_UNKNOWN) — they
+            # have no place in a write-only .rd binary export.
+            if mnemonic.startswith("GET_"):
+                continue
+            try:
+                cmd_bytes = encode_command(
+                    cmd, self._parser.mnemonic_map, self._parser._mt_map, enc
+                )
+            except (ValueError, TypeError) as e:
+                self._log_error(
+                    f"Encoding failed for command '{mnemonic}' "
+                    f"(params={cmd.get('params', [])!r}): {e}"
+                )
+                return
+            raw.extend(cmd_bytes)
+
+        if not raw:
+            self._log_error("No encodable commands in script.")
+            return
+
+        # Swizzle and write .rd file
+        swizzler = RpaSwizzler(magic=magic)
+        swizzled = swizzler.swizzle(raw)
+
+        # - 10-byte RDWORKV header (7 magic bytes + 3 wildcard bytes)
+        # - Followed by swizzled payload bytes
+        try:
+            with open(export_path, "wb") as f:
+                f.write(b"RDWORKV" + b"\x00" * 3)
+                f.write(swizzled)
+            self._log_info(
+                f"Exported {len(raw)} bytes to {export_path}"
+                f" ({len(swizzled)} swizzled)"
+            )
+        except OSError as e:
+            self._log_error(f"Error writing {export_path}: {e}")
+
     def _cmd_clear(self) -> None:
         """Clear all log panels, loaded script, head, and tail."""
         self._log_widget.clear()
@@ -1597,6 +1704,8 @@ class TuiAdapter(App):
             return {".log", ".txt", ".rd"}
         if cmd == "/save":
             return None  # All files
+        if cmd == "/export":
+            return {".rd"}
         return set()  # Changed from None to set() — unknown commands show no files
 
     def _resolve_start_path(self, path_part: str) -> Path:
@@ -1636,7 +1745,7 @@ class TuiAdapter(App):
         rest = value[space_idx:].strip()
 
         # Simple path-taking commands: /load, /head, /tail, /import
-        simple_cmds = {"/load", "/head", "/tail", "/import"}
+        simple_cmds = {"/load", "/head", "/tail", "/import", "/export"}
         if cmd in simple_cmds:
             return (cmd, rest)
 
