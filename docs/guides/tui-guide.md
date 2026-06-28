@@ -192,7 +192,8 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 | `/tail <path>`        | Load a `.rds` file as tail (appended to future `/exec job` and `/save job`).  |
 | `/exec`               | Execute the composed job (head + job + tail) as a batch.                     |
 | `/exec script`        | Execute the loaded script as raw commands (no job extraction).               |
-| `/import <path>`      | Import a tshark capture file (`.log`/`.txt`) and decode into a script.       |
+| `/export <path> [magic=0xNN]` | Export the loaded script as a binary `.rd` file. Default path: `<source>.rd`. Supports `magic=0xNN` to override swizzle byte. |
+| `/import <path>`      | Import a tshark capture file (`.log`/`.txt`/`.rd`) and decode into a script. |
 | `/save job <path>`    | Save the composed job (head + job + tail) to a `.rds` file.                  |
 | `/list`               | Show the composed job (head + job + tail).                                   |
 | `/list job`           | Same as `/list`.                                                             |
@@ -256,7 +257,7 @@ after the command:
 
 - The tree filters to show only matching file types:
   - `.rds` for `/load`, `/head`, `/tail`
-  - `.log`, `.txt` for `/import`
+  - `.log`, `.txt`, `.rd` for `/import`
   - All files for `/save job`
 - **Tab** toggles focus between the command input and the file tree
 - **Enter** on a selected file backfills the command with the full path
@@ -352,6 +353,22 @@ found, etc.).
 
 The saved `.rds` file can be loaded back into the TUI, passed to
 `RdDriver.run()`, or played back with `rpa-script`.
+
+### Importing Binary `.rd` Files
+
+The `/import` command also supports RDWorks binary `.rd` files directly:
+
+```bash
+# In TUI:
+/import capture.rd
+```
+
+This feeds the binary bytes through the same parser pipeline without needing a tshark capture layer. Header comments (`# Source: <filename>`) are added automatically.
+
+On success:
+```
+Imported 847 lines from capture.rd
+```
 
 ---
 
@@ -606,6 +623,20 @@ Loaded 2 lines from finish.rds
 /save job front-panel-complete.rds
 Job saved to front-panel-complete.rds (800 lines)
 ```
+
+### Example E: Export a Script as Binary `.rd`
+
+After importing or loading a script, export it as a binary `.rd` file:
+
+```
+/import capture.log
+Imported 847 lines from capture.log
+
+/export
+Wrote 883 bytes to capture.rd
+```
+
+The exported `.rd` is compatible with RDWorks and can be re-imported with `/import`.
 
 ---
 

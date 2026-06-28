@@ -14,6 +14,7 @@ NOTE: This is a project which is rapidly evolving. New features and changes are 
 - **Error Handling**: Configurable error handling with resync capabilities
 - **Move and Cut Plotting**: When enabled moves and cut lines are plotted using Bokeh
 - **Automation-friendly**: `rpa.py` accepts a tshark log file and produces structured, text-based output suitable for scripting, pipelines, and CI/CD systems.
+- **Script Generation and Plot Export**: `--generate-rd` and `--save-plot` flags for binary `.rd` output and headless HTML plot export
 
 This tool is designed to be used to discover and diagnose problems related to UDP communications with a Ruida controller. Much of the Ruida protocol is unknown and new commands or parameters may be discovered during analysis. The nature of such discovery often requires new experiments or parsing algorithms when new information is learned. Because of this the best experience using this tool is within VSCode or its forks like VSCodium and Antigravity. These IDEs allow stepping through the code to observe the analyzer's behavior along with side by side display of moves and cuts. And, when needed, this tool can be hacked to refine analysis. If you create a hack which can be useful to others please consider contributing it to this project.
 
@@ -116,6 +117,8 @@ tshark -Y "(ip.addr == <ruida_ip> && udp.payload)" -T fields \
 python rpa.py capture.log
 ```
 
+`.rd` — RDWorks binary files can be decoded directly.
+
 #### Advanced Options
 ```bash
 # Verbose output with raw packet data
@@ -126,21 +129,36 @@ python rpa.py -o decoded.txt capture.log
 
 # Quiet mode, stop on first error
 python rpa.py --quiet --stop-on-error -o results.txt capture.log
+
+# Generate .rds script and .rd binary output
+python rpa.py --generate-rd capture.log
+
+# Generate .rd binary from an existing .rds script
+python rpa.py script.rds
+
+# Save interactive plot as standalone HTML
+python rpa.py --save-plot capture.log
+
+# Decode a binary .rd file directly
+python rpa.py capture.rd
 ```
 
 ## Command Line Options
 
 | Option | Description |
 |--------|-------------|
+| `--bokeh-port <port>` | Set the Bokeh server port for `--plot-moves` (default: 5006). |
+| `--generate-rd` | Generate a binary `.rd` file from the decoded commands. Auto-enables `--generate-script` for `.log`/`.txt` input. For `.rd` input, appends `-reencoded` suffix to avoid overwriting. |
+| `--generate-script` | Generate a `.rds` Ruida Script file from the decoded commands. Combined with `-o <file>` to control the output path. |
 | `--magic <magic_number>` | Specify the swizzle magic number rather than attempt to discover it in the capture. |
 | `--out <file>`, `-o <file>` | Write decoded data to specified file. |
-| `--quiet`, `-q` | Suppress stdout output. |
-| `--verbose` | Generate detailed output with additional information. |
-| `--raw` | Include raw packet dumps with decoded output. |
-| `--unswizzled` | Output the unswizzled and unprocessed data. |
-| `--stop-on-error` | Stop processing on first decode error. |
 | `--plot-moves` | Plot head moves and cuts. This also displays power and speed settings. |
-| `--generate-script` | Generate a `.rds` Ruida Script file from the decoded commands. Combined with `-o <file>` to control the output path. |
+| `--quiet`, `-q` | Suppress stdout output. |
+| `--raw` | Include raw packet dumps with decoded output. |
+| `--save-plot` | Save the interactive plot as a standalone HTML file instead of opening a Bokeh server. Produces `{stem}[-{ext}]-view.html`. |
+| `--stop-on-error` | Stop processing on first decode error. |
+| `--unswizzled` | Output the unswizzled and unprocessed data. |
+| `--verbose` | Generate detailed output with additional information. |
 
 ### Interactive TUI (Terminal User Interface)
 
@@ -216,6 +234,30 @@ python rpa.py -o capture-rt.txt capture-rt.tshark
 # Step 4: Compare the original and round-trip decode files
 diff <(grep '^[0-9]' capture.txt) <(grep '^[0-9]' capture-rt.txt)
 ```
+
+### Generating Binary `.rd` Files
+
+Use `--generate-rd` to produce a binary `.rd` file alongside the decode output:
+
+```bash
+python rpa.py --generate-rd -o output capture.log
+```
+
+This produces `output.txt` (decode), `output.rds` (script), and `output.rd` (binary). If `-o` is omitted, the `.rd` file is named after the input file.
+
+For `.rds` input, `.rd` output is generated directly without decode:
+
+```bash
+python rpa.py script.rds     # Produces script.rd
+```
+
+For `.rd` input, `--generate-rd` re-encodes with a `-reencoded` suffix to avoid overwriting:
+
+```bash
+python rpa.py --generate-rd capture.rd    # Produces capture-reencoded.rd
+```
+
+The `--magic` flag controls the swizzle byte (default `0x88`).
 
 ### `.rds` Script Format
 
