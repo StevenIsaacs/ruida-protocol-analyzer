@@ -1189,6 +1189,8 @@ class TuiAdapter(App):
                 return
             self._head_script = lines
             self._log_info(f"Head loaded: {len(lines)} lines from {path}")
+            if self._ruida_driver is not None:
+                self._ruida_driver.set_head_script(self._head_script)
         except FileNotFoundError:
             self._log_error(f"File not found: {path}")
         except PermissionError:
@@ -1213,6 +1215,8 @@ class TuiAdapter(App):
                 return
             self._tail_script = lines
             self._log_info(f"Tail loaded: {len(lines)} lines from {path}")
+            if self._ruida_driver is not None:
+                self._ruida_driver.set_tail_script(self._tail_script)
         except FileNotFoundError:
             self._log_error(f"File not found: {path}")
         except PermissionError:
@@ -1226,6 +1230,7 @@ class TuiAdapter(App):
         """Execute the loaded script.
 
         Defaults to executing only the job portion (START_PROCESS to EOF).
+        Uses driver.run_job() which composes head + job + tail at runtime.
         Use '/exec script' to execute all loaded commands.
         """
         if not self._loaded_script:
@@ -1238,15 +1243,15 @@ class TuiAdapter(App):
             return
         action = args.strip().lower()
         if action == "":
-            script = self._build_job_script(self._loaded_script)
-            if not script:
+            job = self._filter_job_commands(self._loaded_script)
+            if not job:
                 self._log_error("No job commands found (no START_PROCESS/EOF markers).")
                 return
-            self._log_info(f"Executing {len(script)} job commands...")
-            self.run_script(script, auto_checksum=True)
+            self._log_info(f"Executing {len(job)} job commands...")
+            self._ruida_driver.run_job(job, auto_checksum=True)
         elif action == "script":
             self._log_info(f"Executing {len(self._loaded_script)} lines...")
-            self.run_script(self._loaded_script)
+            self._ruida_driver.run(self._loaded_script)
         else:
             self._log_error(f"Unknown exec action: '{action}'. Usage: /exec [script]")
 
@@ -1273,16 +1278,30 @@ class TuiAdapter(App):
                 break
         return result
 
-    def _build_job_script(self, lines: list[str]) -> list[str]:
-        """Compose head + job (START_PROCESS→EOF) + tail into a single script.
+    def _format_job_with_markers(self) -> list[str]:
+        """Format the job with section comment markers for display.
 
-        Returns empty list if no job markers are found in the input lines.
-        Callers are responsible for reporting empty-job errors.
+        Returns a list of lines with # --- Head ---, # --- Job ---,
+        and # --- Tail --- section markers, showing how the job will
+        be composed at runtime by the driver.
         """
-        job = self._filter_job_commands(lines)
+        job = self._filter_job_commands(self._loaded_script)
         if not job:
             return []
-        return self._head_script + job + self._tail_script
+        result: list[str] = []
+        result.append("# --- Head ---")
+        if self._head_script:
+            result.extend(self._head_script)
+        else:
+            result.append("# (empty)")
+        result.append("# --- Job ---")
+        result.extend(job)
+        result.append("# --- Tail ---")
+        if self._tail_script:
+            result.extend(self._tail_script)
+        else:
+            result.append("# (empty)")
+        return result
 
     def _cmd_export(self, args: str) -> None:
         """Export the loaded script as an .rd binary file.
@@ -1395,6 +1414,9 @@ class TuiAdapter(App):
         self._rd_script = None
         self._head_script = []
         self._tail_script = []
+        if self._ruida_driver is not None:
+            self._ruida_driver.set_head_script([])
+            self._ruida_driver.set_tail_script([])
         self._mem_initial = {}
         self._mem_prev = None
         self._gc_initial = {}
@@ -1485,12 +1507,12 @@ class TuiAdapter(App):
             if not self._loaded_script:
                 self._log_info("No script loaded. Use /load <path> first.")
                 return
-            composed = self._build_job_script(self._loaded_script)
-            if not composed:
+            formatted = self._format_job_with_markers()
+            if not formatted:
                 self._log_error("No job commands found (no START_PROCESS/EOF markers).")
                 return
-            self._log_info(f"Composed job ({len(composed)} lines):")
-            for line in composed:
+            self._log_info(f"Composed job ({len(formatted)} lines):")
+            for line in formatted:
                 self._log_widget.write(f"  {line}")
         elif action == "head":
             if not self._head_script:
@@ -1519,15 +1541,15 @@ class TuiAdapter(App):
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
             return
-        composed = self._build_job_script(self._loaded_script)
-        if not composed:
+        job = self._filter_job_commands(self._loaded_script)
+        if not job:
             self._log_error("No job commands to save (no START_PROCESS/EOF markers).")
             return
         path = os.path.expanduser(path)
         try:
             with open(path, "w") as f:
-                f.write("\n".join(composed) + "\n")
-            self._log_info(f"Job saved to {path} ({len(composed)} lines)")
+                f.write("\n".join(job) + "\n")
+            self._log_info(f"Job saved to {path} ({len(job)} lines)")
         except PermissionError:
             self._log_error(f"Permission denied: {path}")
         except OSError as e:
@@ -1588,6 +1610,8 @@ class TuiAdapter(App):
             )
             return
         self._log_info(f"Executing {len(self._rd_script)} RPC-received lines...")
+        if self._head_script or self._tail_script:
+            self._log_info("Note: head/tail scripts are not applied in /run mode")
         self.run_script(self._rd_script, auto_checksum=True)
 
     def _cmd_plot(self, args: str = "") -> None:
@@ -1908,6 +1932,12 @@ class TuiAdapter(App):
             driver.register_error_listener(self.on_error)
             driver.register_reply_listener(self.on_reply_data)
 
+            # Sync any cached head/tail scripts to the new driver
+            if self._head_script:
+                driver.set_head_script(self._head_script)
+            if self._tail_script:
+                driver.set_tail_script(self._tail_script)
+
             opened = driver.start(udp_host=udp, usb_device=usb)
             self._last_udp_host = udp
             self._last_usb_device = usb
@@ -2210,6 +2240,72 @@ class TuiAdapter(App):
                 self._ruida_driver.run(script, auto_checksum=auto_checksum)
                 self._script_count += len(script)
                 self._update_status_bar()
+            except RuntimeError as e:
+                self._log_error(str(e))
+
+        if threading.get_ident() == self._thread_id:
+            _run()
+        else:
+            self.call_from_thread(_run)
+
+    def set_head_script(self, script: list[str]) -> None:
+        """Set the head script to prepend to job execution. Thread-safe.
+
+        Stores locally and pushes to the driver if active.
+        """
+        self._head_script = list(script)
+        if self._ruida_driver is not None:
+            self._ruida_driver.set_head_script(self._head_script)
+        self._log_info(f"[RPC] set_head_script({len(script)} lines)")
+
+    def set_tail_script(self, script: list[str]) -> None:
+        """Set the tail script to append to job execution. Thread-safe.
+
+        Stores locally and pushes to the driver if active.
+        """
+        self._tail_script = list(script)
+        if self._ruida_driver is not None:
+            self._ruida_driver.set_tail_script(self._tail_script)
+        self._log_info(f"[RPC] set_tail_script({len(script)} lines)")
+
+    def get_head_script(self) -> list[str]:
+        """Return the current head script. Thread-safe.
+
+        Returns a copy so callers cannot mutate internal state.
+        """
+        return list(self._head_script)
+
+    def get_tail_script(self) -> list[str]:
+        """Return the current tail script. Thread-safe.
+
+        Returns a copy so callers cannot mutate internal state.
+        """
+        return list(self._tail_script)
+
+    def run_job(self, job: list[str], auto_checksum: bool = False) -> None:
+        """Queue a job for execution, composing head + job + tail.
+
+        Delegates to driver.run_job() which composes head + job + tail
+        at queue time. Thread-safe: can be called from any thread.
+
+        Args:
+            job: List of rpascript-formatted command lines (job body only).
+            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch.
+        """
+        if self._ruida_driver is None:
+
+            def _error() -> None:
+                self._log_error("No active session to run job.")
+
+            if threading.get_ident() == self._thread_id:
+                _error()
+            else:
+                self.call_from_thread(_error)
+            return
+
+        def _run() -> None:
+            try:
+                self._ruida_driver.run_job(job, auto_checksum=auto_checksum)
             except RuntimeError as e:
                 self._log_error(str(e))
 
@@ -2555,6 +2651,13 @@ class TuiAdapter(App):
             self._ruida_driver.register_status_listener(self.on_status_event)
             self._ruida_driver.register_error_listener(self.on_error)
             self._ruida_driver.register_reply_listener(self.on_reply_data)
+
+            # Sync any cached head/tail scripts to the new driver
+            if self._head_script:
+                self._ruida_driver.set_head_script(self._head_script)
+            if self._tail_script:
+                self._ruida_driver.set_tail_script(self._tail_script)
+
         result = self._ruida_driver.start(udp_host=udp_host, usb_device=usb_device)
         self._log_info(
             f"[RPC] driver.start(udp_host={udp_host!r}, usb_device={usb_device!r}) -> {result}"

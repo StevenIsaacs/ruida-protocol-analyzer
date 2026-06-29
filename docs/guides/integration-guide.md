@@ -177,6 +177,70 @@ Key threading rules:
 | Duplicate `SET_FILE_SUM` | Raises `ValueError("Duplicate SET_FILE_SUM")` |
 | Listener callback raises exception | Caught by `except Exception: pass`; other listeners unaffected |
 
+### 2.9 Head/Tail Script Management
+
+The driver supports automatic preamble/postamble composition for
+every job execution. This is useful for commands that must execute
+before and after every job (e.g., home positioning, laser
+configuration, returning to origin).
+
+**Accessors:**
+
+| Method          | Signature                                     | Returns   | Description                                               |
+| --------------- | --------------------------------------------- | --------- | --------------------------------------------------------- |
+| `set_head_script` | `(script: list[str])`                           | `None`      | Set the head script to prepend to every job. Thread-safe. |
+| `set_tail_script` | `(script: list[str])`                           | `None`      | Set the tail script to append to every job. Thread-safe.  |
+| `get_head_script` | `()`                                            | `list[str]` | Return a copy of the current head script. Thread-safe.    |
+| `get_tail_script` | `()`                                            | `list[str]` | Return a copy of the current tail script. Thread-safe.    |
+| `run_job`         | `(job: list[str], auto_checksum: bool = False)` | `None`      | Queue head + job + tail for background execution.         |
+
+**Composition model:**
+
+```
+head_script + job + tail_script → composed script → run()
+```
+
+`run_job()` composes the final script by concatenating head, job
+body, and tail, then delegates to `run()` for background execution.
+The composition happens atomically at queue time under the driver's
+lock. Subsequent changes to head or tail do not affect already-queued
+jobs.
+
+**Typical usage:**
+
+```python
+driver = RdDriver()
+driver.start(udp_host="192.168.1.100")
+
+# Configure head (runs before every job)
+driver.set_head_script([
+    "SET_ABSOLUTE",
+    "MOVE_ABS_XY X=0mm Y=0mm",
+])
+
+# Configure tail (runs after every job)
+driver.set_tail_script([
+    "MOVE_ABS_XY X=0mm Y=0mm",
+    "SET_FILE_SUM",
+])
+
+# Run a job — head and tail are prepended/appended automatically
+driver.run_job([
+    "MOVE_ABS_XY X=100mm Y=100mm",
+    "LASER_ON Power=80%",
+    "MOVE_ABS_XY X=200mm Y=200mm",
+    "LASER_OFF",
+], auto_checksum=True)
+
+driver.stop()
+```
+
+**Thread safety:** All five methods are guarded by `self._lock`.
+Accessors return copies to prevent callers from mutating internal
+state. `run_job()` captures head/tail snapshots under the lock so
+the composed script is consistent even if head/tail are modified
+concurrently.
+
 ---
 
 ## 3. TUI Emulation for Testing
@@ -197,6 +261,17 @@ The `TuiAdapter` class in `rpascript/tui_adapter.py` wraps `RdDriver` with an em
 | `cancel_script` | `() -> None` | Delegates; safe to call without active driver (no-op) |
 | `is_connected` | *(property)* `-> bool` | Passthrough to `RdDriver.is_connected`; `False` if no active driver |
 | `machine_status` | *(property)* `-> dict[int, Any]` | Passthrough to `RdDriver.machine_status`; `{}` if no active driver |
+| `set_head_script` | `(script: list[str]) -> None` | Logs, stores locally, pushes to driver if active |
+| `set_tail_script` | `(script: list[str]) -> None` | Logs, stores locally, pushes to driver if active |
+| `get_head_script` | `() -> list[str]` | Returns a copy of local head script |
+| `get_tail_script` | `() -> list[str]` | Returns a copy of local tail script |
+| `run_job` | `(job: list[str], auto_checksum=False) -> None` | Delegates to `driver.run_job()` which composes head + job + tail |
+
+> **Note:** The head/tail accessors (`set_head_script`, `set_tail_script`,
+> `get_head_script`, `get_tail_script`, and `run_job`) store
+> their values locally in the adapter and propagate them to the
+> underlying driver when a session is active. This allows head/tail
+> to be configured before `start()` is called.
 
 ### 3.2 Programmatic TuiAdapter Usage
 
@@ -654,3 +729,49 @@ Listener callbacks (`register_status_listener`, `register_error_listener`, `regi
 | Callback not firing | Listener registered after event | Register before `start()` |
 | `RuntimeError: Script runner not started` | `run()` called before `start()` | Call `svc.start()` before `svc.run()` |
 | Slow RPC calls | Netref latency over network | Keep scripts small, use batch operations |
+
+### 8.8 Head/Tail Script Management via RPC
+
+All five head/tail methods are exposed as RPC methods:
+
+| RPC Method              | Signature                                             | Description                                         |
+| ----------------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| `exposed_set_head_script` | `(script: list[str]) -> None`                           | Set head script on the server's driver              |
+| `exposed_set_tail_script` | `(script: list[str]) -> None`                           | Set tail script on the server's driver              |
+| `exposed_get_head_script` | `() -> list[str]`                                       | Retrieve current head script from server            |
+| `exposed_get_tail_script` | `() -> list[str]`                                       | Retrieve current tail script from server            |
+| `exposed_run_job`         | `(job: list[str], auto_checksum: bool = False) -> None` | Queue head + job + tail for execution on the server |
+
+**Example:**
+
+```python
+# Configure head/tail remotely
+svc.set_head_script([
+    "SET_ABSOLUTE",
+    "MOVE_ABS_XY X=0mm Y=0mm",
+])
+svc.set_tail_script([
+    "MOVE_ABS_XY X=0mm Y=0mm",
+    "SET_FILE_SUM",
+])
+
+# Verify
+head = svc.get_head_script()
+tail = svc.get_tail_script()
+print(f"Head: {len(head)} lines, Tail: {len(tail)} lines")
+
+# Run job with head/tail composition
+svc.run_job([
+    "MOVE_ABS_XY X=100mm Y=100mm",
+    "LASER_ON Power=80%",
+    "LASER_OFF",
+], auto_checksum=True)
+```
+
+**Thread safety:** The server-side ``RpycTuiService`` logs each call
+and delegates to ``TuiAdapter`` which propagates to ``RdDriver``. All
+underlying accessors are thread-safe.
+
+**Configuration before connection:** Head and tail scripts can be set
+via RPC before ``start()`` is called — the ``TuiAdapter`` stores them
+locally and pushes to the driver once the session is active.

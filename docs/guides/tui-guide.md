@@ -188,14 +188,14 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 | --------------------- | ---------------------------------------------------------------------------- |
 | `/help`               | Display formatted help text covering all command categories.                 |
 | `/load <path>`        | Load a `.rds` script file into memory for editing or execution.              |
-| `/head <path>`        | Load a `.rds` file as head (prepended to future `/exec job` and `/save job`). |
-| `/tail <path>`        | Load a `.rds` file as tail (appended to future `/exec job` and `/save job`).  |
+| `/head <path>`        | Load a `.rds` file as head (prepended to future `/exec job` and `/list job`).  |
+| `/tail <path>`        | Load a `.rds` file as tail (appended to future `/exec job` and `/list job`).   |
 | `/exec`               | Execute the composed job (head + job + tail) as a batch.                     |
 | `/exec script`        | Execute the loaded script as raw commands (no job extraction).               |
 | `/export <path> [magic=0xNN]` | Export the loaded script as a binary `.rd` file. Default path: `<source>.rd`. Supports `magic=0xNN` to override swizzle byte. |
 | `/import <path>`      | Import a tshark capture file (`.log`/`.txt`/`.rd`) and decode into a script. |
-| `/save job <path>`    | Save the composed job (head + job + tail) to a `.rds` file.                  |
-| `/list`               | Show the composed job (head + job + tail).                                   |
+| `/save job <path>`    | Save the pure job body (START_PROCESS to EOF, no head/tail) to a `.rds` file. |
+| `/list`               | Show the composed job with section markers (`# --- Head ---` / `# --- Job ---` / `# --- Tail ---`). |
 | `/list job`           | Same as `/list`.                                                             |
 | `/list script`        | Show only the loaded script (without head/tail).                             |
 | `/list head`          | Show the head script.                                                        |
@@ -235,17 +235,33 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 
 ### Job Composition
 
-`/exec job`, `/list job`, and `/save job` all compose the full job as:
+Head and tail scripts are stored by `RdDriver` and applied at execution time.
+Each command has a different role:
 
-```
-<head_script>
-<loaded_script filtered to START_PROCESS ... EOF>
-<tail_script>
-```
+- **`/exec job`** — extracts the job body (START_PROCESS → EOF), then calls
+  `driver.run_job()` which composes `head + job_body + tail` atomically and
+  queues the result for execution. The composition happens inside the driver,
+  not in the TUI.
+- **`/list job`** — uses `_format_job_with_markers()` to display the composed
+  script with section comment markers:
+  ```
+  # --- Head ---
+  <head_script lines>
+  # --- Job ---
+  <job body lines>
+  # --- Tail ---
+  <tail_script lines>
+  ```
+  Empty sections show `# (empty)` for clarity.
+- **`/save job`** — saves only the pure job body (START_PROCESS → EOF).
+  Head and tail are **not** included, making the output round-trippable:
+  it can be reloaded with `/load` and re-executed without double-appending
+  head/tail.
 
-If no `START_PROCESS`/`EOF` markers exist in the loaded script, the job is
-empty. This allows modular workflow: separate head (homing, initialization),
-job body, and tail (cleanup, shutdown) scripts.
+If no `START_PROCESS`/`EOF` markers exist in the loaded script, the job body
+is empty. This allows modular workflow: separate head (homing, initialization),
+job body, and tail (cleanup, shutdown) scripts. Use `/exec script` to run
+scripts that don't follow the job-marker structure.
 
 ---
 
@@ -392,13 +408,14 @@ For modular workflow, you can split your script into three parts:
 /tail cleanup.rds        # Commands to append (e.g., shutdown, air assist off)
 ```
 
-Head and tail are automatically included in `/exec job`, `/list job`, and
-`/save job`.
+Head and tail are automatically included in `/exec job` and `/list job`.
+`/save job` saves only the pure job body — head/tail are applied at
+execution time by the driver.
 
 ### Viewing
 
 ```bash
-/list           # Show composed job (head + script + tail)
+/list           # Show composed job with section markers
 /list script    # Show loaded script only
 /list head      # Show head script
 /list tail      # Show tail script
@@ -412,8 +429,9 @@ Head and tail are automatically included in `/exec job`, `/list job`, and
 ```
 
 `/exec job` extracts only the portion between `START_PROCESS` and end-of-file
-markers (or `BLOCK_END`), then prepends head and appends tail. This ensures
-only the job commands are sent, with setup/teardown wrapped around them.
+markers (or `BLOCK_END`), then delegates to `driver.run_job()` which composes
+head + job + tail atomically at queue time. This ensures only the job commands
+are sent, with setup/teardown wrapped around them.
 
 `/exec script` sends the entire loaded script as-is, without job extraction
 or head/tail wrapping. Use this for scripts that don't follow the
@@ -427,8 +445,11 @@ Both modes require an active session.
 /save job my-output.rds
 ```
 
-Saves the composed job (head + filtered job body + tail) as a `.rds` file
-compatible with `rpa-script` playback and `RdDriver.run()`.
+Saves only the pure job body (START_PROCESS to EOF) as a `.rds` file.
+Head and tail are NOT included — the output is the same as the job portion
+shown by `/list job` between the section markers. The saved file is
+compatible with `rpa-script` playback, `RdDriver.run()`, and can be
+reloaded with `/load` without double-appending head/tail.
 
 ### Plotting
 
@@ -615,13 +636,25 @@ Loaded 3 lines from home.rds
 /tail finish.rds
 Loaded 2 lines from finish.rds
 
-# Review the full composition
+# Review the full composition with section markers
 /list job
-[head + job body + tail]
+# --- Head ---
+SET_ORIGIN
+MOVE_ABS_XY X=0mm Y=0mm
+LASER_OFF
+# --- Job ---
+START_PROCESS
+LAYER_PROMPT "Default"
+...
+EOF
+# --- Tail ---
+MOVE_ABS_XY X=0mm Y=0mm
 
-# Save for reuse
+# Save pure job body (head/tail not included)
 /save job front-panel-complete.rds
-Job saved to front-panel-complete.rds (800 lines)
+Job saved to front-panel-complete.rds (795 lines)
+# Note: /save job includes only the job body (795 lines).
+# Head (3) and tail (2) are applied at execution time by the driver.
 ```
 
 ### Example E: Export a Script as Binary `.rd`

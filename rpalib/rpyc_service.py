@@ -257,6 +257,46 @@ class RpycTuiService(rpyc.Service):
             self._adapter._log_error("[RPC] RPC run failed: %s", e)
         return None
 
+    # --- Head / Tail Script Management ---
+
+    def exposed_set_head_script(self, script: list[str]) -> None:
+        local_script = list(script)
+        self._adapter._log_info(
+            f"[RPC] RPC set_head_script({len(local_script)} lines)"
+        )
+        self._adapter.set_head_script(local_script)
+
+    def exposed_set_tail_script(self, script: list[str]) -> None:
+        local_script = list(script)
+        self._adapter._log_info(
+            f"[RPC] RPC set_tail_script({len(local_script)} lines)"
+        )
+        self._adapter.set_tail_script(local_script)
+
+    def exposed_get_head_script(self) -> list[str]:
+        result = self._adapter.get_head_script()
+        self._adapter._log_info(
+            f"[RPC] RPC get_head_script -> {len(result)} lines"
+        )
+        return result
+
+    def exposed_get_tail_script(self) -> list[str]:
+        result = self._adapter.get_tail_script()
+        self._adapter._log_info(
+            f"[RPC] RPC get_tail_script -> {len(result)} lines"
+        )
+        return result
+
+    def exposed_run_job(self, job: list[str], auto_checksum: bool = False) -> None:
+        local_job = list(job)
+        self._adapter._log_info(
+            f"[RPC] RPC run_job({len(local_job)} lines, auto_checksum={auto_checksum})"
+        )
+        try:
+            self._adapter.run_job(local_job, auto_checksum=auto_checksum)
+        except Exception as e:
+            self._adapter._log_error("[RPC] RPC run_job failed: %s", e)
+
     # --- Listeners (netref callbacks) ---
 
     def exposed_register_status_listener(self, listener: Callable) -> None:

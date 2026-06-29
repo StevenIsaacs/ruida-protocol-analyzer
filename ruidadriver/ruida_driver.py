@@ -107,6 +107,8 @@ class RdDriver:
         self._start_usb_device: str = ""
         self._decoded_values: dict[int, Any] = {}
         self._build_status_map()
+        self._head_script: list[str] = []
+        self._tail_script: list[str] = []
 
     def _build_status_map(self) -> None:
         """Build address resolution maps from _PING_SCRIPT, _QUERY_SCRIPT, _BED_SIZE_SCRIPT.
@@ -828,3 +830,41 @@ class RdDriver:
         """Current machine status dict (address → decoded value). Read-only snapshot."""
         with self._lock:
             return dict(self._decoded_values)
+
+    # ---- Head / Tail Script Management ----
+
+    def set_head_script(self, script: list[str]) -> None:
+        """Set the head script to prepend to every job execution. Thread-safe."""
+        with self._lock:
+            self._head_script = list(script)
+
+    def set_tail_script(self, script: list[str]) -> None:
+        """Set the tail script to append to every job execution. Thread-safe."""
+        with self._lock:
+            self._tail_script = list(script)
+
+    def get_head_script(self) -> list[str]:
+        """Return a copy of the current head script. Thread-safe."""
+        with self._lock:
+            return list(self._head_script)
+
+    def get_tail_script(self) -> list[str]:
+        """Return a copy of the current tail script. Thread-safe."""
+        with self._lock:
+            return list(self._tail_script)
+
+    def run_job(self, job: list[str], auto_checksum: bool = False) -> None:
+        """Queue a job for execution, composing head + job + tail.
+
+        Composes the final script by concatenating any configured head script,
+        the job body, and any configured tail script, then queues the result
+        via the existing ``run()`` method.
+
+        Args:
+            job: List of rpascript-formatted command lines (the job body only).
+            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+                with a warning instead of raising.
+        """
+        with self._lock:
+            composed = list(self._head_script) + list(job) + list(self._tail_script)
+        self.run(composed, auto_checksum=auto_checksum)

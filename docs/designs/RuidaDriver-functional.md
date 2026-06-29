@@ -838,7 +838,15 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 
 **Case sensitivity:** All command names are case-insensitive (`/HELP`, `/Help`, `/help` all work).
 
-**Job composition:** `/exec job`, `/list job`, and `/save job` all call the central `_build_job_script(self, lines)` method which composes `self._head_script + filtered_job + self._tail_script`. If no START_PROCESS/EOF markers are found, the method returns an empty list and callers report the error.
+**Job composition:** Head and tail scripts are now owned by `RdDriver`, not the TUI. The `/exec` command calls `driver.run_job(job, auto_checksum=True)` which composes `head + job + tail` atomically at queue time. The `/list job` command uses `_format_job_with_markers()` to display the composed script with `# --- Head ---`, `# --- Job ---`, and `# --- Tail ---` section markers.
+
+**Save behavior:** `/save job` saves only the pure job body (START_PROCESS → EOF) as determined by `_filter_job_commands()`. Head and tail scripts are **not** included in the saved file, making the output round-trippable. Head/tail are applied at execution time by the driver.
+
+**Thread safety:** Head/tail accessors on `RdDriver` are guarded by `self._lock`. The TUI caches a local copy of head/tail scripts and syncs them to the driver whenever they change (via `/head` or `/tail`) and when a new driver is created (via `session start` or the `start()` AppAdapter method).
+
+**RPC access:** Five new exposed methods on `RpycTuiService` provide remote access: `exposed_set_head_script`, `exposed_set_tail_script`, `exposed_get_head_script`, `exposed_get_tail_script`, and `exposed_run_job`. These follow the same delegate-to-adapter pattern as existing RPC methods.
+
+If no START_PROCESS/EOF markers are found, `run_job` receives an empty job and reports the error at the call site.
 
 #### 6.2.6 Thread Bridge
 
