@@ -261,6 +261,8 @@ class TuiAdapter(App):
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
         ("escape", "stop", "Stop"),
+        ("page_up", "scroll_log_up", "Scroll log up"),
+        ("page_down", "scroll_log_down", "Scroll log down"),
     ]
 
     _SLASH_COMMANDS: tuple[str, ...] = (
@@ -1435,6 +1437,14 @@ class TuiAdapter(App):
     def action_stop(self) -> None:
         """Handle Escape key: stop current operation."""
         self._cmd_stop("")
+
+    def action_scroll_log_up(self) -> None:
+        """Page Up: scroll the log area up by one page."""
+        self._log_widget.scroll_page_up()
+
+    def action_scroll_log_down(self) -> None:
+        """Page Down: scroll the log area down by one page."""
+        self._log_widget.scroll_page_down()
 
     # ------------------------------------------------------------------
     # Exception handling
