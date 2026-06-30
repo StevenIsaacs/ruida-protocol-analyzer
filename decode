@@ -16,8 +16,8 @@ Requires a virtual environment with Bokeh installed. Create one from requirement
 Parameters:
   <file>       The capture file name -- without extension. Processes <file>.log.
                Output written to <file>.txt, <file>-vrb.txt, and <file>.rds.
-  --dir, -d    Process all .log and .rd files in <directory>. Each is processed as if
-               passed individually as <file>.
+  --dir, -d    Recursively process all .log and .rd files in <directory> and its
+               subdirectories. Each is processed as if passed individually as <file>.
   <options>    Optional arguments for verbose mode (e.g. "--plot-moves").
 EOF
 exit 1
@@ -33,8 +33,8 @@ if [ "$1" = "--dir" ] || [ "$1" = "-d" ]; then
         usage
     fi
     shift
-    shopt -s nullglob
-    _log_files=("$_dir"/*.log "$_dir"/*.rd)
+    shopt -s nullglob globstar
+    _log_files=("$_dir"/**/*.log "$_dir"/**/*.rd)
     shopt -u nullglob
     if [ ${#_log_files[@]} -eq 0 ]; then
         echo "ERROR: No .log or .rd files found in $_dir."
