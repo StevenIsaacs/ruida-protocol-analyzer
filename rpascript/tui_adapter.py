@@ -352,7 +352,9 @@ class TuiAdapter(App):
         self._ruida_driver: RdDriver | None = None
         self._last_udp_host: str = ""
         self._last_usb_device: str = ""
-        self._parser = ScriptParser()
+        self._parser = ScriptParser(
+            warning_callback=lambda msg, syn: self._log_warning(f"{msg}  |  Syntax: {syn}"),
+        )
         self._decoder = RdDecoder()
         self._event_count = 0
         self._reply_count = 0

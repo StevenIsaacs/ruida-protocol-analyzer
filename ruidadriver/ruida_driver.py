@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import logging
 import time
 from typing import Any, Callable, TypedDict
 
@@ -120,7 +121,7 @@ class RdDriver:
         """
         from rpascript.interpreter import ScriptParser
 
-        parser = ScriptParser()
+        parser = ScriptParser(warning_callback=lambda msg, syn: logging.warning(f"{msg}  |  Syntax: {syn}"))
 
         self._handled_addresses: set[int] = set()
         self._address_to_mnemonic: dict[int, str] = {}
@@ -451,7 +452,7 @@ class RdDriver:
             raise RuntimeError("Session not created. Call start() first.")
 
         # 1. Configure RdStatus with ping/query commands (before starting anything)
-        parser = ScriptParser()
+        parser = ScriptParser(warning_callback=lambda msg, syn: logging.warning(f"{msg}  |  Syntax: {syn}"))
 
         ping_parsed = parser.parse_lines(self._PING_SCRIPT)
         ping_binary = encode_command(
@@ -527,7 +528,7 @@ class RdDriver:
                     break  # Sentinel shutdown
                 script, auto_checksum = item
 
-                parser = ScriptParser()
+                parser = ScriptParser(warning_callback=lambda msg, syn: logging.warning(f"{msg}  |  Syntax: {syn}"))
                 parsed = parser.parse_lines(script)
                 encoded = []
                 file_checksum = 0

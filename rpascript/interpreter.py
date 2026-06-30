@@ -162,9 +162,15 @@ class ScriptParser:
     command mnemonics and parameter specifications.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, warning_callback=None) -> None:
         self._mnemonic_map: dict[str, tuple] = self._build_mnemonic_map()
         self._mt_map: dict[str, tuple[int, int]] = self._build_mt_map()
+        self._warning_callback = warning_callback or ScriptParser._default_warning
+
+    @staticmethod
+    def _default_warning(message: str, syntax: str) -> None:
+        import logging
+        logging.warning(f"Line: {message}  |  Syntax: {syntax}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -224,9 +230,11 @@ class ScriptParser:
         # --- Session meta-commands (live controller testing) ---
         if tokens[0].lower() == "session":
             if len(tokens) < 2:
-                raise ValueError(
-                    f'{line_num}: "session" requires an action: start or end'
+                self._warning_callback(
+                    f'{line_num}: "session" requires an action: start or end',
+                    'session start [key=value ...] or session end'
                 )
+                return None
             action = tokens[1].lower()
             if action == "start":
                 kwargs = {}
@@ -251,16 +259,20 @@ class ScriptParser:
                     "raw": raw,
                 }
             else:
-                raise ValueError(
-                    f'{line_num}: Unknown session action "{action}". Use "start" or "end".'
+                self._warning_callback(
+                    f'{line_num}: Unknown session action "{action}". Use "start" or "end".',
+                    'session start [key=value ...] or session end'
                 )
+                return None
 
         # --- Server meta-commands (RPC server control) ---
         if tokens[0].lower() == "server":
             if len(tokens) < 2:
-                raise ValueError(
-                    f'{line_num}: "server" requires an action: start or stop'
+                self._warning_callback(
+                    f'{line_num}: "server" requires an action: start or stop',
+                    'server start [host=...] [port=...] [token=...] or server stop'
                 )
+                return None
             action = tokens[1].lower()
             if action == "start":
                 kwargs = {}
@@ -272,9 +284,11 @@ class ScriptParser:
                     try:
                         kwargs["port"] = int(kwargs["port"])
                     except ValueError:
-                        raise ValueError(
-                            f'{line_num}: Invalid port value "{kwargs["port"]}"'
+                        self._warning_callback(
+                            f'{line_num}: Invalid port value "{kwargs["port"]}"',
+                            'server start port=<port_number>'
                         )
+                        return None
                 return {
                     "type": "SERVER_START",
                     "mnemonic": "SERVER_START",
@@ -293,9 +307,11 @@ class ScriptParser:
                     "raw": raw,
                 }
             else:
-                raise ValueError(
-                    f'{line_num}: Unknown server action "{action}". Use "start" or "stop".'
+                self._warning_callback(
+                    f'{line_num}: Unknown server action "{action}". Use "start" or "stop".',
+                    'server start [host=...] [port=...] [token=...] or server stop'
                 )
+                return None
 
         # --- NEW_PACKET directive (per-packet boundary marker) ---
         if tokens[0] == "NEW_PACKET":
@@ -311,9 +327,11 @@ class ScriptParser:
         # --- Flow-control: delay ---
         if tokens[0].lower() == "delay":
             if len(tokens) < 2:
-                raise ValueError(
-                    f'{line_num}: "delay" requires a time argument (e.g. 5s, 500ms)'
+                self._warning_callback(
+                    f'{line_num}: "delay" requires a time argument (e.g. 5s, 500ms)',
+                    'DELAY <time> (e.g. 5s, 500ms)'
                 )
+                return None
             return {
                 "type": "DELAY",
                 "mnemonic": "DELAY",
@@ -326,10 +344,11 @@ class ScriptParser:
         # --- Flow-control: wait ---
         if tokens[0].lower() == "wait":
             if len(tokens) < 2:
-                raise ValueError(
-                    f'{line_num}: "wait" requires a status argument '
-                    f"(e.g. MACHINE_STATUS_JOB_RUNNING)"
+                self._warning_callback(
+                    f'{line_num}: "wait" requires a status argument (e.g. MACHINE_STATUS_JOB_RUNNING)',
+                    'WAIT <STATUS> [to=<seconds>]'
                 )
+                return None
             status = tokens[1]
             kwargs = {}
             for token in tokens[2:]:
@@ -339,11 +358,11 @@ class ScriptParser:
             valid_wait_keys = frozenset({"to"})
             unknown = kwargs.keys() - valid_wait_keys
             if unknown:
-                raise ValueError(
-                    f"{line_num}: Unknown wait parameter(s): "
-                    f"{', '.join(sorted(unknown))}. "
-                    f"Valid parameters: to=<timeout>"
+                self._warning_callback(
+                    f"{line_num}: Unknown wait parameter(s): {', '.join(sorted(unknown))}. Valid: to=<timeout>",
+                    'WAIT <STATUS> [to=<seconds>]'
                 )
+                return None
             return {
                 "type": "WAIT",
                 "mnemonic": "WAIT",
@@ -369,9 +388,11 @@ class ScriptParser:
             if len(tokens) > idx and tokens[idx].upper() == "CMD":
                 idx += 1
             if idx >= len(tokens):
-                raise ValueError(
-                    f'{line_num}: Type "{type_name}" specified but no mnemonic follows.'
+                self._warning_callback(
+                    f'{line_num}: Type "{type_name}" specified but no mnemonic follows.',
+                    'TYPE MNEMONIC [param ...]'
                 )
+                return None
             mnemonic = tokens[idx]
             idx += 1
         else:
@@ -381,10 +402,11 @@ class ScriptParser:
 
         # Validate mnemonic exists in the command table
         if mnemonic not in self._mnemonic_map:
-            raise ValueError(
-                f'{line_num}: Unknown command mnemonic "{mnemonic}". '
-                f"Not found in any CT table entry."
+            self._warning_callback(
+                f'{line_num}: Unknown command mnemonic "{mnemonic}".',
+                'See command table for valid mnemonics'
             )
+            return None
 
         # --- Parameters and expected reply ---
         params: list[str] = []
@@ -539,9 +561,10 @@ class ScriptInterpreter:
     DEFAULT_SRC_PORT = 40200
     DEFAULT_DST_PORT = 50200
 
-    def __init__(self, output_stream):
+    def __init__(self, output_stream, warning_callback=None):
         self._out = output_stream
-        self._parser = ScriptParser()
+        self._warning_callback = warning_callback or ScriptParser._default_warning
+        self._parser = ScriptParser(warning_callback=warning_callback)
         self._enc = RdEncoder()
         self._swizzler = RpaSwizzler(magic=0x88)
         self._timestamp = 0.0
@@ -604,10 +627,15 @@ class ScriptInterpreter:
             raw = self._encode_raw(cmd)
 
             # === File Checksum Logic ===
+            skip_append = False
             if is_set_file_sum(cmd, self._parser.mnemonic_map):
                 if set_file_sum_value is not None:
-                    raise ValueError("Duplicate SET_FILE_SUM — at most one per file")
-                if cmd["params"]:
+                    self._warning_callback(
+                        "Duplicate SET_FILE_SUM — at most one per file",
+                        "SET_FILE_SUM [=<checksum>] (at most one per file)"
+                    )
+                    skip_append = True
+                elif cmd["params"]:
                     set_file_sum_value = parse_value(
                         cmd["params"][0], "checksum", "uint_35"
                     )
@@ -617,7 +645,7 @@ class ScriptInterpreter:
                     set_file_sum_batch = (
                         current_batch  # track which batch has the placeholder
                     )
-                # raw is added to current_batch below regardless
+                # raw is skipped on duplicate (skip_append=True)
             elif should_include_in_checksum(cmd, self._parser.mnemonic_map):
                 file_checksum += sum(raw)
             # EOF (0xD7) is handled implicitly: should_include_in_checksum returns True
@@ -625,7 +653,8 @@ class ScriptInterpreter:
             # sum(raw) naturally includes 0xD7.
             # =========================
 
-            current_batch.extend(raw)
+            if not skip_append:
+                current_batch.extend(raw)
 
             # Track commands that have an expected reply value
             if cmd.get("expected"):
@@ -637,9 +666,10 @@ class ScriptInterpreter:
             if set_file_sum_batch is not current_batch:
                 # The batch containing the SET_FILE_SUM placeholder was already flushed
                 # by a NEW_PACKET directive. This is a script structure error.
-                raise ValueError(
+                self._warning_callback(
                     "SET_FILE_SUM without value must appear in the final batch "
-                    "(cannot be before a NEW_PACKET directive)"
+                    "(cannot be before a NEW_PACKET directive)",
+                    "SET_FILE_SUM without value must be in the final packet batch"
                 )
             current_batch[set_file_sum_offset : set_file_sum_offset + 5] = encoded_sum
 
@@ -717,10 +747,19 @@ class ScriptInterpreter:
         """Encode a single command to raw bytes (unswizzled, no checksum).
 
         Delegates to the standalone encode_command function.
+        Returns empty bytearray on encoding failure (error already warned).
         """
-        return encode_command(
-            cmd, self._parser.mnemonic_map, self._parser.mt_map, self._enc
-        )
+        try:
+            return encode_command(
+                cmd, self._parser.mnemonic_map, self._parser.mt_map, self._enc
+            )
+        except ValueError as e:
+            import logging
+            logging.warning(
+                f"Line {cmd.get('line_num', '?')}: Encoding error: {e}  |  "
+                f"Syntax: See command table for valid mnemonics/params"
+            )
+            return bytearray()
 
     def _emit_packet(self, raw: bytearray) -> None:
         """Swizzle, checksum, and emit a single packet as a tshark line.

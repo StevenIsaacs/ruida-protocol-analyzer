@@ -6,6 +6,7 @@ Output can be piped directly to rpa.py for decoding.
 """
 
 import argparse
+import logging
 import sys
 
 from rpa import __version__
@@ -75,7 +76,7 @@ def main() -> None:
         sys.exit(1)
 
     # Parse script
-    script_parser = ScriptParser()
+    script_parser = ScriptParser(warning_callback=lambda msg, syn: logging.warning(f"{msg}  |  Syntax: {syn}"))
     commands = script_parser.parse_file(args.script)
 
     # Dry run: show parsed commands
