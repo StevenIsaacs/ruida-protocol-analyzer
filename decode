@@ -6,16 +6,16 @@ Usage: $_self <file> [<options>]
        $_self --dir <directory> [<options>]
 
 Use this script to run rpa.py to process a log file previously captured
-by the capture script. The log file is processed three times. First to produce a
-summarized decode, second to produce a verbose decode, and third to generate a
-.rds script for round-trip verification.
+by the capture script. The log file is processed four times. First to produce a
+summarized decode, second to produce a verbose decode, third to generate a
+.rds script for round-trip verification, and fourth to produce an interactive HTML plot.
 
-The verbose decode generates an interactive Bokeh plot of all moves and cuts.
+The fourth pass generates an interactive Bokeh plot of all moves and cuts as a standalone HTML file.
 Requires a virtual environment with Bokeh installed. Create one from requirements.txt.
 
 Parameters:
   <file>       The capture file name -- without extension. Processes <file>.log.
-               Output written to <file>.txt, <file>-vrb.txt, and <file>.rds.
+                Output written to <file>.txt, <file>-vrb.txt, <file>.rds, and <file>-plot.html.
   --dir, -d    Recursively process all .log and .rd files in <directory> and its
                subdirectories. Each is processed as if passed individually as <file>.
   <options>    Optional arguments for verbose mode (e.g. "--plot-moves").
@@ -109,6 +109,7 @@ for _entry in "${_log_files[@]}"; do
     $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
     $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
     $_rpa_cmd --generate-script -o "$_base" "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    $_rpa_cmd --save-plot --quiet "$_entry" > /dev/null || true
     _success=$((_success + 1))
 done
 

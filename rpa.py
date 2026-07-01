@@ -379,31 +379,20 @@ def main():
                 _plot_cds = ColumnDataSource(
                     data=_plot.to_column_data()
                 )
-                # Determine output stem
-                if _plot.out.args.output_file:
-                    _out_stem = str(
-                        _plot.out.out_stem
-                    )
-                else:
-                    _out_stem = args.input_file
+                # Use input file stem for clean naming
+                _in = Path(args.input_file)
+                _stem = _in.stem
                 _view = BokehView(
                     args,
                     source=_plot_cds,
                     title="All Vectors",
                     color_lut=_plot.color_lut,
-                    out_stem=_out_stem,
+                    out_stem=_stem,
                 )
                 _view.update_histograms()
 
-                # Resolve output path
-                if _out_stem:
-                    _in = Path(_out_stem)
-                    _stem = _in.stem
-                    _sfx = _in.suffix
-                    _ext_part = f"-{_sfx[1:]}" if _sfx else ""
-                    _plot_path = _in.parent / f"{_stem}{_ext_part}-view.html"
-                else:
-                    _plot_path = Path("ruida-session-view.html")
+                # Output alongside input: <stem>-plot.html
+                _plot_path = _in.with_name(f"{_stem}-plot.html")
 
                 _html = file_html(_view.layout, CDN, title=_view.title)
                 _plot_path.write_text(_html, encoding="utf-8")
