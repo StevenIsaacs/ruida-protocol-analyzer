@@ -15,7 +15,7 @@ from rpascript.encoding import (
     encode_mt_param,
     encode_params,
     encode_single_param,
-    is_set_file_sum,
+    is_end_job,
     parse_value,
     should_include_in_checksum,
 )
@@ -582,7 +582,7 @@ class ScriptInterpreter:
         after the batch packet (and ACK) that carried them.
 
         File checksum: accumulates sum(raw) for eligible commands, then either
-        verifies SET_FILE_SUM or fills a placeholder at EOF.
+        verifies END_JOB or fills a placeholder at EOF.
 
         If any command has type SESSION_START or SESSION_END, switches to session
         mode: creates RdSession/RdDriver, connects, and routes commands through
@@ -601,9 +601,9 @@ class ScriptInterpreter:
         current_batch = bytearray()
         pending_commands: list[dict] = []
         file_checksum = 0
-        set_file_sum_value = None
-        set_file_sum_offset = None
-        set_file_sum_batch = bytearray()  # reference to batch containing placeholder
+        end_job_value = None
+        end_job_offset = None
+        end_job_batch = bytearray()  # reference to batch containing placeholder
         for cmd in commands:
             if cmd.get("type") == "NEW_PACKET":
                 # Flush current batch as a single combined packet,
@@ -628,28 +628,28 @@ class ScriptInterpreter:
 
             # === File Checksum Logic ===
             skip_append = False
-            if is_set_file_sum(cmd, self._parser.mnemonic_map):
-                if set_file_sum_value is not None:
+            if is_end_job(cmd, self._parser.mnemonic_map):
+                if end_job_value is not None:
                     self._warning_callback(
-                        "Duplicate SET_FILE_SUM — at most one per file",
-                        "SET_FILE_SUM [=<checksum>] (at most one per file)"
+                        "Duplicate END_JOB — at most one per file",
+                        "END_JOB [=<checksum>] (at most one per file)"
                     )
                     skip_append = True
                 elif cmd["params"]:
-                    set_file_sum_value = parse_value(
+                    end_job_value = parse_value(
                         cmd["params"][0], "checksum", "uint_35"
                     )
                 else:
                     raw.extend(b"\x00" * 5)  # placeholder; filled after EOF
-                    set_file_sum_offset = len(current_batch) + len(raw) - 5
-                    set_file_sum_batch = (
+                    end_job_offset = len(current_batch) + len(raw) - 5
+                    end_job_batch = (
                         current_batch  # track which batch has the placeholder
                     )
                 # raw is skipped on duplicate (skip_append=True)
             elif should_include_in_checksum(cmd, self._parser.mnemonic_map):
                 file_checksum += sum(raw)
             # EOF (0xD7) is handled implicitly: should_include_in_checksum returns True
-            # since 0xD7 is not in CHK_DISABLES and is not SET_FILE_SUM.
+            # since 0xD7 is not in CHK_DISABLES and is not END_JOB.
             # sum(raw) naturally includes 0xD7.
             # =========================
 
@@ -661,17 +661,17 @@ class ScriptInterpreter:
                 pending_commands.append(cmd)
 
         # === Patch placeholder BEFORE final emit ===
-        if set_file_sum_offset is not None and set_file_sum_value is None:
+        if end_job_offset is not None and end_job_value is None:
             encoded_sum = self._enc.encode_uint35(file_checksum)
-            if set_file_sum_batch is not current_batch:
-                # The batch containing the SET_FILE_SUM placeholder was already flushed
+            if end_job_batch is not current_batch:
+                # The batch containing the END_JOB placeholder was already flushed
                 # by a NEW_PACKET directive. This is a script structure error.
                 self._warning_callback(
-                    "SET_FILE_SUM without value must appear in the final batch "
+                    "END_JOB without value must appear in the final batch "
                     "(cannot be before a NEW_PACKET directive)",
-                    "SET_FILE_SUM without value must be in the final packet batch"
+                    "END_JOB without value must be in the final packet batch"
                 )
-            current_batch[set_file_sum_offset : set_file_sum_offset + 5] = encoded_sum
+            current_batch[end_job_offset : end_job_offset + 5] = encoded_sum
 
         # Flush the final batch (now with correct checksum bytes)
         if current_batch:
@@ -684,11 +684,11 @@ class ScriptInterpreter:
                 if reply_line:
                     self._out.write(reply_line + "\n")
 
-        # === Post-loop: verify SET_FILE_SUM ===
-        if set_file_sum_value is not None:
-            if file_checksum != set_file_sum_value:
+        # === Post-loop: verify END_JOB ===
+        if end_job_value is not None:
+            if file_checksum != end_job_value:
                 raise ValueError(
-                    f"SET_FILE_SUM value {set_file_sum_value} does not match "
+                    f"END_JOB value {end_job_value} does not match "
                     f"accumulated file checksum {file_checksum}"
                 )
 

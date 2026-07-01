@@ -71,7 +71,7 @@ during live execution — commands are batched automatically.
 MOVE MOVE_ABS_XY X=100mm Y=200mm
 CORE NOP
 GET_SETTING MEM_CARD_ID
-SET_FILE_SUM
+END_JOB
 START_JOB
 ```
 
@@ -158,7 +158,7 @@ Each line is parsed as:
 | `PAUSE_JOB`           | *(none)*                | Pause processing                     |
 | `RESTORE_JOB`         | *(none)*                | Resume paused processing             |
 | `BLOCK_END`               | *(none)*                | End of a block                       |
-| `SET_FILE_SUM`            | *(none)* or `= value`   | File checksum (see §7)               |
+| `END_JOB`            | *(none)* or `= value`   | File checksum (see §7)               |
 | `SET_FILE_NAME`           | `File:string`           | Set the file name for upload         |
 | `DOCUMENT_FILE_UPLOAD`    | `FNum={n} {val} {val}`  | Upload document data                 |
 | `DOCUMENT_FILE_END`       | *(none)*                | End of file upload                   |
@@ -371,27 +371,27 @@ It ensures the file was transmitted without corruption.
 
 ### Auto-Calculate (Placeholder Mode)
 
-Write `SET_FILE_SUM` with no value and the runner fills in the correct
+Write `END_JOB` with no value and the runner fills in the correct
 checksum after all preceding commands are encoded:
 
 ```rds
 START_JOB
 ... engrave / cut commands ...
 BLOCK_END
-SET_FILE_SUM
+END_JOB
 ```
 
 The checksum is calculated from all commands between `START_JOB` and
 `BLOCK_END` that are related to engraving, cutting, and layer
 configuration. Memory commands (`GET_SETTING`, `SET_SETTING`), keyboard
-commands, and `SET_FILE_SUM` itself are excluded.
+commands, and `END_JOB` itself are excluded.
 
 ### Verify Mode
 
 Provide the expected checksum value when you know it:
 
 ```rds
-SET_FILE_SUM = 9763961
+END_JOB = 9763961
 ```
 
 The runner accumulates its own checksum and compares. A mismatch raises
@@ -400,11 +400,11 @@ warning and auto-corrects).
 
 ### Rules
 
-- At most **one** `SET_FILE_SUM` per script.
-- `SET_FILE_SUM` must come near the end — after all commands whose bytes
+- At most **one** `END_JOB` per script.
+- `END_JOB` must come near the end — after all commands whose bytes
   contribute to the checksum.
 - Excluded from checksum: `0xA7` (keypress), `0xDA` (SETTING/GET_SETTING),
-  and `0xE5/0x05` (`SET_FILE_SUM` itself).
+  and `0xE5/0x05` (`END_JOB` itself).
 
 ---
 
@@ -480,7 +480,7 @@ CUT_ABS_XY X=200mm Y=10mm
 LASER_OFF
 
 BLOCK_END
-SET_FILE_SUM
+END_JOB
 
 GET_SETTING MEM_CARD_ID
 ```
@@ -502,7 +502,7 @@ CUT_ABS_XY X=20mm Y=20mm
 
 BLOCK_END
 ARRAY_END
-SET_FILE_SUM
+END_JOB
 ```
 
 ---
@@ -555,7 +555,7 @@ driver.run(script, auto_checksum=True)
 | Unknown mnemonic            | `ValueError` at parse time                 |
 | Invalid parameter value     | `ValueError` at encode time                |
 | Checksum mismatch           | `ValueError` raised (unless auto_checksum) |
-| Duplicate `SET_FILE_SUM`    | `ValueError` raised                        |
+| Duplicate `END_JOB`    | `ValueError` raised                        |
 | Transport disconnect        | Script re-queued, `DISCONNECTED` event fired |
 | All other parse/encode errors | `SCRIPT_ERROR` event fired, runner continues |
 | Empty script (empty list)   | Silent no-op                               |

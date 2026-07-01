@@ -78,7 +78,7 @@ MOVE_ABS_XY X=100mm Y=200mm
 LASER_ON Power=80%
 MOVE_ABS_XY X=200mm Y=300mm
 LASER_OFF
-SET_FILE_SUM
+END_JOB
 DELAY 5s
 WAIT MACHINE_STATUS_MOVING
 WAIT !MACHINE_STATUS_JOB_RUNNING to=30s
@@ -96,11 +96,11 @@ In addition to standard controller commands, scripts support flow-control:
 
 ### 3.3 Checksum Handling
 
-- `SET_FILE_SUM` without a value: auto-calculates the file checksum from all preceding commands.
-- `SET_FILE_SUM = 12345` with value: verifies accumulated checksum against the value.
+- `END_JOB` without a value: auto-calculates the file checksum from all preceding commands.
+- `END_JOB = 12345` with value: verifies accumulated checksum against the value.
 - `auto_checksum=False` (default): raises `ValueError` on mismatch.
 - `auto_checksum=True`: auto-recalculates with a warning and continues.
-- Duplicate `SET_FILE_SUM`: raises `ValueError`.
+- Duplicate `END_JOB`: raises `ValueError`.
 
 ### 3.4 Re-queue on Disconnect
 
@@ -274,9 +274,9 @@ class StatusDict(TypedDict, total=False):
 | Script encoding error | Fires `SCRIPT_ERROR` + error listener; continues to next script |
 | Transport disconnect mid-script | Re-queues full script; fires `DISCONNECTED` |
 | `cancel_script()` during execution | Clears queue; current script iteration won't requeue |
-| `SET_FILE_SUM` mismatch + `auto_checksum=False` | Raises `ValueError` with expected/actual values |
-| `SET_FILE_SUM` mismatch + `auto_checksum=True` | Auto-recalculates checksum; logs warning; continues |
-| Duplicate `SET_FILE_SUM` | Raises `ValueError("Duplicate SET_FILE_SUM")` |
+| `END_JOB` mismatch + `auto_checksum=False` | Raises `ValueError` with expected/actual values |
+| `END_JOB` mismatch + `auto_checksum=True` | Auto-recalculates checksum; logs warning; continues |
+| Duplicate `END_JOB` | Raises `ValueError("Duplicate END_JOB")` |
 | Listener callback raises exception | Caught by `except Exception: pass`; other listeners unaffected |
 
 ---

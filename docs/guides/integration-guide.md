@@ -172,9 +172,9 @@ Key threading rules:
 | Script encoding error | Fires `SCRIPT_ERROR` + error listener; continues to next script |
 | Transport disconnect mid-script | Re-queues full script; fires `DISCONNECTED` |
 | `cancel_script()` during execution | Clears queue; current script iteration won't requeue |
-| `SET_FILE_SUM` mismatch + `auto_checksum=False` | Raises `ValueError` with expected/actual values |
-| `SET_FILE_SUM` mismatch + `auto_checksum=True` | Auto-recalculates checksum; logs warning; continues |
-| Duplicate `SET_FILE_SUM` | Raises `ValueError("Duplicate SET_FILE_SUM")` |
+| `END_JOB` mismatch + `auto_checksum=False` | Raises `ValueError` with expected/actual values |
+| `END_JOB` mismatch + `auto_checksum=True` | Auto-recalculates checksum; logs warning; continues |
+| Duplicate `END_JOB` | Raises `ValueError("Duplicate END_JOB")` |
 | Listener callback raises exception | Caught by `except Exception: pass`; other listeners unaffected |
 
 ### 2.9 Head/Tail Script Management
@@ -221,7 +221,7 @@ driver.set_head_script([
 # Configure tail (runs after every job)
 driver.set_tail_script([
     "MOVE_ABS_XY X=0mm Y=0mm",
-    "SET_FILE_SUM",
+    "END_JOB",
 ])
 
 # Run a job — head and tail are prepended/appended automatically
@@ -285,7 +285,7 @@ adapter.start(udp_host="192.168.1.100")
 adapter.run([
     "GET_SETTING MEM_CARD_ID",
     "MOVE_ABS_XY X=100mm Y=200mm",
-    "SET_FILE_SUM",
+    "END_JOB",
 ], auto_checksum=True)
 
 # Access loaded script
@@ -325,7 +325,7 @@ try:
     parsed = parser.parse_lines([
         "MOVE_ABS_XY X=100mm Y=200mm",
         "LASER_ON Power=80%",
-        "SET_FILE_SUM",
+        "END_JOB",
     ])
     print(f"Parsed {len(parsed)} commands successfully")
 except ValueError as e:
@@ -342,12 +342,12 @@ from ruidadriver.ruida_driver import RdDriver
 driver = RdDriver()
 # With auto_checksum=False (default), mismatch raises ValueError
 try:
-    driver.run(["MOVE_ABS_XY X=100mm Y=200mm", "SET_FILE_SUM = 99999"])
+    driver.run(["MOVE_ABS_XY X=100mm Y=200mm", "END_JOB = 99999"])
 except ValueError as e:
     print(f"Expected checksum mismatch: {e}")
 
 # With auto_checksum=True, it auto-fixes and continues
-driver.run(["MOVE_ABS_XY X=100mm Y=200mm", "SET_FILE_SUM = 99999"],
+driver.run(["MOVE_ABS_XY X=100mm Y=200mm", "END_JOB = 99999"],
            auto_checksum=True)  # no error
 ```
 
@@ -368,7 +368,7 @@ job = [
 ]
 tail = [
     "MOVE_ABS_XY X=0mm Y=0mm",
-    "SET_FILE_SUM",
+    "END_JOB",
 ]
 
 full_script = head + job + tail
@@ -752,7 +752,7 @@ svc.set_head_script([
 ])
 svc.set_tail_script([
     "MOVE_ABS_XY X=0mm Y=0mm",
-    "SET_FILE_SUM",
+    "END_JOB",
 ])
 
 # Verify

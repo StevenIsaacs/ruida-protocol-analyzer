@@ -272,7 +272,7 @@ These tests require no controller. They verify the core wire-format logic using 
 |-------|-------|
 | **Objective** | Verify `should_include_in_checksum()`, `is_set_file_sum()`, and `is_eof_command()` return correct values. |
 | **Prerequisites** | Known command dicts. |
-| **Steps** | 1. Test each function with commands that should and should not match.<br>2. Verify `should_include_in_checksum()` returns `False` for `SET_FILE_SUM`, `KEYPRESS`, and `SETTING` commands.<br>3. Verify `is_set_file_sum()` returns `True` for `SET_FILE_SUM` commands only.<br>4. Verify `is_eof_command()` returns `True` for end-of-file commands. |
+| **Steps** | 1. Test each function with commands that should and should not match.<br>2. Verify `should_include_in_checksum()` returns `False` for `END_JOB`, `KEYPRESS`, and `SETTING` commands.<br>3. Verify `is_set_file_sum()` returns `True` for `END_JOB` commands only.<br>4. Verify `is_eof_command()` returns `True` for end-of-file commands. |
 | **Expected result** | All helper functions return correct boolean values. |
 
 #### Test 4.1.4: `reconstruct_script_line()` — Round-Trip
@@ -285,24 +285,24 @@ These tests require no controller. They verify the core wire-format logic using 
 | **Steps** | 1. Parse a script line.<br>2. Call `reconstruct_script_line(cmd)`.<br>3. Compare the reconstructed text with the original. |
 | **Expected result** | The reconstructed line matches the original (modulo whitespace normalization). |
 
-#### Test 4.1.5: Duplicate `SET_FILE_SUM` Raises `ValueError`
+#### Test 4.1.5: Duplicate `END_JOB` Raises `ValueError`
 - [x] Test 4.1.5
 
 | Field | Value |
 |-------|-------|
-| **Objective** | Verify that a script containing two `SET_FILE_SUM` commands raises `ValueError`. |
-| **Prerequisites** | A script list with two `SET_FILE_SUM` lines. |
-| **Steps** | 1. Create script lines containing two `SET_FILE_SUM` commands.<br>2. Run through the encoding pipeline.<br>3. Verify `ValueError` is raised. |
-| **Expected result** | `ValueError("Duplicate SET_FILE_SUM — at most one per file")`. |
+| **Objective** | Verify that a script containing two `END_JOB` commands raises `ValueError`. |
+| **Prerequisites** | A script list with two `END_JOB` lines. |
+| **Steps** | 1. Create script lines containing two `END_JOB` commands.<br>2. Run through the encoding pipeline.<br>3. Verify `ValueError` is raised. |
+| **Expected result** | `ValueError("Duplicate END_JOB — at most one per file")`. |
 
 #### Test 4.1.6: Checksum Mismatch Raises `ValueError`
 - [x] Test 4.1.6
 
 | Field | Value |
 |-------|-------|
-| **Objective** | Verify that a `SET_FILE_SUM` with a value that does not match the accumulated checksum raises `ValueError`. |
+| **Objective** | Verify that a `END_JOB` with a value that does not match the accumulated checksum raises `ValueError`. |
 | **Prerequisites** | A script with commands whose accumulated checksum is known. |
-| **Steps** | 1. Create a script with a `SET_FILE_SUM = <wrong_value>`.<br>2. Run through the encoding pipeline.<br>3. Verify `ValueError` is raised with both expected and actual values. |
+| **Steps** | 1. Create a script with a `END_JOB = <wrong_value>`.<br>2. Run through the encoding pipeline.<br>3. Verify `ValueError` is raised with both expected and actual values. |
 | **Expected result** | `ValueError` raised with mismatch detail. |
 
 ---

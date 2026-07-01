@@ -2231,7 +2231,7 @@ class TuiAdapter(App):
 
         Args:
             script: List of rpascript-formatted command lines.
-            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+            auto_checksum: If True, auto-calculate END_JOB on mismatch
                 with a warning instead of raising.
 
         Thread-safe: can be called from any thread.
@@ -2302,7 +2302,7 @@ class TuiAdapter(App):
 
         Args:
             job: List of rpascript-formatted command lines (job body only).
-            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch.
+            auto_checksum: If True, auto-calculate END_JOB on mismatch.
         """
         if self._ruida_driver is None:
 
@@ -2702,7 +2702,7 @@ class TuiAdapter(App):
         Args:
             script: List of rpascript-formatted command lines, or None to
                 start the TUI event loop.
-            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch.
+            auto_checksum: If True, auto-calculate END_JOB on mismatch.
             **kwargs: Forwarded to ``App.run()`` when *script* is None.
         """
         if script is None:

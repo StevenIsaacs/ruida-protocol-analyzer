@@ -559,7 +559,7 @@ CT = {
     0xE5: {  # FILE
         0x00: ("DOCUMENT_FILE_UPLOAD", FNUM, UINT35, UINT35),
         0x02: "DOCUMENT_FILE_END",
-        0x05: ("SET_FILE_SUM", FILE_SUM),
+         0x05: ("END_JOB", FILE_SUM),
     },
     0xE6: {
         0x01: "SET_ABSOLUTE",

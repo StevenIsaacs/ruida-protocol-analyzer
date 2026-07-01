@@ -50,7 +50,7 @@ columns 1
 flowchart TD
     A["Application (L7)\nscript: list[str]"]
     B["RdDriver.run() (L6)\nqueue to background script runner"]
-    C["ScriptRunner._run_loop()\nScriptParser.parse_lines() → list[dict]\nencode_command() per cmd → bytearray\naccumulate file_checksum\nhandle SET_FILE_SUM"]
+    C["ScriptRunner._run_loop()\nScriptParser.parse_lines() → list[dict]\nencode_command() per cmd → bytearray\naccumulate file_checksum\nhandle END_JOB"]
     D["RdTransport.write() (L4)\nchunk commands, swizzle\nprepend checksum (UDP)\nqueue to handshake thread"]
     E["Handshake Thread\nIDLE → SEND → ACK_PENDING (UDP)\n→ REPLY_PENDING → IDLE"]
     F["UdpTransport / UsbTransport\nsocket.sendto() / serial.write()"]
@@ -603,14 +603,14 @@ A daemon thread that processes scripts from `_script_queue`:
    - Skip `NEW_PACKET` directives.
    - Encode via `encode_command()`.
    - **File checksum handling**:
-     - If `SET_FILE_SUM` with a value → store for verification.
-     - If `SET_FILE_SUM` without a value → insert 5 zero-bytes placeholder, record index in `encoded` list.
+     - If `END_JOB` with a value → store for verification.
+     - If `END_JOB` without a value → insert 5 zero-bytes placeholder, record index in `encoded` list.
      - If `should_include_in_checksum()` returns `True` → add `sum(raw)` to `file_checksum`.
-     - Excluded: commands in `CHK_DISABLES` (0xA7 KEYPRESS, 0xDA SETTING) and `SET_FILE_SUM` itself.
+     - Excluded: commands in `CHK_DISABLES` (0xA7 KEYPRESS, 0xDA SETTING) and `END_JOB` itself.
 5. **Post-loop checksum resolution**:
-   - If `SET_FILE_SUM` had a value → verify against accumulated checksum. Raises `ValueError` on mismatch.
-   - If `SET_FILE_SUM` had a placeholder → encode `file_checksum` as `uint35` and patch the last 5 bytes of the placeholder command's bytearray. `SET_FILE_SUM` without a value must appear in the final batch (not before a `NEW_PACKET` in the tshark pipeline); the `interpreter.py` variant validates this.
-   - Duplicate `SET_FILE_SUM` raises `ValueError`.
+   - If `END_JOB` had a value → verify against accumulated checksum. Raises `ValueError` on mismatch.
+   - If `END_JOB` had a placeholder → encode `file_checksum` as `uint35` and patch the last 5 bytes of the placeholder command's bytearray. `END_JOB` without a value must appear in the final batch (not before a `NEW_PACKET` in the tshark pipeline); the `interpreter.py` variant validates this.
+   - Duplicate `END_JOB` raises `ValueError`.
 6. **Transmission**:
    - If `session.is_connected` → `transport.write(encoded)`.
    - If not connected → re-queue the script to `_script_queue`, fire `DISCONNECTED` event.
@@ -946,7 +946,7 @@ Indicates a packet boundary (used in tshark output generation to batch commands 
 ```rds
 CORE NOP
 MOVE MOVE_ABS_XY X=100.000mm Y=200.000mm
-CORE CMD SET_FILE_SUM = 12345
+CORE CMD END_JOB = 12345
 GET_SETTING MEM_CARD_ID  = 42
 ```
 
@@ -1054,13 +1054,13 @@ Transport.write(packet)             Send to wire (UDP socket / serial)
 
 The file checksum is a running sum of `sum(raw)` for all commands that pass `should_include_in_checksum()`. Excluded commands:
 - Those with prefix in `CHK_DISABLES` (0xA7 KEYPRESS, 0xDA SETTING).
-- The `SET_FILE_SUM` command itself (0xE5 → 0x05).
+- The `END_JOB` command itself (0xE5 → 0x05).
 
-**Verification mode**: When `SET_FILE_SUM` has a value parameter, the accumulated checksum is compared against that value after all commands are processed. Mismatch raises `ValueError`.
+**Verification mode**: When `END_JOB` has a value parameter, the accumulated checksum is compared against that value after all commands are processed. Mismatch raises `ValueError`.
 
-**Placeholder mode**: When `SET_FILE_SUM` has no value parameter, 5 zero bytes are inserted as a placeholder. After the checksum is fully accumulated, the placeholder bytes are patched with the encoded `uint35` checksum value. In the tshark output path (`ScriptInterpreter`), the placeholder must be in the final batch (before any `NEW_PACKET` after it), otherwise a `ValueError` is raised.
+**Placeholder mode**: When `END_JOB` has no value parameter, 5 zero bytes are inserted as a placeholder. After the checksum is fully accumulated, the placeholder bytes are patched with the encoded `uint35` checksum value. In the tshark output path (`ScriptInterpreter`), the placeholder must be in the final batch (before any `NEW_PACKET` after it), otherwise a `ValueError` is raised.
 
-**Duplicate detection**: At most one `SET_FILE_SUM` per file. Duplicates raise `ValueError`.
+**Duplicate detection**: At most one `END_JOB` per file. Duplicates raise `ValueError`.
 
 ---
 
@@ -1137,7 +1137,7 @@ flowchart TD
 | **L4 Handshake** | Timeouts fire `TIMEOUT` event and return to `IDLE`. Shutdown detected in any state via `_shutdown_event`. |
 | **L5 Status** | Every state function checks `_shutdown` before and after `_wait_for_event`. Transport not open → `CONNECTING`. `SEND_PING` and `SEND_QUERY` guard against missing commands (None/empty). `PING_REPLY` has retry loop with exhaustion → `RESYNC`. |
 | **L5 Session** | `connect()` clears `_connected_event` before starting. `timeout` parameter has millisecond interface (converted to seconds for `Event.wait()`). Temporary listener unregistered in `finally`. |
-| **L6 Driver** | `run()` raises `RuntimeError` if runner not started. Empty scripts are no-ops. `_run_loop` catches all exceptions (`except Exception`) and fires `SCRIPT_ERROR`. Duplicate `SET_FILE_SUM` raises `ValueError`. Checksum mismatch raises `ValueError`. Disconnected → requeue script. |
+| **L6 Driver** | `run()` raises `RuntimeError` if runner not started. Empty scripts are no-ops. `_run_loop` catches all exceptions (`except Exception`) and fires `SCRIPT_ERROR`. Duplicate `END_JOB` raises `ValueError`. Checksum mismatch raises `ValueError`. Disconnected → requeue script. |
 | **L7 TUI** | Guard on missing session before command dispatch. `run_in_executor` for blocking calls. `on_exit` cleanup. Stale session state guarded by none-check. |
 
 ### 10.2 Connection Failure Handling
@@ -1156,9 +1156,9 @@ Handled at all levels:
 
 ### 10.4 Checksum Edge Cases
 
-- **Duplicate SET_FILE_SUM**: Detected and raised as `ValueError("Duplicate SET_FILE_SUM — at most one per file")`.
-- **SET_FILE_SUM before NEW_PACKET**: In tshark output mode, if the placeholder SET_FILE_SUM is in a batch that was already flushed (before a NEW_PACKET marker), the patch fails with a descriptive `ValueError`.
-- **SET_FILE_SUM value mismatch**: Detected and raised as `ValueError` with both the expected and actual values.
+- **Duplicate END_JOB**: Detected and raised as `ValueError("Duplicate END_JOB — at most one per file")`.
+- **END_JOB before NEW_PACKET**: In tshark output mode, if the placeholder END_JOB is in a batch that was already flushed (before a NEW_PACKET marker), the patch fails with a descriptive `ValueError`.
+- **END_JOB value mismatch**: Detected and raised as `ValueError` with both the expected and actual values.
 
 ### 10.5 Stale Session State
 

@@ -73,7 +73,7 @@ def should_include_in_checksum(cmd: dict, mnemonic_map: dict) -> bool:
     """Return True if this command's encoded bytes should be included in file_checksum.
 
     Excludes commands that the parser skips (CHK_DISABLES: 0xA7 KEYPRESS, 0xDA SETTING)
-    and the SET_FILE_SUM command itself (0xE5→0x05).
+    and the END_JOB command itself (0xE5→0x05).
     """
     info = mnemonic_map.get(cmd["mnemonic"])
     if info is None:
@@ -84,7 +84,7 @@ def should_include_in_checksum(cmd: dict, mnemonic_map: dict) -> bool:
     if prefix in rdap.CHK_DISABLES:
         return False
 
-    # SET_FILE_SUM command (0xE5 → 0x05) excluded — its bytes are not part
+    # END_JOB command (0xE5 → 0x05) excluded — its bytes are not part
     # of the checksum value it carries
     if prefix == rdap.FILE_COMMAND and len(info) >= 2 and info[1] == 0x05:
         return False
@@ -96,15 +96,15 @@ def is_eof_command(cmd: dict, mnemonic_map: dict) -> bool:
     """Return True if this command is the EOF (end-of-file) marker.
 
     Documentation clarity only — EOF is implicitly handled via should_include_in_checksum
-    since 0xD7 is not in CHK_DISABLES and is not SET_FILE_SUM, so its sum(raw) = 0xD7
+    since 0xD7 is not in CHK_DISABLES and is not END_JOB, so its sum(raw) = 0xD7
     is naturally included in the accumulation.
     """
     prefix = _get_prefix_byte(cmd, mnemonic_map)
     return prefix == rdap.EOF
 
 
-def is_set_file_sum(cmd: dict, mnemonic_map: dict) -> bool:
-    """Return True if this command is SET_FILE_SUM (0xE5 → 0x05)."""
+def is_end_job(cmd: dict, mnemonic_map: dict) -> bool:
+    """Return True if this command is END_JOB (0xE5 → 0x05)."""
     info = mnemonic_map.get(cmd["mnemonic"])
     if info is None:
         return False

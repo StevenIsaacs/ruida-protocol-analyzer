@@ -20,7 +20,7 @@ import protocols.ruida.ruida_protocol as rdap
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import (
     encode_command,
-    is_set_file_sum,
+    is_end_job,
     parse_value,
     should_include_in_checksum,
 )
@@ -532,10 +532,10 @@ class RdDriver:
                 parsed = parser.parse_lines(script)
                 encoded = []
                 file_checksum = 0
-                set_file_sum_idx: int | None = (
+                end_job_idx: int | None = (
                     None  # index in `encoded` for the placeholder
                 )
-                set_file_sum_value = None  # parsed value if present
+                end_job_value = None  # parsed value if present
 
                 for cmd in parsed:
                     if cmd.get("type") == "NEW_PACKET":
@@ -552,55 +552,55 @@ class RdDriver:
                     if not raw:
                         continue
 
-                    if is_set_file_sum(cmd, parser.mnemonic_map):
+                    if is_end_job(cmd, parser.mnemonic_map):
                         if (
-                            set_file_sum_value is not None
-                            or set_file_sum_idx is not None
+                            end_job_value is not None
+                            or end_job_idx is not None
                         ):
                             raise ValueError(
-                                "Duplicate SET_FILE_SUM — at most one per file"
+                                "Duplicate END_JOB — at most one per file"
                             )
                         if cmd["params"]:
-                            set_file_sum_value = parse_value(
+                            end_job_value = parse_value(
                                 cmd["params"][0], "checksum", "uint_35"
                             )
                         else:
                             # Omitted: extend raw with placeholder bytes for later fill
                             raw.extend(b"\x00" * 5)
-                        set_file_sum_idx = len(encoded)
+                        end_job_idx = len(encoded)
                         encoded.append(raw)
-                        # DO NOT include SET_FILE_SUM bytes in file_checksum
+                        # DO NOT include END_JOB bytes in file_checksum
                     elif should_include_in_checksum(cmd, parser.mnemonic_map):
                         file_checksum += sum(raw)
                         encoded.append(raw)
                     else:
                         encoded.append(raw)
 
-                # Post-loop: verify or fill SET_FILE_SUM
-                if set_file_sum_value is not None:
-                    if file_checksum != set_file_sum_value:
+                # Post-loop: verify or fill END_JOB
+                if end_job_value is not None:
+                    if file_checksum != end_job_value:
                         if auto_checksum:
                             msg = (
-                                f"SET_FILE_SUM checksum mismatch: "
-                                f"expected {set_file_sum_value}, "
+                                f"END_JOB checksum mismatch: "
+                                f"expected {end_job_value}, "
                                 f"calculated {file_checksum}"
                             )
                             self._notify_script_error(msg)
                             # Patch the encoded bytes with the correct checksum
                             encoded_sum = encoder.encode_uint35(file_checksum)
-                            raw_sfs = encoded[set_file_sum_idx]
-                            raw_sfs[-5:] = encoded_sum
-                            set_file_sum_value = file_checksum
+                            raw_ej = encoded[end_job_idx]
+                            raw_ej[-5:] = encoded_sum
+                            end_job_value = file_checksum
                         else:
                             raise ValueError(
-                                f"SET_FILE_SUM value {set_file_sum_value} does not match "
+                                f"END_JOB value {end_job_value} does not match "
                                 f"accumulated file checksum {file_checksum}"
                             )
-                elif set_file_sum_idx is not None:
+                elif end_job_idx is not None:
                     # Fill omitted checksum: encode value, patch the placeholder bytearray
                     encoded_sum = encoder.encode_uint35(file_checksum)
-                    raw_sfs = encoded[set_file_sum_idx]
-                    raw_sfs[-5:] = (
+                    raw_ej = encoded[end_job_idx]
+                    raw_ej[-5:] = (
                         encoded_sum  # last 5 bytes are the uint35 placeholder
                     )
 
@@ -634,7 +634,7 @@ class RdDriver:
 
         Args:
             script: List of rpascript-formatted command lines.
-            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+            auto_checksum: If True, auto-calculate END_JOB on mismatch
                 with a warning instead of raising.
 
         Raises:
@@ -863,7 +863,7 @@ class RdDriver:
 
         Args:
             job: List of rpascript-formatted command lines (the job body only).
-            auto_checksum: If True, auto-calculate SET_FILE_SUM on mismatch
+            auto_checksum: If True, auto-calculate END_JOB on mismatch
                 with a warning instead of raising.
         """
         with self._lock:
