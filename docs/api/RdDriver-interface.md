@@ -221,7 +221,7 @@ class StatusDict(TypedDict, total=False):
     MEM_BED_SIZE_Y: tuple[float, str]
     MEM_MACHINE_STATUS: tuple[int, str]
     MACHINE_STATUS_MOVING: bool
-    MACHINE_STATUS_PART_END: bool
+    MACHINE_STATUS_LAYER_END: bool
     MACHINE_STATUS_JOB_RUNNING: bool
 ```
 

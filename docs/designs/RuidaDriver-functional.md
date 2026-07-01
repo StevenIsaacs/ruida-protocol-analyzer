@@ -332,7 +332,7 @@ class RdStatusEvent(Enum):
     QUERY_SENT               # Query command list transmitted
     QUERY_RECEIVED           # Query replies received
     MACHINE_STATUS_MOVING    # Machine is moving (bit 0)
-    MACHINE_STATUS_PART_END  # Part end detected (bit 1)
+    MACHINE_STATUS_LAYER_END  # Part end detected (bit 1)
     MACHINE_STATUS_JOB_RUNNING  # Job is running (bit 2)
 ```
 
@@ -632,7 +632,7 @@ Called from the handshake thread for each batch of unpacked replies:
    - Decode address via `RdDecoder.decode_address()`.
    - Decode value via `RdDecoder.decode_value()`.
    - Store in `_machine_status[address]`.
-   - If address is `0x0400` (machine status): parse status bits into `MACHINE_STATUS_MOVING`, `MACHINE_STATUS_PART_END`, `MACHINE_STATUS_JOB_RUNNING` events and fire them.
+   - If address is `0x0400` (machine status): parse status bits into `MACHINE_STATUS_MOVING`, `MACHINE_STATUS_LAYER_END`, `MACHINE_STATUS_JOB_RUNNING` events and fire them.
    - If address is `0x057E` (card ID): queue `_BED_SIZE_SCRIPT` via `self.run()`.
 2. Forward raw replies to all registered reply listeners.
 
@@ -644,7 +644,7 @@ def _parse_machine_status(value: int) -> list[RdStatusEvent]
 
 Reads bit flags from the protocol's `MACHINE_STATUS_*` constants:
 - Bit 0 → `MACHINE_STATUS_MOVING`
-- Bit 1 → `MACHINE_STATUS_PART_END`
+- Bit 1 → `MACHINE_STATUS_LAYER_END`
 - Bit 2 → `MACHINE_STATUS_JOB_RUNNING`
 
 #### 5.1.8 Listener Registration
@@ -808,7 +808,7 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 | `/load <path>` | `_cmd_load(path)` | Load a `.rds` script file from disk into `_loaded_script` |
 | `/head <path>` | `_cmd_head(path)` | Load a `.rds` script file to prepend to the job on `/exec job` |
 | `/tail <path>` | `_cmd_tail(path)` | Load a `.rds` script file to append to the job on `/exec job` |
-| `/exec [job]` | `_cmd_exec(args)` | Execute via `run_script()`: full script (no args) or filtered job (head+START_PROCESS→EOF+tail) with `job` argument |
+| `/exec [job]` | `_cmd_exec(args)` | Execute via `run_script()`: full script (no args) or filtered job (head+START_JOB→EOF+tail) with `job` argument |
 | `/list [job\|script]` | `_cmd_list(args)` | Display composed job (head+job+tail) or loaded script in the main log |
 | `/save job <path>` | `_cmd_save(args)` | Write composed job (head+job+tail) to a file |
 | `/clear` | `_cmd_clear()` | Clear all log panels, loaded script, head, and tail |
@@ -824,15 +824,15 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 - `/load` / `/head` / `/tail` empty file: `"File is empty or contains only blank lines: <path>"`
 - `/exec` with no script loaded: `"No script loaded. Use /load <path> first."`
 - `/exec` with no session: `"No active session. Use 'session start udp=...' first."`
-- `/exec` with `job` action but no START_PROCESS/EOF markers: `"No job commands found (no START_PROCESS/EOF markers)."`
+- `/exec` with `job` action but no START_JOB/EOF markers: `"No job commands found (no START_JOB/EOF markers)."`
 - `/exec` with unknown action: `"Unknown exec action: '<action>'. Usage: /exec [job]"`
 - `/list` with unknown subcommand: `"Usage: /list [job|script]"`
 - `/list script` with no script loaded: `"No script loaded. Use /load <path> first."`
 - `/list job` with no script loaded: `"No script loaded. Use /load <path> first."`
-- `/list job` with no job markers: `"No job commands found (no START_PROCESS/EOF markers)."`
+- `/list job` with no job markers: `"No job commands found (no START_JOB/EOF markers)."`
 - `/save` with incorrect syntax: `"Usage: /save job <path>"`
 - `/save job` with no script loaded: `"No script loaded. Use /load <path> first."`
-- `/save job` with no job markers: `"No job commands to save (no START_PROCESS/EOF markers)."`
+- `/save job` with no job markers: `"No job commands to save (no START_JOB/EOF markers)."`
 - `/save job` permission denied: `"Permission denied: <path>"`
 - `/save job` write error: `"Error writing <path>: <ErrorType>: <message>"`
 
@@ -840,13 +840,13 @@ All TUI meta-commands use the `/` prefix to distinguish them from Ruida controll
 
 **Job composition:** Head and tail scripts are now owned by `RdDriver`, not the TUI. The `/exec` command calls `driver.run_job(job, auto_checksum=True)` which composes `head + job + tail` atomically at queue time. The `/list job` command uses `_format_job_with_markers()` to display the composed script with `# --- Head ---`, `# --- Job ---`, and `# --- Tail ---` section markers.
 
-**Save behavior:** `/save job` saves only the pure job body (START_PROCESS → EOF) as determined by `_filter_job_commands()`. Head and tail scripts are **not** included in the saved file, making the output round-trippable. Head/tail are applied at execution time by the driver.
+**Save behavior:** `/save job` saves only the pure job body (START_JOB → EOF) as determined by `_filter_job_commands()`. Head and tail scripts are **not** included in the saved file, making the output round-trippable. Head/tail are applied at execution time by the driver.
 
 **Thread safety:** Head/tail accessors on `RdDriver` are guarded by `self._lock`. The TUI caches a local copy of head/tail scripts and syncs them to the driver whenever they change (via `/head` or `/tail`) and when a new driver is created (via `session start` or the `start()` AppAdapter method).
 
 **RPC access:** Five new exposed methods on `RpycTuiService` provide remote access: `exposed_set_head_script`, `exposed_set_tail_script`, `exposed_get_head_script`, `exposed_get_tail_script`, and `exposed_run_job`. These follow the same delegate-to-adapter pattern as existing RPC methods.
 
-If no START_PROCESS/EOF markers are found, `run_job` receives an empty job and reports the error at the call site.
+If no START_JOB/EOF markers are found, `run_job` receives an empty job and reports the error at the call site.
 
 #### 6.2.6 Thread Bridge
 

@@ -114,7 +114,7 @@ FNAME = ("File:{}", "cstring", "cstring")  # File name.
 STRING8 = ('String:"{}"', "string8", "string8")  # 8 char string from 2 uint35s.
 FNUM = ("FNum:{}", "uint14", "uint_14")
 ENAME = ("Elem:{}", "cstring", "cstring")
-PART = ("Part:{}", "int7", "int_7")  # or layer.
+LAYER = ("Layer:{}", "int7", "int_7")  # or layer.
 LASER = ("Laser:{}", "int7", "int_7")  # For dual head lasers.
 VALUE = ("{}", "int7", "int_7")
 RAPID = ("Option:{}", "rapid", "int_7")
@@ -231,12 +231,12 @@ SETTING_WRITE = 0x01
 
 # Bits in a MEM_MACHINE_STATUS value.
 MACHINE_STATUS_MOVING = (0x01000000, "Moving")
-MACHINE_STATUS_PART_END = (0x00000002, "Part End")
+MACHINE_STATUS_LAYER_END = (0x00000002, "Layer End")
 MACHINE_STATUS_JOB_RUNNING = (0x00000001, "Job Running")
 
 MST = {
     MACHINE_STATUS_MOVING,
-    MACHINE_STATUS_PART_END,
+    MACHINE_STATUS_LAYER_END,
     MACHINE_STATUS_JOB_RUNNING,
 }
 
@@ -457,26 +457,26 @@ CT = {
         0x16: ("LASER_OFF_DELAY2", TIME),
         0x21: ("MIN_POWER_2", POWER),  # Source: ruida-laser
         0x22: ("MAX_POWER_2", POWER),  # Source: ruida-laser
-        0x31: ("MIN_POWER_1_PART", PART, POWER),
-        0x32: ("MAX_POWER_1_PART", PART, POWER),
-        0x35: ("MIN_POWER_3_PART", PART, POWER),
-        0x36: ("MAX_POWER_3_PART", PART, POWER),
-        0x37: ("MIN_POWER_4_PART", PART, POWER),
-        0x38: ("MAX_POWER_4_PART", PART, POWER),
-        0x41: ("MIN_POWER_2_PART", PART, POWER),
-        0x42: ("MAX_POWER_2_PART", PART, POWER),
+        0x31: ("MIN_POWER_1_LAYER", LAYER, POWER),
+        0x32: ("MAX_POWER_1_LAYER", LAYER, POWER),
+        0x35: ("MIN_POWER_3_LAYER", LAYER, POWER),
+        0x36: ("MAX_POWER_3_LAYER", LAYER, POWER),
+        0x37: ("MIN_POWER_4_LAYER", LAYER, POWER),
+        0x38: ("MAX_POWER_4_LAYER", LAYER, POWER),
+        0x41: ("MIN_POWER_2_LAYER", LAYER, POWER),
+        0x42: ("MAX_POWER_2_LAYER", LAYER, POWER),
         0x50: ("THROUGH_POWER_1", POWER),
         0x51: ("THROUGH_POWER_2", POWER),
         0x55: ("THROUGH_POWER_3", POWER),
         0x56: ("THROUGH_POWER_4", POWER),
-        0x60: ("FREQUENCY_PART", LASER, PART, FREQUENCY),
+        0x60: ("FREQUENCY_LAYER", LASER, LAYER, FREQUENCY),
     },
     0xC7: ("IMD_POWER_1", POWER),
     0xC8: ("END_POWER_1", POWER),
     0xC9: {
         0x02: ("SPEED_LASER_1", SPEED),
         0x03: ("SPEED_AXIS", SPEED),
-        0x04: ("SPEED_LASER_1_PART", PART, SPEED),
+        0x04: ("SPEED_LASER_1_LAYER", LAYER, SPEED),
         0x05: ("FORCE_ENG_SPEED", SPEED),
         0x06: ("SPEED_AXIS_MOVE", SPEED),
     },
@@ -497,16 +497,16 @@ CT = {
             0x31: "EN_LASER_2_OFFSET_1",
             0x55: "OVERSCAN_5",
         },
-        0x02: ("PART_NUMBER", PART),
+        0x02: ("LAYER_NUMBER", LAYER),
         0x03: ("EN_LASER_TUBE_START", SWITCH),
         0x04: ("X_SIGN_MAP", VALUE),
         0x05: ("DEFAULT_COLOR", COLOR),
-        0x06: ("PART_COLOR", PART, COLOR),
+        0x06: ("LAYER_COLOR", LAYER, COLOR),
         0x10: ("EN_EX_IO", VALUE),
-        0x22: ("TOTAL_PARTS", PART),
+        0x22: ("TOTAL_LAYERS", LAYER),
         0x30: ("U_FILE_ID", ID),
         0x40: ("ZU_MAP", VALUE),
-        0x41: ("SELECT_PART", PART, UINT7),  # Source: ruida-laser
+        0x41: ("SELECT_LAYER", LAYER, UINT7),  # Source: ruida-laser
     },
     ENQ: "ENQ",
     0xD0: {  # This was discovered with LightBurn
@@ -514,10 +514,10 @@ CT = {
     },
     0xD7: "EOF",
     0xD8: {
-        0x00: "START_PROCESS",
-        0x01: "STOP_PROCESS",
-        0x02: "PAUSE_PROCESS",
-        0x03: "RESTORE_PROCESS",
+        0x00: "START_JOB",
+        0x01: "STOP_JOB",
+        0x02: "PAUSE_JOB",
+        0x03: "RESTORE_JOB",
         0x10: "REF_POINT_2",
         0x11: "REF_POINT_1",
         0x12: "CURRENT_POSITION",  # All moves relative to current position.
@@ -567,11 +567,11 @@ CT = {
     0xE7: {
         0x00: "BLOCK_END",
         0x01: ("SET_FILE_NAME", FNAME),
-        0x03: ("PROCESS_TOP_LEFT", XABSCOORD, YABSCOORD),
-        0x04: ("PROCESS_REPEAT", INT14, INT14, INT14, INT14, INT14, INT14, INT14),
+        0x03: ("JOB_TOP_LEFT", XABSCOORD, YABSCOORD),
+        0x04: ("JOB_REPEAT", INT14, INT14, INT14, INT14, INT14, INT14, INT14),
         0x05: ("ARRAY_DIRECTION", DIRECTION),
         0x06: ("FEED_REPEAT", UINT35, UINT35),
-        0x07: ("PROCESS_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
+        0x07: ("JOB_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
         0x08: ("ARRAY_REPEAT", INT14, INT14, INT14, INT14, INT14, INT14, INT14),
         0x09: ("FEED_LENGTH", INT35),
         0x0A: ("FEED_INFO", TBD35),  # TODO: A 35 bit value? What for?
@@ -589,13 +589,13 @@ CT = {
         0x3A: "UNION_BLOCK_PROPERTY",
         0x50: ("DOCUMENT_TOP_LEFT", XABSCOORD, YABSCOORD),
         0x51: ("DOCUMENT_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
-        0x52: ("PART_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
-        0x53: ("PART_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),
+        0x52: ("LAYER_TOP_LEFT", LAYER, XABSCOORD, YABSCOORD),
+        0x53: ("LAYER_BOTTOM_RIGHT", LAYER, XABSCOORD, YABSCOORD),
         0x54: ("PEN_OFFSET_AXIS", AXIS, RELCOORD),
-        0x55: ("PART_OFFSET_AXIS", AXIS, RELCOORD),
+        0x55: ("LAYER_OFFSET_AXIS", AXIS, RELCOORD),
         0x60: ("SET_CURRENT_ELEMENT_INDEX", UINT7),
-        0x61: ("PART_EX_TOP_LEFT", PART, XABSCOORD, YABSCOORD),
-        0x62: ("PART_EX_BOTTOM_RIGHT", PART, XABSCOORD, YABSCOORD),
+        0x61: ("LAYER_EX_TOP_LEFT", LAYER, XABSCOORD, YABSCOORD),
+        0x62: ("LAYER_EX_BOTTOM_RIGHT", LAYER, XABSCOORD, YABSCOORD),
     },
     0xE8: {
         0x00: ("DELETE_DOCUMENT", UINT35, UINT35),  # Values are what?

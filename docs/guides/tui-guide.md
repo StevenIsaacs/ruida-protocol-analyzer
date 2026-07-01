@@ -177,7 +177,7 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 - `DELAY` — blocks the script runner for the specified duration (interruptible).
 - `WAIT` — polls a status bit until it matches. Prefix `!` means "wait for
   active, then wait for inactive" (full lifecycle). Optional `to=` timeout.
-- Available status bits: `MACHINE_STATUS_MOVING`, `MACHINE_STATUS_PART_END`,
+- Available status bits: `MACHINE_STATUS_MOVING`, `MACHINE_STATUS_LAYER_END`,
   `MACHINE_STATUS_JOB_RUNNING`.
 
 ---
@@ -194,7 +194,7 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 | `/exec script`        | Execute the loaded script as raw commands (no job extraction).               |
 | `/export <path> [magic=0xNN]` | Export the loaded script as a binary `.rd` file. Default path: `<source>.rd`. Supports `magic=0xNN` to override swizzle byte. |
 | `/import <path>`      | Import a tshark capture file (`.log`/`.txt`/`.rd`) and decode into a script. |
-| `/save job <path>`    | Save the pure job body (START_PROCESS to EOF, no head/tail) to a `.rds` file. |
+| `/save job <path>`    | Save the pure job body (START_JOB to EOF, no head/tail) to a `.rds` file. |
 | `/list`               | Show the composed job with section markers (`# --- Head ---` / `# --- Job ---` / `# --- Tail ---`). |
 | `/list job`           | Same as `/list`.                                                             |
 | `/list script`        | Show only the loaded script (without head/tail).                             |
@@ -223,13 +223,13 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 | `/import` decode failure                             | `Decode error: <details>`                                             |
 | `/exec` with no script loaded                        | `No script loaded. Use /load <path> first.`                           |
 | `/exec` with no session                              | `No active session. Use 'session start udp=...' first.`               |
-| `/exec` with no job markers                          | `No job commands found (no START_PROCESS/EOF markers).`               |
+| `/exec` with no job markers                          | `No job commands found (no START_JOB/EOF markers).`               |
 | `/save job` with no script loaded                    | `No script loaded. Use /load <path> first.`                           |
-| `/save job` with no job markers                      | `No job commands to save (no START_PROCESS/EOF markers).`             |
+| `/save job` with no job markers                      | `No job commands to save (no START_JOB/EOF markers).`             |
 | `/save job` permission denied                        | `Permission denied: <path>`                                           |
 | `/save job` write error                              | `Error writing <path>: <ErrorType>: <message>`                        |
 | `/list script` with no script loaded                 | `No script loaded. Use /load <path> first.`                           |
-| `/list job` with no job markers                      | `No job commands found (no START_PROCESS/EOF markers).`               |
+| `/list job` with no job markers                      | `No job commands found (no START_JOB/EOF markers).`               |
 | `/plot` with no script loaded                        | `No script loaded. Use /load <path> first.`                           |
 | `/plot` with no bokeh installed                      | `Bokeh is not installed. Install with: pip install bokeh`            |
 
@@ -238,7 +238,7 @@ WAIT !MACHINE_STATUS_JOB_RUNNING     # Wait for job to finish (no timeout)
 Head and tail scripts are stored by `RdDriver` and applied at execution time.
 Each command has a different role:
 
-- **`/exec job`** — extracts the job body (START_PROCESS → EOF), then calls
+- **`/exec job`** — extracts the job body (START_JOB → EOF), then calls
   `driver.run_job()` which composes `head + job_body + tail` atomically and
   queues the result for execution. The composition happens inside the driver,
   not in the TUI.
@@ -253,12 +253,12 @@ Each command has a different role:
   <tail_script lines>
   ```
   Empty sections show `# (empty)` for clarity.
-- **`/save job`** — saves only the pure job body (START_PROCESS → EOF).
+- **`/save job`** — saves only the pure job body (START_JOB → EOF).
   Head and tail are **not** included, making the output round-trippable:
   it can be reloaded with `/load` and re-executed without double-appending
   head/tail.
 
-If no `START_PROCESS`/`EOF` markers exist in the loaded script, the job body
+If no `START_JOB`/`EOF` markers exist in the loaded script, the job body
 is empty. This allows modular workflow: separate head (homing, initialization),
 job body, and tail (cleanup, shutdown) scripts. Use `/exec script` to run
 scripts that don't follow the job-marker structure.
@@ -360,7 +360,7 @@ found, etc.).
 # Review the full script
 /list
 
-# Review the job portion only (between START_PROCESS and EOF)
+# Review the job portion only (between START_JOB and EOF)
 /list job
 
 # Save the composed job as a reusable script
@@ -428,14 +428,14 @@ execution time by the driver.
 /exec script     # Execute the loaded script as raw commands
 ```
 
-`/exec job` extracts only the portion between `START_PROCESS` and end-of-file
+`/exec job` extracts only the portion between `START_JOB` and end-of-file
 markers (or `BLOCK_END`), then delegates to `driver.run_job()` which composes
 head + job + tail atomically at queue time. This ensures only the job commands
 are sent, with setup/teardown wrapped around them.
 
 `/exec script` sends the entire loaded script as-is, without job extraction
 or head/tail wrapping. Use this for scripts that don't follow the
-START_PROCESS/BLOCK_END structure.
+START_JOB/BLOCK_END structure.
 
 Both modes require an active session.
 
@@ -445,7 +445,7 @@ Both modes require an active session.
 /save job my-output.rds
 ```
 
-Saves only the pure job body (START_PROCESS to EOF) as a `.rds` file.
+Saves only the pure job body (START_JOB to EOF) as a `.rds` file.
 Head and tail are NOT included — the output is the same as the job portion
 shown by `/list job` between the section markers. The saved file is
 compatible with `rpa-script` playback, `RdDriver.run()`, and can be
@@ -643,7 +643,7 @@ SET_ORIGIN
 MOVE_ABS_XY X=0mm Y=0mm
 LASER_OFF
 # --- Job ---
-START_PROCESS
+START_JOB
 LAYER_PROMPT "Default"
 ...
 EOF

@@ -48,7 +48,7 @@ class StatusDict(TypedDict, total=False):
     MEM_BED_SIZE_Y: tuple[float, str]
     MEM_MACHINE_STATUS: tuple[int, str]
     MACHINE_STATUS_MOVING: bool
-    MACHINE_STATUS_PART_END: bool
+    MACHINE_STATUS_LAYER_END: bool
     MACHINE_STATUS_JOB_RUNNING: bool
 
 
@@ -89,7 +89,7 @@ class RdDriver:
     # Machine status bit name → mask mapping (used by _handle_wait)
     _STATUS_NAME_TO_BIT = {
         "MACHINE_STATUS_MOVING": rdap.MACHINE_STATUS_MOVING[0],
-        "MACHINE_STATUS_PART_END": rdap.MACHINE_STATUS_PART_END[0],
+        "MACHINE_STATUS_LAYER_END": rdap.MACHINE_STATUS_LAYER_END[0],
         "MACHINE_STATUS_JOB_RUNNING": rdap.MACHINE_STATUS_JOB_RUNNING[0],
     }
 
@@ -129,7 +129,7 @@ class RdDriver:
         self._address_to_bit_keys: dict[int, list[tuple[str, int]]] = {}
         self._address_to_bit_keys[0x0400] = [
             ("MACHINE_STATUS_MOVING", rdap.MACHINE_STATUS_MOVING[0]),
-            ("MACHINE_STATUS_PART_END", rdap.MACHINE_STATUS_PART_END[0]),
+            ("MACHINE_STATUS_LAYER_END", rdap.MACHINE_STATUS_LAYER_END[0]),
             ("MACHINE_STATUS_JOB_RUNNING", rdap.MACHINE_STATUS_JOB_RUNNING[0]),
         ]
         self._address_to_spec: dict[int, tuple[str, str, str]] = {}
@@ -763,7 +763,7 @@ class RdDriver:
         if bit_mask is None:
             self._notify_script_error(
                 f"Unknown machine status: '{status_name}'. "
-                f"Use MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END, "
+                f"Use MACHINE_STATUS_MOVING, MACHINE_STATUS_LAYER_END, "
                 f"or MACHINE_STATUS_JOB_RUNNING"
             )
             return

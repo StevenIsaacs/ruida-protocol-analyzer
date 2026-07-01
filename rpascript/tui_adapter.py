@@ -440,7 +440,7 @@ class TuiAdapter(App):
         self._machine_status_formatted: str = "0"
         self._status_bits: dict[str, bool] = {
             "MACHINE_STATUS_MOVING": False,
-            "MACHINE_STATUS_PART_END": False,
+            "MACHINE_STATUS_LAYER_END": False,
             "MACHINE_STATUS_JOB_RUNNING": False,
         }
         # File browser tree state
@@ -905,7 +905,7 @@ class TuiAdapter(App):
             "  delay <time>              Pause execution (e.g. 5s, 100ms)\n"
             "  wait <status> [to=...]    Wait for MACHINE_STATUS_* bit\n"
             "  wait !<status> [to=...]   Wait for lifecycle (active then inactive)\n"
-            "  Statuses: MACHINE_STATUS_MOVING, MACHINE_STATUS_PART_END,\n"
+            "  Statuses: MACHINE_STATUS_MOVING, MACHINE_STATUS_LAYER_END,\n"
             "            MACHINE_STATUS_JOB_RUNNING\n"
             "  to=   Optional timeout (e.g. to=30s). Default: forever\n"
         )
@@ -1233,7 +1233,7 @@ class TuiAdapter(App):
     def _cmd_exec(self, args: str = "") -> None:
         """Execute the loaded script.
 
-        Defaults to executing only the job portion (START_PROCESS to EOF).
+        Defaults to executing only the job portion (START_JOB to EOF).
         Uses driver.run_job() which composes head + job + tail at runtime.
         Use '/exec script' to execute all loaded commands.
         """
@@ -1249,7 +1249,7 @@ class TuiAdapter(App):
         if action == "":
             job = self._filter_job_commands(self._loaded_script)
             if not job:
-                self._log_error("No job commands found (no START_PROCESS/EOF markers).")
+                self._log_error("No job commands found (no START_JOB/EOF markers).")
                 return
             self._log_info(f"Executing {len(job)} job commands...")
             self._ruida_driver.run_job(job, auto_checksum=True)
@@ -1261,7 +1261,7 @@ class TuiAdapter(App):
 
     @staticmethod
     def _filter_job_commands(lines: list[str]) -> list[str]:
-        """Filter lines to only include commands between START_PROCESS and EOF (inclusive).
+        """Filter lines to only include commands between START_JOB and EOF (inclusive).
 
         Excludes GET_SETTING and NEW_PACKET directives — they are not part of the job.
         """
@@ -1269,7 +1269,7 @@ class TuiAdapter(App):
         result: list[str] = []
         for line in lines:
             stripped = line.strip().upper()
-            if stripped == "START_PROCESS" or stripped.startswith("START_PROCESS "):
+            if stripped == "START_JOB" or stripped.startswith("START_JOB "):
                 in_job = True
             if in_job:
                 # Skip GET_SETTING and NEW_PACKET — not part of the job
@@ -1521,7 +1521,7 @@ class TuiAdapter(App):
                 return
             formatted = self._format_job_with_markers()
             if not formatted:
-                self._log_error("No job commands found (no START_PROCESS/EOF markers).")
+                self._log_error("No job commands found (no START_JOB/EOF markers).")
                 return
             self._log_info(f"Composed job ({len(formatted)} lines):")
             for line in formatted:
@@ -1555,7 +1555,7 @@ class TuiAdapter(App):
             return
         job = self._filter_job_commands(self._loaded_script)
         if not job:
-            self._log_error("No job commands to save (no START_PROCESS/EOF markers).")
+            self._log_error("No job commands to save (no START_JOB/EOF markers).")
             return
         path = os.path.expanduser(path)
         try:
@@ -2154,7 +2154,7 @@ class TuiAdapter(App):
                         self._machine_status_formatted = formatted
                     elif key in (
                         "MACHINE_STATUS_MOVING",
-                        "MACHINE_STATUS_PART_END",
+                        "MACHINE_STATUS_LAYER_END",
                         "MACHINE_STATUS_JOB_RUNNING",
                     ):
                         self._status_bits[key] = bool(value)
@@ -2602,16 +2602,16 @@ class TuiAdapter(App):
             machine_parts.append("BedY: —")
         machine = "  ".join(machine_parts)
 
-        # Machine status indicators (MOVE, PART, JOB)
+        # Machine status indicators (MOVE, LAYER, JOB)
         status_parts = []
         if self._status_bits["MACHINE_STATUS_MOVING"]:
             status_parts.append("[bold green]MOVE[/bold green]")
         else:
             status_parts.append("MOVE")
-        if self._status_bits["MACHINE_STATUS_PART_END"]:
-            status_parts.append("[bold green]PART[/bold green]")
+        if self._status_bits["MACHINE_STATUS_LAYER_END"]:
+            status_parts.append("[bold green]LAYER[/bold green]")
         else:
-            status_parts.append("PART")
+            status_parts.append("LAYER")
         if self._status_bits["MACHINE_STATUS_JOB_RUNNING"]:
             status_parts.append("[bold green]JOB[/bold green]")
         else:

@@ -72,7 +72,7 @@ MOVE MOVE_ABS_XY X=100mm Y=200mm
 CORE NOP
 GET_SETTING MEM_CARD_ID
 SET_FILE_SUM
-START_PROCESS
+START_JOB
 ```
 
 Each line is parsed as:
@@ -130,21 +130,21 @@ Each line is parsed as:
 | `MAX_POWER_1`      | `Power=%`       | Maximum power for laser 1            |
 | `MIN_POWER_2`      | `Power=%`       | Minimum power for laser 2            |
 | `MAX_POWER_2`      | `Power=%`       | Maximum power for laser 2            |
-| `MIN_POWER_1_PART` | `Part={n} Power=%` | Min power for a specific layer/part |
-| `MAX_POWER_1_PART` | `Part={n} Power=%` | Max power for a specific layer/part |
+| `MIN_POWER_1_LAYER` | `Layer={n} Power=%` | Min power for a specific layer/part |
+| `MAX_POWER_1_LAYER` | `Layer={n} Power=%` | Max power for a specific layer/part |
 | `THROUGH_POWER_1`  | `Power=%`       | Through (pierce) power for laser 1   |
 | `LASER_INTERVAL`   | `{:.3f}mS`      | Laser pulse interval                 |
 | `LASER_ON_DELAY`   | `{:.3f}mS`      | Delay before laser fires             |
 | `LASER_OFF_DELAY`  | `{:.3f}mS`      | Delay after laser stops              |
 | `ADD_DELAY`        | `{:.3f}mS`      | Additional delay per segment         |
-| `FREQUENCY_PART`   | `Laser={n} Part={n} Freq=KHz` | Frequency for a specific layer |
+| `FREQUENCY_LAYER`   | `Laser={n} Layer={n} Freq=KHz` | Frequency for a specific layer |
 
 ### 2.3 Speed
 
 | Mnemonic              | Parameters             | Description                      |
 | --------------------- | ---------------------- | -------------------------------- |
 | `SPEED_LASER_1`       | `Speed=mm/S`           | Cutting/engraving speed for laser 1 |
-| `SPEED_LASER_1_PART`  | `Part={n} Speed=mm/S`  | Speed for a specific layer       |
+| `SPEED_LASER_1_LAYER`  | `Layer={n} Speed=mm/S`  | Speed for a specific layer       |
 | `SPEED_AXIS`          | `Speed=mm/S`           | Axis movement speed              |
 | `SPEED_AXIS_MOVE`     | `Speed=mm/S`           | Axis rapid move speed            |
 | `FORCE_ENG_SPEED`     | `Speed=mm/S`           | Force engraving speed override   |
@@ -153,10 +153,10 @@ Each line is parsed as:
 
 | Mnemonic                  | Parameters              | Description                          |
 | ------------------------- | ----------------------- | ------------------------------------ |
-| `START_PROCESS`           | *(none)*                | Begin processing the current job     |
-| `STOP_PROCESS`            | *(none)*                | Stop processing                      |
-| `PAUSE_PROCESS`           | *(none)*                | Pause processing                     |
-| `RESTORE_PROCESS`         | *(none)*                | Resume paused processing             |
+| `START_JOB`           | *(none)*                | Begin processing the current job     |
+| `STOP_JOB`            | *(none)*                | Stop processing                      |
+| `PAUSE_JOB`           | *(none)*                | Pause processing                     |
+| `RESTORE_JOB`         | *(none)*                | Resume paused processing             |
 | `BLOCK_END`               | *(none)*                | End of a block                       |
 | `SET_FILE_SUM`            | *(none)* or `= value`   | File checksum (see §7)               |
 | `SET_FILE_NAME`           | `File:string`           | Set the file name for upload         |
@@ -186,9 +186,9 @@ Each line is parsed as:
 | `AIR_ASSIST_ON`           | *(none)*                | Enable air assist                    |
 | `AIR_ASSIST_OFF`          | *(none)*                | Disable air assist                   |
 | `DB_HEAD`                 | *(none)*                | Dual-head mode                       |
-| `LAYER_NUMBER_PART`       | `Part={n}`              | Select layer by number               |
+| `LAYER_NUMBER`       | `Layer={n}`              | Select layer by number               |
 | `LAYER_COLOR`             | `Color=#RRGGBB`         | Set layer color                      |
-| `LAYER_COLOR_PART`        | `Part={n} Color=#RRGGBB` | Set color for a specific layer     |
+| `LAYER_COLOR`        | `Layer={n} Color=#RRGGBB` | Set color for a specific layer     |
 | `EN_LASER_TUBE_START`     | `State=ON/OFF`         | Enable laser tube at start           |
 
 ### 2.7 Array Operations
@@ -375,13 +375,13 @@ Write `SET_FILE_SUM` with no value and the runner fills in the correct
 checksum after all preceding commands are encoded:
 
 ```rds
-START_PROCESS
+START_JOB
 ... engrave / cut commands ...
 BLOCK_END
 SET_FILE_SUM
 ```
 
-The checksum is calculated from all commands between `START_PROCESS` and
+The checksum is calculated from all commands between `START_JOB` and
 `BLOCK_END` that are related to engraving, cutting, and layer
 configuration. Memory commands (`GET_SETTING`, `SET_SETTING`), keyboard
 commands, and `SET_FILE_SUM` itself are excluded.
@@ -469,7 +469,7 @@ HOME_XY
 WAIT !MACHINE_STATUS_MOVING to=30s
 
 SET_ABSOLUTE
-START_PROCESS
+START_JOB
 
 SPEED_LASER_1 Speed=200mm/S
 IMD_POWER_1 Power=75%
@@ -495,7 +495,7 @@ ARRAY_ADD X=50mm Y=50mm
 ARRAY_DIRECTION 1
 
 # The element to repeat
-START_PROCESS
+START_JOB
 SPEED_LASER_1 Speed=200mm/S
 IMD_POWER_1 Power=80%
 CUT_ABS_XY X=20mm Y=20mm
