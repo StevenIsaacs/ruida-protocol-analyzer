@@ -272,9 +272,10 @@ Speed=@{speed}{f.03}mm/S
             step=1,
             width=80,
         )
-        self._start_spinner.on_change(
-            "value", lambda attr, old, new: self._on_range_change("start", old, new)
-        )
+        if self.args.plot_moves:
+            self._start_spinner.on_change(
+                "value", lambda attr, old, new: self._on_range_change("start", old, new)
+            )
 
         self._count_spinner = Spinner(
             title="Count:",
@@ -284,9 +285,10 @@ Speed=@{speed}{f.03}mm/S
             step=1,
             width=80,
         )
-        self._count_spinner.on_change(
-            "value", lambda attr, old, new: self._on_range_change("count", old, new)
-        )
+        if self.args.plot_moves:
+            self._count_spinner.on_change(
+                "value", lambda attr, old, new: self._on_range_change("count", old, new)
+            )
 
         # ---- Phase 5c.2: Advanced Filter Controls ----
         # Vector type filter: Move vs Cut
@@ -295,7 +297,8 @@ Speed=@{speed}{f.03}mm/S
             active=[0, 1],  # Both selected by default
             width=120,
         )
-        self._type_filter.on_change("active", self._on_filter_change)
+        if self.args.plot_moves:
+            self._type_filter.on_change("active", self._on_filter_change)
 
         # Power range slider
         self._power_filter = RangeSlider(
@@ -307,7 +310,8 @@ Speed=@{speed}{f.03}mm/S
             width=200,
             show_value=True,
         )
-        self._power_filter.on_change("value", self._on_filter_change)
+        if self.args.plot_moves:
+            self._power_filter.on_change("value", self._on_filter_change)
 
         # Speed range slider
         _speeds = self.source.data.get("speed", [])
@@ -322,7 +326,8 @@ Speed=@{speed}{f.03}mm/S
             width=200,
             show_value=True,
         )
-        self._speed_filter.on_change("value", self._on_filter_change)
+        if self.args.plot_moves:
+            self._speed_filter.on_change("value", self._on_filter_change)
 
         # ---- CustomJS callbacks for standalone HTML export ----
         # These replicate the Python filter logic in JavaScript so
@@ -504,7 +509,8 @@ Speed=@{speed}{f.03}mm/S
             placeholder="Search command (cmd_id:name)...",
             width=250,
         )
-        self._cmd_search.on_change("value", self._on_cmd_search)
+        if self.args.plot_moves:
+            self._cmd_search.on_change("value", self._on_cmd_search)
 
         # Command summary display area
         self._cmd_summary = Div(
@@ -658,7 +664,8 @@ Speed=@{speed}{f.03}mm/S
         )
         self.source.selected.js_on_change("indices", _tap_cb)
         # Python callback for server mode:
-        self.source.selected.on_change("indices", self._on_tap_select)
+        if self.args.plot_moves:
+            self.source.selected.on_change("indices", self._on_tap_select)
 
         # Add TapTool to the plot (hit-tests against main vector segments).
         self.xy_plot.add_tools(TapTool(renderers=[self.xy_renderer]))
@@ -667,7 +674,18 @@ Speed=@{speed}{f.03}mm/S
         self._cmd_open_tab_btn = Button(
             label="Open Tab", button_type="primary", width=80
         )
-        self._cmd_open_tab_btn.on_click(self._on_cmd_open_tab)
+        if self.args.plot_moves:
+            self._cmd_open_tab_btn.on_click(self._on_cmd_open_tab)
+
+        # Standalone fallback: open window with search hash.
+        self._cmd_open_tab_btn.js_on_click(
+            CustomJS(args=dict(cmd_search=self._cmd_search), code="""
+            const val = cmd_search.value;
+            if (val) {
+                window.open(window.location.href.split("#")[0] + "#cmd-" + encodeURIComponent(val));
+            }
+        """)
+        )
         self._cmd_open_tab_btn.disabled = True
 
         # ---- Save HTML ----
@@ -686,7 +704,15 @@ Speed=@{speed}{f.03}mm/S
         self._save_html_btn = Button(
             label="Save HTML", button_type="success", width=100
         )
-        self._save_html_btn.on_click(self._on_save_html)
+        if self.args.plot_moves:
+            self._save_html_btn.on_click(self._on_save_html)
+
+        # Standalone fallback: show help message.
+        self._save_html_btn.js_on_click(
+            CustomJS(args=dict(status=self._save_status), code="""
+            status.text = "Standalone: use browser Save As (Ctrl+S)";
+        """)
+        )
 
         # Menu bar row.
         self._menu_bar = row(
@@ -714,7 +740,8 @@ Speed=@{speed}{f.03}mm/S
             height=0,
             margin=0,
         )
-        self._ctx_store.on_change("text", self._on_ctx_action)
+        if self.args.plot_moves:
+            self._ctx_store.on_change("text", self._on_ctx_action)
 
         # Right-click context menu overlay via native DOM listener.
         #
