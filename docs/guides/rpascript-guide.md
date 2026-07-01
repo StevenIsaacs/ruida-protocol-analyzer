@@ -109,8 +109,8 @@ Each line is parsed as:
 | `HOME_XY`             | *(none)*                | Home X and Y axes                     |
 | `HOME_Z`              | *(none)*                | Home Z axis                           |
 | `HOME_U`              | *(none)*                | Home U axis (rotary)                  |
-| `REF_POINT_2`         | *(none)*                | Set reference point (origin)          |
-| `REF_POINT_1`         | *(none)*                | Set reference point (alternative)     |
+| `REF_POINT_ABSOLUTE`  | *(none)*                | Set reference point (origin)          |
+| `REF_POINT_ANCHOR`    | *(none)*                | Set reference point (alternative)     |
 | `FOCUS_Z`             | *(none)*                | Auto-focus Z axis                     |
 | `AXIS_X_MOVE`         | `X=mm`                  | Single-axis X move                    |
 | `AXIS_Y_MOVE`         | `Y=mm`                  | Single-axis Y move                    |
@@ -186,7 +186,7 @@ Each line is parsed as:
 | `AIR_ASSIST_ON`           | *(none)*                | Enable air assist                    |
 | `AIR_ASSIST_OFF`          | *(none)*                | Disable air assist                   |
 | `DB_HEAD`                 | *(none)*                | Dual-head mode                       |
-| `LAYER_NUMBER`       | `Layer={n}`              | Select layer by number               |
+| `SELECT_LAYER`       | `Layer={n}`              | Select layer by number               |
 | `LAYER_COLOR`             | `Color=#RRGGBB`         | Set layer color                      |
 | `LAYER_COLOR`        | `Layer={n} Color=#RRGGBB` | Set color for a specific layer     |
 | `EN_LASER_TUBE_START`     | `State=ON/OFF`         | Enable laser tube at start           |

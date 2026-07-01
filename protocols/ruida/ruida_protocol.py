@@ -497,16 +497,16 @@ CT = {
             0x31: "EN_LASER_2_OFFSET_1",
             0x55: "OVERSCAN_5",
         },
-        0x02: ("LAYER_NUMBER", LAYER),
+        0x02: ("SELECT_LAYER", LAYER),
         0x03: ("EN_LASER_TUBE_START", SWITCH),
         0x04: ("X_SIGN_MAP", VALUE),
         0x05: ("DEFAULT_COLOR", COLOR),
         0x06: ("LAYER_COLOR", LAYER, COLOR),
         0x10: ("EN_EX_IO", VALUE),
-        0x22: ("TOTAL_LAYERS", LAYER),
+        0x22: ("LAST_LAYER", LAYER),
         0x30: ("U_FILE_ID", ID),
         0x40: ("ZU_MAP", VALUE),
-        0x41: ("SELECT_LAYER", LAYER, UINT7),  # Source: ruida-laser
+        0x41: ("LAYER_ATTRIBUTES", LAYER, UINT7),  # Source: ruida-laser
     },
     ENQ: "ENQ",
     0xD0: {  # This was discovered with LightBurn
@@ -518,8 +518,8 @@ CT = {
         0x01: "STOP_JOB",
         0x02: "PAUSE_JOB",
         0x03: "RESTORE_JOB",
-        0x10: "REF_POINT_2",
-        0x11: "REF_POINT_1",
+        0x10: "REF_POINT_ABSOLUTE",
+        0x11: "REF_POINT_ANCHOR",
         0x12: "CURRENT_POSITION",  # All moves relative to current position.
         0x20: "KEYDOWN_X_LEFT",
         0x21: "KEYDOWN_X_RIGHT",
