@@ -142,6 +142,8 @@ SPEED = ("Speed:{:.3f}mm/S", "speed", "int_35")
 FREQUENCY = ("Freq:{:.3f}KHz", "frequency", "int_35")
 XCOPIES = ("XCopies={}", "uint14", "uint_14")
 YCOPIES = ("YCopies={}", "uint14", "uint_14")
+XSTEP = ("XStep=" + COORD_FMT, "coord", "int_35")
+YSTEP = ("YStep=" + COORD_FMT, "coord", "int_35")
 TIME = ("{:.3f}mS", "time", "int_35")
 SWITCH = ("State:{}", "on_off", "uint_7")
 CARD_ID = ("CardID:{}", "card_id", "uint_35")
@@ -570,11 +572,11 @@ CT = {
         0x00: "BLOCK_END",
         0x01: ("SET_FILE_NAME", FNAME),
         0x03: ("JOB_TOP_LEFT", XABSCOORD, YABSCOORD),
-        0x04: ("JOB_COPIES", XCOPIES, YCOPIES, XRELCOORD35, YRELCOORD35),
+        0x04: ("JOB_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
         0x05: ("ARRAY_DIRECTION", DIRECTION),
         0x06: ("FEED_REPEAT", UINT35, UINT35),
         0x07: ("JOB_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
-        0x08: ("ARRAY_COPIES", XCOPIES, YCOPIES, XRELCOORD35, YRELCOORD35),
+        0x08: ("ARRAY_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
         0x09: ("FEED_LENGTH", INT35),
         0x0A: ("FEED_INFO", TBD35),  # TODO: A 35 bit value? What for?
         0x0B: ("ARRAY_EN_MIRROR_CUT", UINT7),
@@ -586,7 +588,7 @@ CT = {
         0x35: ("BLOCK_X_SIZE", XABSCOORD, YABSCOORD),
         # ? 0x35: ('BY_TEST: {:08X}', UINT35), # expect 0x11227766?
         0x36: ("SET_FILE_EMPTY", UINT7),
-        0x37: ("ARRAY_EVEN_DISTANCE", XRELCOORD35, YRELCOORD35),
+        0x37: ("ARRAY_EVEN_DISTANCE", XSTEP, YSTEP),
         0x38: ("SET_FEED_AUTO_PAUSE", SWITCH),
         0x3A: "UNION_BLOCK_PROPERTY",
         0x50: ("DOCUMENT_TOP_LEFT", XABSCOORD, YABSCOORD),
@@ -622,7 +624,7 @@ CT = {
         0x02: ("ELEMENT_NAME", STRING8),
         0x03: ("ELEMENT_ARRAY_TOP_LEFT", XABSCOORD, YABSCOORD),
         0x04: ("ELEMENT_ARRAY_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
-        0x05: ("ELEMENT_COPIES", XCOPIES, YCOPIES, XRELCOORD35, YRELCOORD35),
+        0x05: ("ELEMENT_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
         0x06: ("ELEMENT_ARRAY_ADD", XABSCOORD, YABSCOORD),
         0x07: ("ELEMENT_ARRAY_MIRROR", UINT7),
     },

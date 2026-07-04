@@ -198,7 +198,8 @@ Each line is parsed as:
 | `ARRAY_START`             | `{n}`                   | Begin array definition               |
 | `ARRAY_END`               | *(none)*                | End array definition                 |
 | `ARRAY_DIRECTION`         | `Dir={n}`               | Array direction                      |
-| `ARRAY_COPIES`            | `Copies={n} Copies={n} {n} {n}` | Array repeat copies                  |
+| `ARRAY_COPIES`            | `Copies={n} Copies={n} XStep={n}mm YStep={n}mm` | Array repeat copies                  |
+<!-- table not formatted: invalid structure -->
 | `ARRAY_ADD`               | `X=mm Y=mm`             | Array step offset                    |
 | `ARRAY_MIRROR`            | `{n}`                   | Mirror mode                          |
 | `ARRAY_TOP_LEFT`          | `X=mm Y=mm`             | Array boundary top-left              |
@@ -490,7 +491,7 @@ GET_SETTING MEM_CARD_ID
 ```rds
 # Define a 2×3 array with 50mm spacing
 ARRAY_START 1
-ARRAY_COPIES Copies=2 Copies=3 0 0
+ARRAY_COPIES Copies=2 Copies=3 XStep=0.000mm YStep=0.000mm
 ARRAY_ADD X=50mm Y=50mm
 ARRAY_DIRECTION 1
 
