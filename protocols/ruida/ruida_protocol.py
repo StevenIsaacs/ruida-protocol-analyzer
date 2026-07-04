@@ -140,8 +140,8 @@ YRELCOORD14 = ("RelY=" + COORD_FMT, "coord", "int_14")
 POWER = ("Power:{:.1f}%", "power", "uint_14")
 SPEED = ("Speed:{:.3f}mm/S", "speed", "int_35")
 FREQUENCY = ("Freq:{:.3f}KHz", "frequency", "int_35")
-XCOPIES = ("XCopies={}", "uint14", "uint_14")
-YCOPIES = ("YCopies={}", "uint14", "uint_14")
+COLUMNS = ("Columns={}", "uint14", "uint_14")
+ROWS    = ("Rows={}",    "uint14", "uint_14")
 XSTEP = ("XStep=" + COORD_FMT, "coord", "int_35")
 YSTEP = ("YStep=" + COORD_FMT, "coord", "int_35")
 TIME = ("{:.3f}mS", "time", "int_35")
@@ -572,11 +572,11 @@ CT = {
         0x00: "BLOCK_END",
         0x01: ("SET_FILE_NAME", FNAME),
         0x03: ("JOB_TOP_LEFT", XABSCOORD, YABSCOORD),
-        0x04: ("JOB_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
+        0x04: ("JOB_COPIES", COLUMNS, ROWS, XSTEP, YSTEP),
         0x05: ("ARRAY_DIRECTION", DIRECTION),
         0x06: ("FEED_REPEAT", UINT35, UINT35),
         0x07: ("JOB_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
-        0x08: ("ARRAY_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
+        0x08: ("ARRAY_COPIES", COLUMNS, ROWS, XSTEP, YSTEP),
         0x09: ("FEED_LENGTH", INT35),
         0x0A: ("FEED_INFO", TBD35),  # TODO: A 35 bit value? What for?
         0x0B: ("ARRAY_EN_MIRROR_CUT", UINT7),
@@ -624,7 +624,7 @@ CT = {
         0x02: ("ELEMENT_NAME", STRING8),
         0x03: ("ELEMENT_ARRAY_TOP_LEFT", XABSCOORD, YABSCOORD),
         0x04: ("ELEMENT_ARRAY_BOTTOM_RIGHT", XABSCOORD, YABSCOORD),
-        0x05: ("ELEMENT_COPIES", XCOPIES, YCOPIES, XSTEP, YSTEP),
+        0x05: ("ELEMENT_COPIES", COLUMNS, ROWS, XSTEP, YSTEP),
         0x06: ("ELEMENT_ARRAY_ADD", XABSCOORD, YABSCOORD),
         0x07: ("ELEMENT_ARRAY_MIRROR", UINT7),
     },
