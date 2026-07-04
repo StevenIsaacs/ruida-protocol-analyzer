@@ -94,6 +94,13 @@ for _entry in "${_log_files[@]}"; do
             _suffix="-rd"
         fi
         _base="${_base}${_suffix}"
+        # Guard: skip if _base collides with an existing .log/.rd file
+        # (input file has a double extension, e.g., foo.log.log → base=foo.log)
+        _ext_of_base="${_base##*.}"
+        if [ -f "$_base" ] && [ "$_ext_of_base" = "log" -o "$_ext_of_base" = "rd" ]; then
+            echo "WARNING: Output base $_base collides with existing $_ext_of_base file. Skipping $_entry"
+            continue
+        fi
     else
         _base="$_entry"
         _entry="$_entry.log"
