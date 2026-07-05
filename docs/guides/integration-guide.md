@@ -241,6 +241,177 @@ state. `run_job()` captures head/tail snapshots under the lock so
 the composed script is consistent even if head/tail are modified
 concurrently.
 
+### 2.10 File Structure Composition
+
+The [rpascript Guide](rpascript-guide.md) defines an `.rd` file as a sequence of
+logical sections (§10 File Structure). When building a job programmatically via
+`RdDriver`, these sections map directly to the head/job/tail composition model:
+
+| Script Section | Head/Job/Tail | File Structure Reference |
+|----------------|---------------|--------------------------|
+| Header | Head | §10.3 — REF_POINT_ABSOLUTE through SET_FEED_AUTO_PAUSE |
+| Job Settings | Head | §10.4 — JOB_TOP_RIGHT through ARRAY_DIRECTION |
+| Layer Settings | Head | §10.5 — per-layer SPEED/POWER/LAYER/bounding box commands |
+| Offset Settings | Head | §10.6 — PEN_OFFSET_AXIS through DISPLAY_OFFSET |
+| Array Settings | Head | §10.7 — ELEMENT_MAX_INDEX through ARRAY_COPIES |
+| Layer Actions | Job body | §10.8 — OVERSCAN through MOVE/CUT commands |
+| Tail | Tail | §10.9 — ARRAY_END through EOF |
+
+The head script contains all setup sections that define the environment
+(header, job bounds, layers, offsets, array layout). The job body contains
+the actual move/cut commands for each layer. The tail script terminates
+the job and provides the file checksum.
+
+**Constructing the head script:**
+
+```python
+head = [
+    # ── Header (§10.3) ──
+    "REF_POINT_ABSOLUTE",
+    "SET_ABSOLUTE",
+    "REF_POINT_SET",
+    "ENABLE_BLOCK_CUTTING State:OFF",
+    "START_JOB",
+    "FEED_REPEAT 0 0",
+    "SET_FEED_AUTO_PAUSE State:OFF",
+
+    # ── Job Settings (§10.4) ──
+    "JOB_TOP_RIGHT X=0.000mm Y=0.000mm",
+    "JOB_BOTTOM_LEFT X=400.000mm Y=300.000mm",
+    "DOCUMENT_TOP_RIGHT X=0.000mm Y=0.000mm",
+    "DOCUMENT_BOTTOM_LEFT X=400.000mm Y=300.000mm",
+    "JOB_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm",
+    "ARRAY_DIRECTION Dir:0",
+
+    # ── Layer Settings (§10.5) — one block per layer ──
+    "SPEED_LASER_1_LAYER Layer:0 Speed:100.000mm/S",
+    "MIN_POWER_1_LAYER Layer:0 Power:19.995%",
+    "MAX_POWER_1_LAYER Layer:0 Power:19.995%",
+    "MIN_POWER_2_LAYER Layer:0 Power:19.995%",
+    "MAX_POWER_2_LAYER Layer:0 Power:19.995%",
+    "LAYER_COLOR Layer:0 Color:\\#000000",
+    "LAYER_ATTRIBUTES Layer:0 3",
+    "LAYER_TOP_RIGHT Layer:0 X=0.000mm Y=0.000mm",
+    "LAYER_BOTTOM_LEFT Layer:0 X=400.000mm Y=300.000mm",
+    "LAYER_EX_TOP_RIGHT Layer:0 X=0.000mm Y=0.000mm",
+    "LAYER_EX_BOTTOM_LEFT Layer:0 X=400.000mm Y=300.000mm",
+
+    "LAST_LAYER Layer:0",
+
+    # ── Offset Settings (§10.6) ──
+    "PEN_OFFSET_AXIS Axis:X REL=0.000mm",
+    "PEN_OFFSET_AXIS Axis:Y REL=0.000mm",
+    "LAYER_OFFSET_AXIS Axis:X REL=0.000mm",
+    "LAYER_OFFSET_AXIS Axis:Y REL=0.000mm",
+    "DISPLAY_OFFSET X=0.000mm Y=0.000mm",
+
+    # ── Array Settings (§10.7) ──
+    "ELEMENT_MAX_INDEX 0",
+    "ELEMENT_NAME_MAX_INDEX 0",
+    "ELEMENT_INDEX 0",
+    "ELEMENT_NAME_INDEX 0",
+    'ELEMENT_NAME String:"UNNAMED "',
+    "ELEMENT_ARRAY_TOP_RIGHT X=0.000mm Y=0.000mm",
+    "ELEMENT_ARRAY_BOTTOM_LEFT X=400.000mm Y=300.000mm",
+    "ELEMENT_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm",
+    "ELEMENT_ARRAY_ADD X=0.000mm Y=0.000mm",
+    "ELEMENT_ARRAY_MIRROR 0",
+    "ARRAY_START 0",
+    "SET_CURRENT_ELEMENT_INDEX 0",
+    "ARRAY_TOP_RIGHT X=0.000mm Y=0.000mm",
+    "ARRAY_BOTTOM_LEFT X=400.000mm Y=300.000mm",
+    "ARRAY_ADD X=0.000mm Y=0.000mm",
+    "ARRAY_MIRROR 0",
+    "ARRAY_EVEN_DISTANCE XStep=0.000mm YStep=0.000mm",
+    "ARRAY_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm",
+]
+```
+
+**Constructing the tail script:**
+
+```python
+tail = [
+    # ── Tail (§10.9) ──
+    "ARRAY_END",
+    "BLOCK_END",
+    "SET_SETTING",
+    "END_JOB Sum:0x0000050CF4",
+    "EOF",
+]
+```
+
+The checksum value in `END_JOB` must match the running sum of all preceding
+commands that participate in checksum calculation (see `should_include_in_checksum`
+in `rpascript/encoding.py` for the exclusion rules). When using `auto_checksum=True`,
+the driver recalculates and patches `END_JOB` automatically.
+
+**Composing and executing:**
+
+```python
+driver = RdDriver()
+driver.set_head_script(head)
+driver.set_tail_script(tail)
+driver.run_job(job_body, auto_checksum=True)
+```
+
+**Generating an .rd binary file programmatically:**
+
+To export the composed script as a binary `.rd` file (compatible with RDWorks),
+use the `ScriptParser` + `encode_command` pipeline:
+
+```python
+from rpascript.interpreter import ScriptParser
+from rpascript.encoding import encode_command
+from rpalib.ruida_transcoder import RdEncoder
+from rpalib.rpa_swizzler import RpaSwizzler
+
+# Compose full script
+full_script = head + job_body + tail
+
+# Parse to command dicts
+parser = ScriptParser()
+commands = parser.parse_lines(full_script)
+
+# Encode to raw bytes
+enc = RdEncoder()
+raw = bytearray()
+for cmd in commands:
+    cmd_type = cmd.get("type")
+    if cmd_type in ("NEW_PACKET", "SESSION_START", "SESSION_END", "DELAY", "WAIT"):
+        continue
+    mnemonic = cmd.get("mnemonic")
+    if not mnemonic or mnemonic.startswith("GET_"):
+        continue
+    cmd_bytes = encode_command(cmd, parser.mnemonic_map, parser.mt_map, enc)
+    raw.extend(cmd_bytes)
+
+# Swizzle and write .rd file (magic=0x88 for RDWorks import compatibility)
+swizzler = RpaSwizzler(magic=0x88)
+swizzled = swizzler.swizzle(raw)
+
+with open("output.rd", "wb") as f:
+    f.write(b"RDWORKV" + b"\x00" * 3)  # 10-byte header
+    f.write(swizzled)
+
+print(f"Wrote {len(raw)} bytes ({len(swizzled)} swizzled)")
+```
+
+The same pipeline is used internally by `rpa.py --generate-rd` and the TUI
+`/export` command. The `magic` byte (`0x88` for RDWorks) selects the swizzle
+pattern; capture-from-controller files typically use `0x88`, while
+capture-from-software may use `0x89`.
+
+**Verification round-trip:**
+
+1. Generate `.rds` with the composition above
+2. Generate `.rd` via the encoding pipeline
+3. Run `python rpa.py output.rd` to decode and verify all sections
+4. Compare command sequence against `rpascript-guide.md §10.10`
+
+The decoded output should preserve the original section order, parameter
+values, and command count. Discrepancies usually indicate incorrect
+parameter encoding or omitted sections.
+
 ---
 
 ## 3. TUI Emulation for Testing

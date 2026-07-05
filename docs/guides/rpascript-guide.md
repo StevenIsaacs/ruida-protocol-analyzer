@@ -796,11 +796,14 @@ NOTES:
 
 The tail signals the end of the job.
 
+Variables:
+	`<sum>` = The calculated checksum for the job.
+
 ```
 ARRAY_END
 BLOCK_END
 SET_SETTING
-END_JOB Sum:0x0000050CF4
+END_JOB Sum:<sum>
 EOF
 ```
 
