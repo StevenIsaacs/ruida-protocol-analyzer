@@ -202,8 +202,8 @@ Each line is parsed as:
 <!-- table not formatted: invalid structure -->
 | `ARRAY_ADD`               | `X=mm Y=mm`             | Array step offset                    |
 | `ARRAY_MIRROR`            | `{n}`                   | Mirror mode                          |
-| `ARRAY_TOP_LEFT`          | `X=mm Y=mm`             | Array boundary top-left              |
-| `ARRAY_BOTTOM_RIGHT`      | `X=mm Y=mm`             | Array boundary bottom-right          |
+| `ARRAY_TOP_RIGHT`          | `X=mm Y=mm`             | Array boundary top-right              |
+| `ARRAY_BOTTOM_LEFT`      | `X=mm Y=mm`             | Array boundary bottom-left          |
 
 ### 2.8 USB Rotary / Z / U Axis
 
