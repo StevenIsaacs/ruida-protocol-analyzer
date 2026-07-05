@@ -111,6 +111,7 @@ Each line is parsed as:
 | `HOME_U`              | *(none)*                | Home U axis (rotary)                  |
 | `REF_POINT_ABSOLUTE`  | *(none)*                | Set reference point (origin)          |
 | `REF_POINT_ANCHOR`    | *(none)*                | Set reference point (alternative)     |
+| `REF_POINT_SET`      | *(none)*                | Set reference point for coordinate system |
 | `FOCUS_Z`             | *(none)*                | Auto-focus Z axis                     |
 | `AXIS_X_MOVE`         | `X=mm`                  | Single-axis X move                    |
 | `AXIS_Y_MOVE`         | `Y=mm`                  | Single-axis Y move                    |
@@ -132,6 +133,8 @@ Each line is parsed as:
 | `MAX_POWER_2`      | `Power=%`       | Maximum power for laser 2            |
 | `MIN_POWER_1_LAYER` | `Layer={n} Power=%` | Min power for a specific layer/part |
 | `MAX_POWER_1_LAYER` | `Layer={n} Power=%` | Max power for a specific layer/part |
+| `MIN_POWER_2_LAYER` | `Layer={n} Power=%` | Min power for laser 2 per layer |
+| `MAX_POWER_2_LAYER` | `Layer={n} Power=%` | Max power for laser 2 per layer |
 | `THROUGH_POWER_1`  | `Power=%`       | Through (pierce) power for laser 1   |
 | `LASER_INTERVAL`   | `{:.3f}mS`      | Laser pulse interval                 |
 | `LASER_ON_DELAY`   | `{:.3f}mS`      | Delay before laser fires             |
@@ -175,6 +178,9 @@ Each line is parsed as:
 | `SET_SETTING`             | `MEM_* {val} {val}`     | Write to a controller memory address |
 | `ENQ`                     | *(none)*                | Send keep-alive                      |
 | `CORE NOP`                | *(none)*                | No operation                         |
+| `PEN_OFFSET_AXIS`        | `Axis:X/Y REL=mm`       | Pen compensation offset          |
+| `LAYER_OFFSET_AXIS`      | `Axis:X/Y REL=mm`       | Layer offset                     |
+| `DISPLAY_OFFSET`         | `X=mm Y=mm`             | Display coordinate offset        |
 
 ### 2.6 System & Layer Control
 
@@ -190,6 +196,13 @@ Each line is parsed as:
 | `LAYER_COLOR`             | `Color=#RRGGBB`         | Set layer color                      |
 | `LAYER_COLOR`        | `Layer={n} Color=#RRGGBB` | Set color for a specific layer     |
 | `EN_LASER_TUBE_START`     | `State=ON/OFF`         | Enable laser tube at start           |
+| `LAYER_ATTRIBUTES`        | `Layer={n} {n}`          | Layer attribute flags            |
+| `LAST_LAYER`              | `Layer={n}`              | Indicates the last layer index   |
+| `OVERSCAN_START`          | *(none)*                 | Overscan at start only           |
+| `OVERSCAN_END`            | *(none)*                 | Overscan at end only             |
+| `OVERSCAN_ALL`            | *(none)*                 | Overscan at both start and end   |
+| `EN_LASER_2_OFFSET_0`     | *(none)*                 | Enable laser 2 position offset   |
+| `EN_EX_IO`                | `{n}`                    | Enable external I/O              |
 
 ### 2.7 Array Operations
 
@@ -204,6 +217,15 @@ Each line is parsed as:
 | `ARRAY_MIRROR`            | `{n}`                   | Mirror mode                          |
 | `ARRAY_TOP_RIGHT`          | `X=mm Y=mm`             | Array boundary top-right              |
 | `ARRAY_BOTTOM_LEFT`      | `X=mm Y=mm`             | Array boundary bottom-left          |
+| `ELEMENT_MAX_INDEX`       | `{n}`                   | Maximum element index            |
+| `ELEMENT_NAME_MAX_INDEX`  | `{n}`                   | Maximum element name index       |
+| `ELEMENT_NAME_INDEX`      | `{n}`                   | Element name index               |
+| `ELEMENT_ARRAY_TOP_RIGHT`  | `X=mm Y=mm`             | Element array bounding box top-right |
+| `ELEMENT_ARRAY_BOTTOM_LEFT` | `X=mm Y=mm`           | Element array bounding box bottom-left |
+| `ELEMENT_COPIES`          | `Columns={n} Rows={n} XStep={n}mm YStep={n}mm` | Element copy count and step offset |
+| `ELEMENT_ARRAY_ADD`       | `X=mm Y=mm`             | Element array step offset        |
+| `ELEMENT_ARRAY_MIRROR`    | `{n}`                   | Element array mirror mode        |
+| `ARRAY_EVEN_DISTANCE`     | `XStep={n}mm YStep={n}mm` | Even distance between array copies |
 
 ### 2.8 USB Rotary / Z / U Axis
 
@@ -218,6 +240,22 @@ Each line is parsed as:
 | `REL_MOVE_U`              | `Option={0-3} U=mm`     | Relative U-axis move (rotary)        |
 | `ELEMENT_INDEX`           | `{n}`                   | Select element by index              |
 | `ELEMENT_NAME`            | `String:string`         | Set element name                     |
+| `SET_FEED_AUTO_PAUSE`     | `State=ON/OFF`         | Enable/disable auto-pause on feed |
+| `SET_CURRENT_ELEMENT_INDEX` | `{n}`                 | Set the current element index    |
+
+### 2.9 Job & Layer Bounding Boxes
+
+| Mnemonic                  | Parameters              | Description                          |
+| ------------------------- | ----------------------- | ------------------------------------ |
+| `JOB_TOP_RIGHT`           | `X=mm Y=mm`             | Job bounding box top-right corner    |
+| `JOB_BOTTOM_LEFT`         | `X=mm Y=mm`             | Job bounding box bottom-left corner  |
+| `DOCUMENT_TOP_RIGHT`      | `X=mm Y=mm`             | Document bounding box top-right      |
+| `DOCUMENT_BOTTOM_LEFT`    | `X=mm Y=mm`             | Document bounding box bottom-left    |
+| `JOB_COPIES`              | `Columns={n} Rows={n} XStep={n}mm YStep={n}mm` | Job copy count and step offset |
+| `LAYER_TOP_RIGHT`         | `Layer={n} X=mm Y=mm`   | Layer bounding box top-right corner  |
+| `LAYER_BOTTOM_LEFT`       | `Layer={n} X=mm Y=mm`   | Layer bounding box bottom-left corner |
+| `LAYER_EX_TOP_RIGHT`      | `Layer={n} X=mm Y=mm`   | Extended layer bounding box top-right |
+| `LAYER_EX_BOTTOM_LEFT`    | `Layer={n} X=mm Y=mm`   | Extended layer bounding box bottom-left |
 
 ---
 
@@ -565,3 +603,300 @@ Errors during parsing or encoding are caught by the runner, a
 `SCRIPT_ERROR` event is fired to registered listeners, and the runner
 continues to the next command. The script is not aborted unless the
 controller disconnects.
+
+---
+
+## 10. File Structure (.rd Files)
+
+This section describes the structure of an `.rd` file as a sequence of commands that define
+a complete laser job. An `.rd` file consists of several major sections which appear in the
+following order:
+
+- 10.4 Header — initial setup and checksum start
+- 10.5 Job settings — job-level configuration and bounding boxes
+- 10.6 Layer settings — per-layer configuration (one block per layer)
+- 10.7 Offset settings — pen and display offset compensation
+- 10.8 Array settings — element and array definitions for step-and-repeat
+- 10.9 Layer actions — the actual move and cut commands for each layer
+- 10.10 Tail — job termination and checksum
+
+### 10.1 Coordinate System
+
+All coordinates in an `.rd` file are consistent with the bed as displayed by RDWorks:
+
+- Origin (0, 0) is the **top-right** corner of the bed.
+- Increasing the **X** coordinate moves the laser head **leftward**.
+- Increasing the **Y** coordinate moves the laser head **downward**.
+
+### 10.2 Bounding Boxes
+
+A bounding box defines the limits of head movement for a job or individual layers.
+Bounding boxes are expressed as **top-right** and **bottom-left** coordinate pairs.
+The job bounding box is the union of all layer bounding boxes; if a layer extends
+beyond the current job bounds, the job bounding box expands to accommodate it.
+
+### 10.3 Header
+
+The header section sets initial or known states for the job and identifies the
+beginning of the commands to be included in the file checksum.
+
+```
+REF_POINT_ABSOLUTE
+SET_ABSOLUTE
+REF_POINT_SET
+ENABLE_BLOCK_CUTTING State:OFF
+START_JOB
+FEED_REPEAT 0 0
+SET_FEED_AUTO_PAUSE State:OFF
+```
+
+All commands between `START_JOB` and `BLOCK_END` that are related to engraving,
+cutting, and layer configuration are included in the file checksum. Memory commands
+(`GET_SETTING`, `SET_SETTING`), keyboard commands, and `END_JOB` itself are excluded.
+
+### 10.4 Job Settings
+
+This section defines settings and bounding boxes which apply to the entire job.
+
+The job bounding box defines the movement limits for the entire job. These limits
+are determined by the bounding boxes of all individual layers. If a layer bounding
+box falls outside the current job bounding box, the job bounding box is expanded
+to accommodate the layer.
+
+```
+JOB_TOP_RIGHT X=\<min X of layers\>mm Y=\<min Y of layers\>mm
+JOB_BOTTOM_LEFT X=\<max X of layers\>mm Y=\<max Y of layers\>mm
+DOCUMENT_TOP_RIGHT X=\<min X of layers\>mm Y=\<min Y of layers\>mm
+DOCUMENT_BOTTOM_LEFT X=\<max X of layers\>mm Y=\<max Y of layers\>mm
+JOB_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm
+ARRAY_DIRECTION Dir:0
+```
+
+NOTE: The DOCUMENT bounding box is currently equal to the JOB bounding box.
+
+### 10.5 Layer Settings
+
+This section defines layer-specific settings and bounding boxes for each layer of
+the job. Layers (`<layer>`) are numbered starting with 0.
+
+```
+SPEED_LASER_1_LAYER Layer:<layer> Speed:100.000mm/S
+MIN_POWER_1_LAYER Layer:<layer> Power:19.995%
+MAX_POWER_1_LAYER Layer:<layer> Power:19.995%
+MIN_POWER_2_LAYER Layer:<layer> Power:19.995%
+MAX_POWER_2_LAYER Layer:<layer> Power:19.995%
+LAYER_COLOR Layer:<layer> Color:\\#000000
+LAYER_ATTRIBUTES Layer:<layer> 3
+LAYER_TOP_RIGHT Layer:<layer> X=\<X\>mm Y=\<Y\>mm
+LAYER_BOTTOM_LEFT Layer:<layer> X=\<X\>mm Y=\<Y\>mm
+LAYER_EX_TOP_RIGHT Layer:<layer> X=\<X\>mm Y=\<Y\>mm
+LAYER_EX_BOTTOM_LEFT Layer:<layer> X=\<X\>mm Y=\<Y\>mm
+```
+
+NOTE: `<layer>` is initialized to -1 and incremented before emitting the layer
+settings. This ensures `LAST_LAYER` will report the index of the last layer processed.
+
+Following all layer settings, the total number of layers is indicated:
+
+```
+LAST_LAYER Layer:<layer>
+```
+
+### 10.6 Offset Settings
+
+This section defines offsets for the job. Currently, all offsets are set to 0.
+
+```
+PEN_OFFSET_AXIS Axis:X REL=0.000mm
+PEN_OFFSET_AXIS Axis:Y REL=0.000mm
+LAYER_OFFSET_AXIS Axis:X REL=0.000mm
+LAYER_OFFSET_AXIS Axis:Y REL=0.000mm
+DISPLAY_OFFSET X=0.000mm Y=0.000mm
+```
+
+### 10.7 Array Settings
+
+The Ruida controller supports array processing (step-and-repeat) for duplicating
+elements across the bed. There are two sub-sections: ELEMENT and ARRAY.
+
+Variables:
+- `<xstep>` = `<sub>_BOTTOM_LEFT:X` - `<sub>_BOTTOM_RIGHT:X`
+- `<ystep>` = `<sub>_BOTTOM_LEFT:Y` - `<sub>_BOTTOM_RIGHT:Y`
+
+```
+ELEMENT_MAX_INDEX 0
+ELEMENT_NAME_MAX_INDEX 0
+ELEMENT_INDEX 0
+ELEMENT_NAME_INDEX 0
+ELEMENT_NAME String:"UNNAMED "
+ELEMENT_ARRAY_TOP_RIGHT X=\<X\>mm Y=\<Y\>mm
+ELEMENT_ARRAY_BOTTOM_LEFT X=\<X\>mm Y=\<Y\>mm
+ELEMENT_COPIES Columns=1 Rows=1 XStep=<xstep>mm YStep=<ystep>mm
+ELEMENT_ARRAY_ADD X=0.000mm Y=0.000mm
+ELEMENT_ARRAY_MIRROR 0
+ARRAY_START 0
+SET_CURRENT_ELEMENT_INDEX 0
+ARRAY_TOP_RIGHT X=\<X\>mm Y=\<Y\>mm
+ARRAY_BOTTOM_LEFT X=\<X\>mm Y=\<Y\>mm
+ARRAY_ADD X=\<X\>mm Y=\<Y\>mm
+ARRAY_MIRROR 0
+ARRAY_EVEN_DISTANCE XStep=\<X\>mm YStep=\<Y\>mm
+ARRAY_COPIES Columns=1 Rows=1 XStep=<xstep>mm YStep=<ystep>mm
+```
+
+NOTE: The ELEMENT and ARRAY bounding boxes `<X>` and `<Y>` are currently equal
+to the JOB bounding boxes.
+
+### 10.8 Layer Actions
+
+Layer actions define the processing for each layer. Processing settings are defined
+first, followed by a series of move and cut commands. There is one block of layer
+actions for each layer in the job.
+
+Variables:
+- `<mode>` = The overscan mode (START, END, or ALL).
+- `<layer>` = The layer to which these commands apply.
+- `<speed>` = The cut speed for the layer.
+- `<power>` = The power at which to cut.
+- `<assist>` = Air assist switch (ON or OFF).
+- `<min_power>` = The minimum power to use.
+- `<max_power>` = The maximum power to use.
+
+```
+OVERSCAN_<mode>
+SELECT_LAYER Layer:<layer>
+EN_LASER_2_OFFSET_0
+LASER_DEVICE_0
+AIR_ASSIST_<assist>
+SPEED_LASER_1 Speed:<speed>mm/S
+LASER_ON_DELAY 0.000mS
+LASER_OFF_DELAY 0.000mS
+THROUGH_POWER_1 Power:<max_power>%
+THROUGH_POWER_2 Power:<max_power>%
+MIN_POWER_1 Power:<min_power>%
+MAX_POWER_1 Power:<max_power>%
+MIN_POWER_2 Power:<min_power>%
+MAX_POWER_2 Power:<max_power>%
+EN_LASER_TUBE_START State:ON
+EN_EX_IO 0
+(MOVE and CUT commands)...
+```
+
+NOTES:
+- Multiple laser heads are supported by the Ruida controller but only one is
+  currently supported in rpascript.
+- A valid min and max power is actually in the range of 8% to 70%. Values outside
+  this range should issue a warning. Power levels below 8% may not be sufficient
+  to fire the laser. Power levels above 70% can reduce the life of the laser tube.
+- Grayscale pixel images may require power settings between move and cut commands.
+  The actual commands for this case are currently unknown.
+- Frequency can be controlled but is currently the default (typically 30 KHz).
+
+### 10.9 Tail
+
+The tail signals the end of the job.
+
+```
+ARRAY_END
+BLOCK_END
+SET_SETTING
+END_JOB Sum:0x0000050CF4
+EOF
+```
+
+### 10.10 Complete Example
+
+Below is a complete `.rd` file structure combining all sections:
+
+```
+# ── Header ──
+REF_POINT_ABSOLUTE
+SET_ABSOLUTE
+REF_POINT_SET
+ENABLE_BLOCK_CUTTING State:OFF
+START_JOB
+FEED_REPEAT 0 0
+SET_FEED_AUTO_PAUSE State:OFF
+
+# ── Job Settings ──
+JOB_TOP_RIGHT X=0.000mm Y=0.000mm
+JOB_BOTTOM_LEFT X=400.000mm Y=300.000mm
+DOCUMENT_TOP_RIGHT X=0.000mm Y=0.000mm
+DOCUMENT_BOTTOM_LEFT X=400.000mm Y=300.000mm
+JOB_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm
+ARRAY_DIRECTION Dir:0
+
+# ── Layer Settings (Layer 0) ──
+SPEED_LASER_1_LAYER Layer:0 Speed:100.000mm/S
+MIN_POWER_1_LAYER Layer:0 Power:19.995%
+MAX_POWER_1_LAYER Layer:0 Power:19.995%
+MIN_POWER_2_LAYER Layer:0 Power:19.995%
+MAX_POWER_2_LAYER Layer:0 Power:19.995%
+LAYER_COLOR Layer:0 Color:\\#000000
+LAYER_ATTRIBUTES Layer:0 3
+LAYER_TOP_RIGHT Layer:0 X=0.000mm Y=0.000mm
+LAYER_BOTTOM_LEFT Layer:0 X=400.000mm Y=300.000mm
+LAYER_EX_TOP_RIGHT Layer:0 X=0.000mm Y=0.000mm
+LAYER_EX_BOTTOM_LEFT Layer:0 X=400.000mm Y=300.000mm
+
+LAST_LAYER Layer:0
+
+# ── Offset Settings ──
+PEN_OFFSET_AXIS Axis:X REL=0.000mm
+PEN_OFFSET_AXIS Axis:Y REL=0.000mm
+LAYER_OFFSET_AXIS Axis:X REL=0.000mm
+LAYER_OFFSET_AXIS Axis:Y REL=0.000mm
+DISPLAY_OFFSET X=0.000mm Y=0.000mm
+
+# ── Array Settings ──
+ELEMENT_MAX_INDEX 0
+ELEMENT_NAME_MAX_INDEX 0
+ELEMENT_INDEX 0
+ELEMENT_NAME_INDEX 0
+ELEMENT_NAME String:"UNNAMED "
+ELEMENT_ARRAY_TOP_RIGHT X=0.000mm Y=0.000mm
+ELEMENT_ARRAY_BOTTOM_LEFT X=400.000mm Y=300.000mm
+ELEMENT_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm
+ELEMENT_ARRAY_ADD X=0.000mm Y=0.000mm
+ELEMENT_ARRAY_MIRROR 0
+ARRAY_START 0
+SET_CURRENT_ELEMENT_INDEX 0
+ARRAY_TOP_RIGHT X=0.000mm Y=0.000mm
+ARRAY_BOTTOM_LEFT X=400.000mm Y=300.000mm
+ARRAY_ADD X=0.000mm Y=0.000mm
+ARRAY_MIRROR 0
+ARRAY_EVEN_DISTANCE XStep=0.000mm YStep=0.000mm
+ARRAY_COPIES Columns=1 Rows=1 XStep=0.000mm YStep=0.000mm
+
+# ── Layer Actions (Layer 0) ──
+OVERSCAN_START
+SELECT_LAYER Layer:0
+EN_LASER_2_OFFSET_0
+LASER_DEVICE_0
+AIR_ASSIST_ON
+SPEED_LASER_1 Speed:100.000mm/S
+LASER_ON_DELAY 0.000mS
+LASER_OFF_DELAY 0.000mS
+THROUGH_POWER_1 Power:19.995%
+THROUGH_POWER_2 Power:19.995%
+MIN_POWER_1 Power:19.995%
+MAX_POWER_1 Power:19.995%
+MIN_POWER_2 Power:19.995%
+MAX_POWER_2 Power:19.995%
+EN_LASER_TUBE_START State:ON
+EN_EX_IO 0
+
+# Move and cut commands
+MOVE_ABS_XY X=50.000mm Y=50.000mm
+CUT_ABS_XY X=150.000mm Y=50.000mm
+CUT_ABS_XY X=150.000mm Y=150.000mm
+CUT_ABS_XY X=50.000mm Y=150.000mm
+CUT_ABS_XY X=50.000mm Y=50.000mm
+
+# ── Tail ──
+ARRAY_END
+BLOCK_END
+SET_SETTING
+END_JOB Sum:0x0000050CF4
+EOF
+```
