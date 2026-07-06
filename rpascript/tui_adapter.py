@@ -41,7 +41,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.events import DescendantFocus, Key
 from textual.screen import ModalScreen
-from textual.widgets import DirectoryTree, Header, Input, RichLog, Static
+from textual.widgets import DirectoryTree, Header, Input, RichLog, Static, TextArea
 
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import encode_command, is_resolvable_address, parse_value
@@ -150,6 +150,61 @@ class ErrorScreen(ModalScreen):
     def on_key(self, event: Key) -> None:
         """Any key exits the app."""
         self.app.exit(return_code=1)
+
+
+class ScriptEditor(ModalScreen):
+    """Full-screen text editor for the loaded script.
+
+    Opens with the current _loaded_script content as editable text.
+    Ctrl+S saves (strips blank lines, updates _loaded_script).
+    Escape cancels (discards changes).
+    """
+
+    CSS = """
+    ScriptEditor {
+        align: center middle;
+    }
+    #editor-box {
+        width: 90%;
+        height: 90%;
+        border: thick $primary;
+        background: $surface;
+    }
+    #editor-area {
+        height: 1fr;
+    }
+    #editor-footer {
+        dock: bottom;
+        height: 3;
+        padding: 0 1;
+        background: $surface;
+        content-align: center middle;
+    }
+    """
+
+    BINDINGS = [
+        ("ctrl+s", "save", "Save"),
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, initial_text: str) -> None:
+        super().__init__()
+        self._initial = initial_text
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="editor-box"):
+            yield TextArea(self._initial, id="editor-area", language="python")
+            yield Static("  [Ctrl+S] Save  [Esc] Cancel  ", id="editor-footer")
+
+    def action_save(self) -> None:
+        """Save edited text and dismiss."""
+        text = self.query_one("#editor-area", TextArea).text
+        lines = [line for line in text.splitlines() if line.strip()]
+        self.dismiss(lines)
+
+    def action_cancel(self) -> None:
+        """Discard changes and dismiss."""
+        self.dismiss(None)
 
 
 def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500, _level: int = 0) -> tuple[int, int]:
@@ -281,6 +336,7 @@ class TuiAdapter(App):
         "save",
         "stop",
         "dryrun",
+        "edit",
         "plot",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
@@ -410,6 +466,7 @@ class TuiAdapter(App):
             "save": "Save composed job to a file (/save job <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
+            "edit": "Open loaded script in a full-screen editor",
             "plot": "Plot loaded script moves in a Bokeh visualization",
         }
         self._suggest_matches: list[str] = []
@@ -954,6 +1011,8 @@ class TuiAdapter(App):
                 self._cmd_stop(args)
             elif cmd == "dryrun":
                 self._cmd_dryrun(args)
+            elif cmd == "edit":
+                self._cmd_edit(args)
             elif cmd == "plot":
                 self._cmd_plot(args)
         except Exception as e:
@@ -1723,6 +1782,19 @@ class TuiAdapter(App):
                 self._log_error("Failed to start Bokeh server.")
         except Exception as e:
             self._log_error("Failed to start Bokeh server: {}".format(e))
+
+    def _cmd_edit(self, args: str = "") -> None:
+        """Open the loaded script in a full-screen editor."""
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load, /import, or send via RPC first.")
+            return
+
+        def on_edit(result: list[str] | None) -> None:
+            if result is not None:
+                self._loaded_script = result
+                self._log_info(f"Script updated: {len(result)} lines")
+
+        self.push_screen(ScriptEditor("\n".join(self._loaded_script)), on_edit)
 
     # ------------------------------------------------------------------
     # File browser helpers
