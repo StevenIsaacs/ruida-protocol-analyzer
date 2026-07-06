@@ -104,8 +104,6 @@ class FileBrowserTree(DirectoryTree):
                 self._on_dir_selected(path)
                 event.prevent_default()
                 event.stop()
-                return
-        super().on_key(event)
 
 
 class ErrorScreen(ModalScreen):
@@ -488,6 +486,9 @@ class TuiAdapter(App):
         self._suppress_popup: bool = (
             False  # Suppress on_input_changed for programmatic value changes
         )
+        self._skip_browser_until_cmd_change: str = (
+            ""  # Suppress browser re-trigger after directory/file selection
+        )
         self._command_history: list[str] = []
         self._history_index: int | None = None
         self._position: dict[str, tuple | None] = {
@@ -721,6 +722,15 @@ class TuiAdapter(App):
 
         # --- File-browse detection: must precede slash suggest logic ---
         cmd, path_part = self._check_file_browse_trigger(value)
+
+        # Suppress re-trigger after a file/directory was just selected via browser.
+        # Prevents browser from reopening when user types a filename after selection.
+        if cmd:
+            if cmd == self._skip_browser_until_cmd_change:
+                cmd = None  # Don't re-open browser for this command
+            else:
+                self._skip_browser_until_cmd_change = ""  # New command, re-enable
+
         if cmd:
             self._show_file_browser(cmd, path_part)
             return
@@ -1946,6 +1956,7 @@ class TuiAdapter(App):
         path_str = str(path)
 
         if self._file_browse_cmd:
+            self._skip_browser_until_cmd_change = self._file_browse_cmd
             prefix = f"{self._file_browse_cmd} "
         else:
             return

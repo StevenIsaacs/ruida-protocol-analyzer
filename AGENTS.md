@@ -71,3 +71,5 @@ There are no unit tests, no formatter, no linter, no type checker, and no CI pip
 			- `tmp/selected-01.tshark` for the `tshark` log using `tmp/selected-01.rds` as the input to `ruidascript`.
 			- `tmp/selected-01-rt.txt` for the decode file generated using `tmp/selected-01.tshark` as the input file.
 		A second run will have the number `02` instead of `01`.
+
+- `commit.txt`: Pre-composed commit message, placed in project root. Only cleared on user request after commit is confirmed.
