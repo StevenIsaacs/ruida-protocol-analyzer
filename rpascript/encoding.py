@@ -21,6 +21,7 @@ _ENCODER_MAP: dict[str, str | None] = {
     "uint14": "encode_uint14",
     "int35": "encode_int35",
     "uint35": "encode_uint35",
+    "color": "encode_color",
     "coord": "encode_coord",
     "cstring": "encode_cstring",
     "string8": "encode_string8",

@@ -246,6 +246,13 @@ class RdDecoder:
         self.value = self.to_int(data)
         return self.formatted
 
+    def rd_color(self, data: bytearray):
+        """Decode a color value, swapping BGR wire order to RGB for display."""
+        raw = self.to_uint(data)
+        # Swap R and B bytes (BGR → RGB) in the lower 24 bits
+        self.value = ((raw & 0xFF) << 16) | (raw & 0xFF00) | ((raw >> 16) & 0xFF)
+        return self.formatted
+
     # --------------
 
     def prime(self, spec: tuple, length=None):
@@ -369,6 +376,13 @@ class RdEncoder:
 
     def encode_uint35(self, value: int) -> bytearray:
         return self.from_uint(value, 5)
+
+    @staticmethod
+    def encode_color(value: int) -> bytearray:
+        """Encode an RGB color value, swapping to BGR byte order for the wire."""
+        # Swap R and B bytes (RGB → BGR) in the lower 24 bits
+        bgr = ((value & 0xFF) << 16) | (value & 0xFF00) | ((value >> 16) & 0xFF)
+        return RdEncoder.from_uint(bgr, 5)
 
     def encode_cstring(self, value: str) -> bytearray:
         """Encode a string as 7-bit bytes with null terminator."""
