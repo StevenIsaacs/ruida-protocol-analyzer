@@ -80,10 +80,12 @@ class FileBrowserTree(DirectoryTree):
         self,
         path: str | Path,
         allowed_extensions: set[str] | None = None,
+        on_dir_selected: Callable[[Path], None] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(path, **kwargs)
         self._allowed_extensions = allowed_extensions
+        self._on_dir_selected = on_dir_selected
 
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
         for p in paths:
@@ -93,6 +95,17 @@ class FileBrowserTree(DirectoryTree):
                 yield p
             elif p.suffix.lower() in self._allowed_extensions:
                 yield p
+
+    def on_key(self, event: Key) -> None:
+        """Capture Tab on directories to select them as save targets."""
+        if event.key == "tab" and self.cursor_node is not None:
+            path = self.cursor_node.data.path
+            if path.is_dir() and self._on_dir_selected is not None:
+                self._on_dir_selected(path)
+                event.prevent_default()
+                event.stop()
+                return
+        super().on_key(event)
 
 
 class ErrorScreen(ModalScreen):
@@ -463,7 +476,7 @@ class TuiAdapter(App):
             "export": "Export loaded script as .rd binary file (/export [path])",
             "tail": "Load a script file to append to job on execution",
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
-            "save": "Save composed job to a file (/save job <path>)",
+            "save": "Save composed job (/save job <path>) or full script (/save script <path> | /save as <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
             "edit": "Open loaded script in a full-screen editor",
@@ -1603,24 +1616,32 @@ class TuiAdapter(App):
             self._log_error("Usage: /list [job|script|head|tail]")
 
     def _cmd_save(self, args: str) -> None:
-        """Handle /save subcommands: job <path>."""
+        """Handle /save subcommands: job <path>, script <path>, or as <path>."""
         parts = args.strip().split(None, 1)
-        if not parts or parts[0] != "job" or len(parts) < 2:
-            self._log_error("Usage: /save job <path>")
+        if not parts or parts[0] not in ("job", "script", "as") or len(parts) < 2:
+            self._log_error("Usage: /save job <path> | /save script <path> | /save as <path>")
             return
+        subcmd = parts[0]
         path = parts[1]
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
             return
-        job = self._filter_job_commands(self._loaded_script)
-        if not job:
-            self._log_error("No job commands to save (no START_JOB/EOF markers).")
-            return
+
+        if subcmd == "job":
+            lines = self._filter_job_commands(self._loaded_script)
+            if not lines:
+                self._log_error("No job commands found (no START_JOB/EOF markers).")
+                return
+            label = "job"
+        else:  # script or as
+            lines = self._loaded_script
+            label = "script"
+
         path = os.path.expanduser(path)
         try:
             with open(path, "w") as f:
-                f.write("\n".join(job) + "\n")
-            self._log_info(f"Job saved to {path} ({len(job)} lines)")
+                f.write("\n".join(lines) + "\n")
+            self._log_info(f"{label.capitalize()} saved to {path} ({len(lines)} lines)")
         except PermissionError:
             self._log_error(f"Permission denied: {path}")
         except OSError as e:
@@ -1810,7 +1831,7 @@ class TuiAdapter(App):
             return {".rds"}
         if cmd == "/import":
             return {".log", ".txt", ".rd"}
-        if cmd == "/save":
+        if cmd in ("/save", "/save job", "/save script", "/save as"):
             return None  # All files
         if cmd == "/export":
             return {".rd"}
@@ -1857,11 +1878,17 @@ class TuiAdapter(App):
         if cmd in simple_cmds:
             return (cmd, rest)
 
-        # /save job <path> — require "job" subcommand word
+        # /save job <path> or /save script <path> or /save as <path>
         if cmd == "/save":
             if rest == "job" or rest.startswith("job "):
                 path_part = rest[3:].strip() if len(rest) > 3 else ""
-                return (cmd, path_part)
+                return ("/save job", path_part)
+            if rest == "script" or rest.startswith("script "):
+                path_part = rest[6:].strip() if len(rest) > 6 else ""
+                return ("/save script", path_part)
+            if rest == "as" or rest.startswith("as "):
+                path_part = rest[2:].strip() if len(rest) > 2 else ""
+                return ("/save as", path_part)
             return (None, "")
 
         return (None, "")
@@ -1893,7 +1920,11 @@ class TuiAdapter(App):
             self._file_browser = None
         self._file_browse_cmd = ""
 
-        browser = FileBrowserTree(start_path, allowed_extensions=allowed_exts)
+        browser = FileBrowserTree(
+            start_path,
+            allowed_extensions=allowed_exts,
+            on_dir_selected=lambda path: self._set_input_to_path(path),
+        )
         browser.border_title = f"[bold]Select {cmd_name} file[/bold]"
         self._file_browser = browser
         self._file_browse_cmd = cmd_name
@@ -1914,9 +1945,7 @@ class TuiAdapter(App):
         input_widget = self.query_one("#command-input", Input)
         path_str = str(path)
 
-        if self._file_browse_cmd == "/save":
-            prefix = "/save job "
-        elif self._file_browse_cmd:
+        if self._file_browse_cmd:
             prefix = f"{self._file_browse_cmd} "
         else:
             return
