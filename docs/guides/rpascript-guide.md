@@ -117,7 +117,7 @@ Each line is parsed as:
 | `AXIS_Y_MOVE`         | `Y=mm`                  | Single-axis Y move                    |
 | `AXIS_Z_MOVE`         | `Z=mm`                  | Single-axis Z move                    |
 | `AXIS_U_MOVE`         | `U=mm`                  | Single-axis U move (rotary)           |
-| `REL_MOVE_XY`         | `Option={0-3} X=mm Y=mm` | Rapid relative move with option       |
+| `MOVE_RAPID_XY`         | `Option={0-3} X=mm Y=mm` | Rapid relative move with option       |
 
 ### 2.2 Laser Power
 
@@ -236,8 +236,8 @@ Each line is parsed as:
 | `FEED_LENGTH`             | `{val}`                 | Set feed length                      |
 | `FEED_REPEAT`             | `{val} {val}`           | Feed repeat counts                   |
 | `FEED_INFO`               | `{val}`                 | Feed information                     |
-| `REL_MOVE_Z`              | `Option={0-3} Z=mm`     | Relative Z-axis move                 |
-| `REL_MOVE_U`              | `Option={0-3} U=mm`     | Relative U-axis move (rotary)        |
+| `MOVE_RAPID_Z`              | `Option={0-3} Z=mm`     | Relative Z-axis move                 |
+| `MOVE_RAPID_U`              | `Option={0-3} U=mm`     | Relative U-axis move (rotary)        |
 | `ELEMENT_INDEX`           | `{n}`                   | Select element by index              |
 | `ELEMENT_NAME`            | `String:string`         | Set element name                     |
 | `SET_FEED_AUTO_PAUSE`     | `State=ON/OFF`         | Enable/disable auto-pause on feed |
