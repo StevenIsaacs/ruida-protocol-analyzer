@@ -452,6 +452,7 @@ class TuiAdapter(App):
         self._last_server_token: str | None = None
         self._dryrun: bool = False
         self._rd_script: list[str] | None = None  # most recent RPC-received script, for /run
+        self._auto_display_script: bool = False
         self._plot_source: str | None = None  # source label for /plot title (filename or "[RPC]")
         self._bokeh_apps: list[BokehApp] = []  # running Bokeh servers for /clear shutdown
         self._rpyc_server: ThreadedServer | None = None
@@ -473,7 +474,7 @@ class TuiAdapter(App):
             "import": "Import a tshark log (.log) or RDWorks (.rd) file [magic=0xNN] as a script",
             "export": "Export loaded script as .rd binary file (/export [path])",
             "tail": "Load a script file to append to job on execution",
-            "list": "Display loaded script (/list script), composed job (/list job), head (/list head), or tail (/list tail)",
+            "list": "Display loaded script (/list script), composed job (/list job), head (/list head), tail (/list tail), or toggle auto-display (/list auto [on|off])",
             "save": "Save composed job (/save job <path>) or full script (/save script <path> | /save as <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
@@ -1588,7 +1589,7 @@ class TuiAdapter(App):
             self._log_error("Usage: /log [on|off|status]")
 
     def _cmd_list(self, args: str) -> None:
-        """Handle /list subcommands: script, job, head, or tail."""
+        """Handle /list subcommands: script, job, head, tail, or auto."""
         action = args.strip().lower()
         if action == "script":
             if not self._loaded_script:
@@ -1622,8 +1623,21 @@ class TuiAdapter(App):
             self._log_info(f"Tail script ({len(self._tail_script)} lines):")
             for line in self._tail_script:
                 self._log_widget.write(f"  {line}")
+        elif action == "auto" or action.startswith("auto "):
+            arg = action[5:].strip() if len(action) > 5 else ""
+            if arg == "on":
+                self._auto_display_script = True
+                self._log_info("Auto-display of RPC scripts ON")
+            elif arg == "off":
+                self._auto_display_script = False
+                self._log_info("Auto-display of RPC scripts OFF")
+            elif arg == "":
+                state = "ON" if self._auto_display_script else "OFF"
+                self._log_info(f"Auto-display of RPC scripts is {state}")
+            else:
+                self._log_error("Usage: /list auto [on|off]")
         else:
-            self._log_error("Usage: /list [job|script|head|tail]")
+            self._log_error("Usage: /list [job|script|head|tail|auto]")
 
     def _cmd_save(self, args: str) -> None:
         """Handle /save subcommands: job <path>, script <path>, or as <path>."""
@@ -2807,8 +2821,8 @@ class TuiAdapter(App):
         ``run_tui()`` can call ``app.run()`` with no arguments and enter the
         Textual event loop normally.
 
-        When *script* is provided, emulates ``RdDriver.run()``: logs the first
-        3 command lines to the TUI and stores the script in ``_loaded_script``
+        When *script* is provided, emulates ``RdDriver.run()``: optionally
+        displays script lines in the TUI (if auto-display is enabled via ``/list auto on``) and stores the script in ``_loaded_script``
         for ``/list`` access.
 
         Args:
@@ -2821,18 +2835,28 @@ class TuiAdapter(App):
             # Called from run_tui() — start the TUI event loop
             return App.run(self, **kwargs)
 
-        # Emulation path — log first 3 lines with truncation indicator
-        if len(script) <= 3:
-            preview = " / ".join(script)
-        else:
-            preview = " / ".join(script[:3]) + f" ... ({len(script)} lines)"
-        self._log_info(f"[RPC] driver.run({preview})")
-
-        # Store for /list access
+        # Emulation path — display script in TUI log
         self._loaded_script = list(script)
         # Store separately so /run can find it even after /load
         self._rd_script = list(script)
         self._plot_source = "[RPC]"
+
+        if self._auto_display_script:
+            max_lines = 200
+            self._log_info(f"[RPC] Received script ({len(script)} lines):")
+            for line in script[:max_lines]:
+                self._log_widget.write(f"  [RPC] {line}")
+            if len(script) > max_lines:
+                self._log_widget.write(
+                    f"  [dim]... ({len(script)} total, showing first {max_lines})[/dim]"
+                )
+        else:
+            # Brief preview when auto-display is off
+            if len(script) <= 3:
+                preview = " / ".join(script)
+            else:
+                preview = " / ".join(script[:3]) + f" ... ({len(script)} lines)"
+            self._log_info(f"[RPC] driver.run({preview})")
 
         if self._dryrun:
             self._log_info("[DRY-RUN] Script execution skipped — use /run to execute")
