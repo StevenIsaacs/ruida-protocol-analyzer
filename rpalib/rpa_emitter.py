@@ -25,7 +25,7 @@ class RpaEmitter:
         return Path(self.args.output_file).with_suffix("")
 
     def open(self):
-        if self.args.output_file:
+        if self.args.output_file and not self.args.quiet:
             self._out_fp = open(self.args.output_file, "w")
 
     def close(self):

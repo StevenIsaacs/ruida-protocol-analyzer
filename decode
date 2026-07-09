@@ -14,14 +14,28 @@ The fourth pass generates an interactive Bokeh plot of all moves and cuts as a s
 Requires a virtual environment with Bokeh installed. Create one from requirements.txt.
 
 Parameters:
-  <file>       The capture file name -- without extension. Processes <file>.log.
+  <file>       The capture file name -- without extension. Processes <file>.log or <file>.rd.
                 Output written to <file>.txt, <file>-vrb.txt, <file>.rds, and <file>-plot.html.
+                Use --rds-only to generate only the .rds file.
+  --rds-only   Only generate the .rds script file, skipping other output files.
   --dir, -d    Recursively process all .log and .rd files in <directory> and its
                subdirectories. Each is processed as if passed individually as <file>.
   <options>    Optional arguments for verbose mode (e.g. "--plot-moves").
 EOF
 exit 1
 }
+
+# Parse --rds-only flag
+_rds_only=false
+_args=()
+for _arg in "$@"; do
+    if [ "$_arg" = "--rds-only" ]; then
+        _rds_only=true
+    else
+        _args+=("$_arg")
+    fi
+done
+set -- "${_args[@]}"
 
 # Parse --dir flag
 if [ "$1" = "--dir" ] || [ "$1" = "-d" ]; then
@@ -45,11 +59,14 @@ else
         usage
     fi
     _file=$1
-    if [ ! -e "$_file.log" ]; then
-        echo "ERROR: The log file $_file.log does not exist."
+    if [ -f "$_file.log" ]; then
+        _log_files=("$_file")
+    elif [ -f "$_file.rd" ]; then
+        _log_files=("$_file")
+    else
+        echo "ERROR: Neither $_file.log nor $_file.rd exists."
         usage
     fi
-    _log_files=("$_file")
     _mode="file"
 fi
 
@@ -97,26 +114,38 @@ for _entry in "${_log_files[@]}"; do
         # Guard: skip if _base collides with an existing .log/.rd file
         # (input file has a double extension, e.g., foo.log.log → base=foo.log)
         _ext_of_base="${_base##*.}"
-        if [ -f "$_base" ] && [ "$_ext_of_base" = "log" -o "$_ext_of_base" = "rd" ]; then
+        if [ -f "$_base" ] && { [ "$_ext_of_base" = "log" ] || [ "$_ext_of_base" = "rd" ]; }; then
             echo "WARNING: Output base $_base collides with existing $_ext_of_base file. Skipping $_entry"
             continue
         fi
     else
         _base="$_entry"
-        _entry="$_entry.log"
+        if [ -f "$_entry.log" ]; then
+            _entry="$_entry.log"
+        elif [ -f "$_entry.rd" ]; then
+            _entry="$_entry.rd"
+        else
+            echo "ERROR: Input file for $_entry not found. Skipping."
+            _errors=$((_errors + 1))
+            continue
+        fi
     fi
 
     if [ ! -f "$_entry" ]; then
-        echo "ERROR: Log file $_entry not found. Skipping."
+        echo "ERROR: Input file $_entry not found. Skipping."
         _errors=$((_errors + 1))
         continue
     fi
 
     echo "=== Processing: $_entry ==="
-    $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
-    $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
-    $_rpa_cmd --generate-script -o "$_base" "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
-    $_rpa_cmd --save-plot --quiet "$_entry" > /dev/null || true
+    if ! $_rds_only; then
+        $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+        $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    fi
+    $_rpa_cmd --quiet --generate-script -o "$_base" "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    if ! $_rds_only; then
+        $_rpa_cmd --save-plot --quiet "$_entry" > /dev/null || true
+    fi
     _success=$((_success + 1))
 done
 
