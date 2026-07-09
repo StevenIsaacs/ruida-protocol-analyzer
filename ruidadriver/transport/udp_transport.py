@@ -43,15 +43,21 @@ class UdpTransport(Transport):
             self._socket = None
 
     def write(self, packet: bytearray) -> None:
+        if self._socket is None:
+            raise OSError("Socket is not open")
         self._socket.sendto(bytes(packet), (self._host, self._port))
 
     def read(self, length: int) -> Optional[bytes]:
+        if self._socket is None:
+            return None
         try:
             return self._socket.recv(length, socket.MSG_DONTWAIT)
         except BlockingIOError:
             return None
 
     def drain(self) -> None:
+        if self._socket is None:
+            return
         while self.read(65536) is not None:
             pass
 

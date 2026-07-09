@@ -84,6 +84,10 @@ class RdTransport:
                 self._usb = UsbTransport()
             self._usb_device = usb_device
 
+        # Stop old handshake thread BEFORE opening transport (closes socket).
+        # This eliminates the race where the old thread could write through a closed socket.
+        self._stop_handshake_thread()
+
         if self._usb and self._usb.open(self._usb_device):
             self._transport = self._usb
         elif self._udp and self._udp.open(self._udp_host, 50200):
@@ -91,7 +95,7 @@ class RdTransport:
         else:
             return False
         # Clear stale send queue from any previous connection
-        self._send_queue = queue.Queue()
+        self._send_queue = queue.Queue(maxsize=256)
         self._start_handshake_thread()
         self._notify_status(TransportEvent.OPENED)
         return True
@@ -111,11 +115,11 @@ class RdTransport:
             except queue.Empty:
                 break
 
+        self._notify_status(TransportEvent.CLOSED)
+
         # Clear listener lists — prevents stale references on reuse
         self._status_listeners.clear()
         self._reply_listeners.clear()
-
-        self._notify_status(TransportEvent.CLOSED)
 
     def drain(self) -> None:
         """Drain all pending data from the underlying transport."""
@@ -130,16 +134,44 @@ class RdTransport:
         Accumulates commands into a buffer until chunk_size is exceeded,
         packages the buffer (swizzle + optional checksum), then queues it
         to the handshake thread's send queue.
+
+        Uses timeout on put() to remain responsive to shutdown signals
+        when the queue is full (e.g., during large job execution).
         """
         buf = bytearray()
         for cmd in commands:
             if buf and len(buf) + len(cmd) > self._chunk_size:
-                # Package and queue current buffer
-                self._send_queue.put(self._package(buf))
+                # Non-blocking put with shutdown-aware retry
+                self._put_with_retry(self._package(buf))
                 buf = bytearray()
             buf.extend(cmd)
         if buf:
-            self._send_queue.put(self._package(buf))
+            self._put_with_retry(self._package(buf))
+
+    def _put_with_retry(self, packet: bytearray) -> None:
+        """Put a packet on the send queue with shutdown-aware retry.
+
+        Uses a short timeout so the thread remains responsive to
+        shutdown signals when the queue is full. Raises OSError
+        if the handshake thread appears to be dead (max retries
+        exhausted).
+        """
+        MAX_RETRIES = 1000
+        retries = 0
+        while True:
+            try:
+                self._send_queue.put(packet, timeout=0.1)
+                return
+            except queue.Full:
+                if self._shutdown_event.is_set():
+                    return  # Abort enqueue during shutdown — data will be dropped
+                retries += 1
+                if retries >= MAX_RETRIES:
+                    raise OSError(
+                        "Send queue consumer appears dead after "
+                        f"{MAX_RETRIES} retries"
+                    )
+                continue  # Retry
 
     # ---- Packing / Unpacking ----
 
@@ -173,11 +205,23 @@ class RdTransport:
 
     # ---- Handshake Thread ----
 
-    def _start_handshake_thread(self) -> None:
-        # Shut down existing thread before starting a new one
+    def _stop_handshake_thread(self) -> None:
+        """Shut down the handshake thread. Idempotent — safe to call multiple times.
+
+        The shutdown event is cleared before returning so that writes during
+        the transport-reopen window are not silently dropped.
+        """
         if self._handshake_thread is not None and self._handshake_thread.is_alive():
             self._shutdown_event.set()
             self._handshake_thread.join(timeout=2.0)
+            # Note: If join times out (thread stuck in long blocking call), the
+            # event is cleared and a new thread may start before the old one
+            # exits. In practice the thread checks _shutdown_event every ~5-200ms,
+            # so 2s is generous.
+        self._shutdown_event.clear()
+
+    def _start_handshake_thread(self) -> None:
+        """Start a new handshake thread. Does NOT stop existing thread — call _stop_handshake_thread() first."""
         self._shutdown_event.clear()
         self._handshake_thread = threading.Thread(
             target=self._handshake_loop, daemon=True
@@ -186,72 +230,89 @@ class RdTransport:
 
     def _handshake_loop(self) -> None:
         """Main handshake loop: IDLE -> SEND -> ACK_PENDING/REPLY_PENDING -> IDLE."""
-        state = "IDLE"
-        packet: bytearray | None = None
-        expect_reply = False
+        try:
+            state = "IDLE"
+            packet: bytearray | None = None
+            expect_reply = False
 
-        while not self._shutdown_event.is_set():
-            if state == "IDLE":
-                try:
-                    packet = self._send_queue.get(timeout=self._HANDSHAKE_TIMEOUT)
-                    state = "SEND"
-                except queue.Empty:
-                    continue
+            while not self._shutdown_event.is_set():
+                if state == "IDLE":
+                    try:
+                        packet = self._send_queue.get(timeout=self._HANDSHAKE_TIMEOUT)
+                        state = "SEND"
+                    except queue.Empty:
+                        continue
 
-            elif state == "SEND":
-                try:
-                    self._transport.write(packet)
-                except OSError:
-                    self._notify_status(TransportEvent.DROPPED)
-                    state = "IDLE"
-                    continue
-                if self._transport.is_udp:
-                    state = "ACK_PENDING"
-                else:
-                    # USB: no ACK; check if it contains GET_SETTING commands
-                    expect_reply = self._has_get_setting(packet)
-                    state = "REPLY_PENDING" if expect_reply else "IDLE"
+                elif state == "SEND":
+                    try:
+                        self._transport.write(packet)
+                    except OSError:
+                        self._notify_status(TransportEvent.DROPPED)
+                        state = "IDLE"
+                        continue
+                    if self._transport.is_udp:
+                        state = "ACK_PENDING"
+                    else:
+                        # USB: no ACK; check if it contains GET_SETTING commands
+                        expect_reply = self._has_get_setting(packet)
+                        state = "REPLY_PENDING" if expect_reply else "IDLE"
 
-            elif state == "ACK_PENDING":
-                data = self._wait_for_data(self._timeout)
-                if data is None:
-                    self._notify_status(TransportEvent.TIMEOUT)
-                    state = "IDLE"
-                    continue
-                # Validate ACK (single byte 0xC6 after swizzle)
-                if len(data) == 1 and data[0] == 0xC6:
-                    self._notify_status(TransportEvent.ACK_RECEIVED)
-                    expect_reply = self._has_get_setting(packet)
-                    state = "REPLY_PENDING" if expect_reply else "IDLE"
-                else:
-                    self._notify_status(TransportEvent.REPLY_ERROR)
-                    state = "IDLE"
+                elif state == "ACK_PENDING":
+                    try:
+                        data = self._wait_for_data(self._timeout)
+                    except OSError:
+                        self._notify_status(TransportEvent.READ_ERROR)
+                        state = "IDLE"
+                        continue
+                    if data is None:
+                        self._notify_status(TransportEvent.TIMEOUT)
+                        state = "IDLE"
+                        continue
+                    # Validate ACK (single byte 0xC6 after swizzle)
+                    if len(data) == 1 and data[0] == 0xC6:
+                        self._notify_status(TransportEvent.ACK_RECEIVED)
+                        expect_reply = self._has_get_setting(packet)
+                        state = "REPLY_PENDING" if expect_reply else "IDLE"
+                    else:
+                        self._notify_status(TransportEvent.REPLY_ERROR)
+                        state = "IDLE"
 
-            elif state == "REPLY_PENDING":
-                data = self._wait_for_data(self._timeout)
-                if data is None:
-                    self._notify_status(TransportEvent.TIMEOUT)
-                    state = "IDLE"
-                    continue
-                replies = self._unpack_replies(data)
-                if replies:
-                    self._notify_reply_listeners(replies)
-                    self._notify_status(TransportEvent.REPLY_FORWARDED)
-                    state = "IDLE"
-                # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
+                elif state == "REPLY_PENDING":
+                    try:
+                        data = self._wait_for_data(self._timeout)
+                    except OSError:
+                        self._notify_status(TransportEvent.READ_ERROR)
+                        state = "IDLE"
+                        continue
+                    if data is None:
+                        self._notify_status(TransportEvent.TIMEOUT)
+                        state = "IDLE"
+                        continue
+                    replies = self._unpack_replies(data)
+                    if replies:
+                        self._notify_reply_listeners(replies)
+                        self._notify_status(TransportEvent.REPLY_FORWARDED)
+                        state = "IDLE"
+                    # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
+        except Exception:
+            self._shutdown_event.set()
+            raise
 
     def _wait_for_data(self, timeout_ms: int) -> Optional[bytes]:
-        """Poll transport read with per-call timeout. Returns None on timeout or read error."""
+        """Poll transport read with per-call timeout.
+
+        Returns:
+            None on timeout or shutdown.
+            bytes on successful read.
+            Raises OSError on transport read error (caller handles).
+        """
         if self._use_gross_timeout:
             timeout_ms = self._gross_timeout
         deadline = time.monotonic() + timeout_ms / 1000.0
         while time.monotonic() < deadline:
             if self._shutdown_event.is_set():
                 return None
-            try:
-                data = self._transport.read(65536)
-            except OSError:
-                return None
+            data = self._transport.read(65536)
             if data:
                 return data
             time.sleep(0.005)  # 5ms polling interval
