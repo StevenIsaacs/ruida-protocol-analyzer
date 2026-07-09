@@ -349,6 +349,7 @@ class TuiAdapter(App):
         "dryrun",
         "edit",
         "plot",
+        "monitor",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
 
@@ -480,6 +481,7 @@ class TuiAdapter(App):
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
             "edit": "Open loaded script in a full-screen editor",
             "plot": "Plot loaded script moves in a Bokeh visualization",
+            "monitor": "Monitor memory and GC stats. /monitor on|off to toggle auto-update (15s), /monitor for immediate update",
         }
         self._suggest_matches: list[str] = []
         self._suggest_selected: int = 0
@@ -523,6 +525,7 @@ class TuiAdapter(App):
         self._mem_prev: dict[str, int] | None = None
         self._mem_initial: dict[str, int] = {}
         self._mem_timer: Any = None
+        self._monitor_enabled: bool = False
 
         # GC object counter state
         self._gc_prev: dict[str, tuple[int, int, int]] | None = None
@@ -563,9 +566,6 @@ class TuiAdapter(App):
         self._update_status_bar()
         self._load_command_history()
         self.query_one("#command-input", Input).focus()
-        # Start memory monitor
-        self._mem_timer = self.set_interval(15, self._update_mem_monitor)
-        self._update_mem_monitor()
 
     # ------------------------------------------------------------------
     # Command input handling
@@ -1039,6 +1039,8 @@ class TuiAdapter(App):
                 self._cmd_edit(args)
             elif cmd == "plot":
                 self._cmd_plot(args)
+            elif cmd == "monitor":
+                self._cmd_monitor(args)
         except Exception as e:
             self._log_error(f"Command /{cmd} failed: {e}")
 
@@ -1504,6 +1506,11 @@ class TuiAdapter(App):
         if self._ruida_driver is not None:
             self._ruida_driver.set_head_script([])
             self._ruida_driver.set_tail_script([])
+        # Stop memory monitor timer
+        if self._mem_timer is not None:
+            self._mem_timer.cancel()
+            self._mem_timer = None
+        self._monitor_enabled = False
         self._mem_initial = {}
         self._mem_prev = None
         self._gc_initial = {}
@@ -1827,6 +1834,26 @@ class TuiAdapter(App):
                 self._log_error("Failed to start Bokeh server.")
         except Exception as e:
             self._log_error("Failed to start Bokeh server: {}".format(e))
+
+    def _cmd_monitor(self, args: str) -> None:
+        """Handle /monitor subcommand: on, off, or immediate update."""
+        action = args.strip().lower()
+        if action in ("", "update"):
+            asyncio.create_task(self._update_mem_monitor())
+            self._log_info("Memory/GC monitor updated")
+        elif action == "on":
+            if self._mem_timer is None:
+                self._mem_timer = self.set_interval(15, self._update_mem_monitor)
+            self._monitor_enabled = True
+            self._log_info("Monitor ON — auto-update every 15s")
+        elif action == "off":
+            if self._mem_timer is not None:
+                self._mem_timer.cancel()
+                self._mem_timer = None
+            self._monitor_enabled = False
+            self._log_info("Monitor OFF")
+        else:
+            self._log_error("Usage: /monitor [on|off]")
 
     def _cmd_edit(self, args: str = "") -> None:
         """Open the loaded script in a full-screen editor."""
