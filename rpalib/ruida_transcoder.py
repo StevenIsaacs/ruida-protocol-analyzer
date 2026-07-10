@@ -154,7 +154,7 @@ class RdDecoder:
         _ba2 = _i2.to_bytes(4, byteorder="big")
         _s1 = _ba1.decode("utf-8")
         _s2 = _ba2.decode("utf-8")
-        self.value = _s1 + _s2
+        self.value = (_s1 + _s2).rstrip("\x00 ")
         return self.formatted
 
     # Ruida Parameter Types

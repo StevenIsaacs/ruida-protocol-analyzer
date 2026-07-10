@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+_self=$(basename "$0")
+usage () {
+  cat <<EOF
+Usage: $_self <file> [<options>]
+       $_self --dir <directory> [<options>]
+
+Run round-trip verification on .rd binary files.  Processes a .rd file through
+decode -> .rds script -> re-encode -> .rd -> decode -> .rds, then diffs the two
+.rds files to confirm that the command data survives the round trip losslessly.
+
+The Source: comment line (second line of .rds) is excluded from the diff since it
+always differs.
+
+Output files are placed in tmp/ with sequential run numbering.
+
+Parameters:
+  <file>       The .rd file name -- without extension.
+  --dir, -d    Recursively process all .rd files in <directory>.
+  --keep       Keep temporary output files after a successful round trip.
+  <options>    Optional arguments forwarded to rpa.py (e.g. --magic 0xNN).
+EOF
+exit 1
+}
+
+# Parse --keep flag
+_keep=false
+_args=()
+for _arg in "$@"; do
+    if [ "$_arg" = "--keep" ]; then
+        _keep=true
+    else
+        _args+=("$_arg")
+    fi
+done
+set -- "${_args[@]}"
+
+# Parse --dir flag
+if [ "$1" = "--dir" ] || [ "$1" = "-d" ]; then
+    _mode="dir"
+    shift
+    _dir="$1"
+    if [ -z "$_dir" ] || [ ! -d "$_dir" ]; then
+        echo "ERROR: Directory '$_dir' not found."
+        usage
+    fi
+    shift
+    shopt -s nullglob globstar
+    _rd_files=("$_dir"/**/*.rd)
+    shopt -u nullglob
+    if [ ${#_rd_files[@]} -eq 0 ]; then
+        echo "ERROR: No .rd files found in $_dir."
+        usage
+    fi
+else
+    if [ "$#" -lt 1 ]; then
+        usage
+    fi
+    _file=$1
+    if [ -f "$_file.rd" ]; then
+        _rd_files=("$_file")
+    else
+        echo "ERROR: $_file.rd not found."
+        usage
+    fi
+    _mode="file"
+fi
+
+# Remaining options passed to rpa.py
+_opts="${*:2}"
+if [ "$_mode" = "dir" ]; then
+    _opts="$*"
+fi
+
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Venv detection (same as decode script)
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    if [ -d "$_script_dir/.venv" ]; then
+        source "$_script_dir/.venv/bin/activate"
+    elif [ -d "$_script_dir/.venv-bokeh" ]; then
+        source "$_script_dir/.venv-bokeh/bin/activate"
+    else
+        echo "ERROR: No virtual environment found. Create one from requirements.txt."
+        usage
+    fi
+fi
+
+_rpa_cmd=rpa
+command -v rpa >/dev/null 2>&1 || _rpa_cmd="python rpa.py"
+
+mkdir -p "$_script_dir/tmp"
+
+_errors=0
+_success=0
+for _entry in "${_rd_files[@]}"; do
+    # Determine base name for tmp/ output
+    if [ "$_mode" = "dir" ]; then
+        # Use path relative to input dir, replace / with - to flatten
+        _rel="${_entry#$_dir/}"
+        _basename="${_rel%.*}"
+        _basename="${_basename//\//-}"
+    else
+        _basename="${_entry##*/}"
+    fi
+
+    # Resolve input file path
+    if [ "$_mode" = "dir" ]; then
+        _infile="$_entry"
+    else
+        _infile="$_entry.rd"
+    fi
+    if [ ! -f "$_infile" ]; then
+        echo "ERROR: Input file $_infile not found. Skipping."
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    # Determine next run number
+    _run=1
+    while [ -f "$_script_dir/tmp/${_basename}-$(printf '%02d' $_run).rds" ]; do
+        _run=$((_run + 1))
+    done
+    _run_fmt=$(printf '%02d' $_run)
+    _outbase="$_script_dir/tmp/${_basename}-${_run_fmt}"
+
+    echo "=== Round-trip $_run_fmt: $_infile ==="
+
+    # Step 1: Decode and generate .rds script from original .rd
+    if ! $_rpa_cmd --quiet --generate-script -o "$_outbase" $_opts "$_infile"; then
+        echo "ERROR: Script generation failed for $_infile"
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    # Step 2: Copy .rds to -rt name for re-encode
+    # (rpa.py derives the .rd output name from the .rds input filename)
+    if ! cp "$_outbase.rds" "$_outbase-rt.rds"; then
+        echo "ERROR: Copy failed for $_outbase.rds"
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    # Step 3: Re-encode .rds -> .rd binary
+    # Produces $_outbase-rt.rd (derived from input filename)
+    if ! $_rpa_cmd --quiet "$_outbase-rt.rds"; then
+        echo "ERROR: Re-encode failed for $_outbase-rt.rds"
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    # Step 4: Decode re-encoded .rd back to .rds script
+    # Overwrites $_outbase-rt.rds with the round-trip result
+    if ! $_rpa_cmd --quiet --generate-script -o "$_outbase-rt" "$_outbase-rt.rd"; then
+        echo "ERROR: Re-decode failed for $_outbase-rt.rd"
+        _errors=$((_errors + 1))
+        continue
+    fi
+
+    # Step 5: Diff original vs round-trip .rds (ignore Source: comment line)
+    if diff -I '^# Source:' "$_outbase.rds" "$_outbase-rt.rds" > /dev/null 2>&1; then
+        echo "  PASS: scripts match"
+        _success=$((_success + 1))
+        if ! $_keep; then
+            rm -f "$_outbase" "$_outbase.rds" "$_outbase-rt" "$_outbase-rt.rds" "$_outbase-rt.rd"
+        fi
+    else
+        echo "  FAIL: scripts differ"
+        echo "  Compare: diff -I '^# Source:' $_outbase.rds $_outbase-rt.rds"
+        _errors=$((_errors + 1))
+    fi
+done
+
+echo "=== Done: $_success passed, $_errors failed ==="
+exit $_errors

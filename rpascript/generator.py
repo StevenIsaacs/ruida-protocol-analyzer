@@ -143,7 +143,8 @@ class ScriptGenerator:
             mem_name = _extract_mem_mnemonic(decoded)
             if mem_name is not None:
                 return f"{label} {mem_name}"
-            return label
+            # No MEM_ mnemonic found — fall through to normal param
+            # formatting below (e.g. SET_SETTING with Addr:XX:YY).
 
         # Case 3: normal parameterized command
         params: list[str] = []
@@ -169,15 +170,25 @@ class ScriptGenerator:
                 if spec[1] == "axis":
                     val = rdap.AXIS_T.get(val, f"UNKNOWN_AXIS: 0x{val:02X}")
 
-                # TBD-style debug formats with a 'tbd' decoder produce complex
-                # display text that can't be decoded back. Emit the raw value
-                # as a plain integer instead. Fixed-length TBD* types like
-                # TBDU35 have proper decoders and should use the format string.
-                if spec[1] == "tbd":
+                # Memory address / index decoders produce formatted text
+                # (e.g. "Addr:0620") that can't be decoded back to MSB/LSB.
+                # Emit the raw numeric value so the encoder can parse it.
+                if spec[1] in ("mt", "index"):
+                    params.append(str(val))
+                elif spec[1] == "tbd":
                     params.append(str(val))
                 else:
                     try:
-                        params.append(fmt_str.format(val))
+                        formatted = fmt_str.format(val)
+                        # Space-delimited .rds format cannot represent
+                        # multi-token values. TBD* format strings
+                        # (e.g. "TBDU35:{0:035b}b: 0x{0:08x}: {0}")
+                        # produce debug text with spaces that would
+                        # be split on re-read; emit raw value instead.
+                        if " " in str(formatted):
+                            params.append(str(val))
+                        else:
+                            params.append(formatted)
                     except (ValueError, TypeError):
                         params.append(str(val))
 

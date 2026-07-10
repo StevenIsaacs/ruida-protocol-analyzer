@@ -255,7 +255,13 @@ def encode_mt_param(
     if value_token in mt_map:
         msb, lsb = mt_map[value_token]
     else:
-        raise ValueError(f"Unknown memory address mnemonic: {value_token}")
+        # Try numeric address (e.g. "1568" for Addr:0620)
+        try:
+            addr = int(value_token, 0)
+            msb = (addr >> 8) & 0xFF
+            lsb = addr & 0xFF
+        except ValueError:
+            raise ValueError(f"Unknown memory address mnemonic: {value_token}")
 
     return bytearray([msb & 0x7F, lsb & 0x7F])
 
@@ -333,6 +339,12 @@ def parse_value(
         return float(clean)
 
     if decoder_fn == "cstring":
+        if (raw.startswith('"') and raw.endswith('"')) or (
+            raw.startswith("'") and raw.endswith("'")
+        ):
+            return raw[1:-1]
+        return raw
+    if decoder_fn == "string8":
         if (raw.startswith('"') and raw.endswith('"')) or (
             raw.startswith("'") and raw.endswith("'")
         ):
