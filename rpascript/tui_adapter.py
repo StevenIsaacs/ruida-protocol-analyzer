@@ -1765,6 +1765,7 @@ class TuiAdapter(App):
             unswizzled=False,
             magic=0x88,
             input_encoding="utf-8",
+            plot_moves=False,
         )
 
         out = RpaEmitter(ns)
