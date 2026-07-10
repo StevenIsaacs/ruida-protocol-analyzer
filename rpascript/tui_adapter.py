@@ -1824,6 +1824,11 @@ class TuiAdapter(App):
             self._log_error("No plot-relevant commands found in script.")
             return
 
+        # Shut down any existing Bokeh server before starting a new one
+        for _app in self._bokeh_apps:
+            _app.shutdown()
+        self._bokeh_apps = []
+
         try:
             bokeh_app = BokehApp(ns, plotter.plot)
             if bokeh_app.start(port=5006):

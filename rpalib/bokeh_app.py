@@ -296,8 +296,28 @@ class BokehApp:
         self.data_queue.put(data)
 
     def shutdown(self):
-        """Signal the Bokeh server to shut down gracefully."""
+        """Signal the Bokeh server to shut down gracefully and wait for it."""
+        # Best-effort: put sentinel for the periodic callback (polite data cleanup)
         self.data_queue.put(_SENTINEL)
+
+        # Directly stop the server and IO loop to release the port immediately.
+        # This is more reliable than relying solely on the sentinel, which only
+        # gets processed by a periodic callback in the Document (requires a
+        # connected browser session).
+        if self.server is not None:
+            try:
+                self.server.stop()
+            except Exception:
+                pass
+
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                log.warning("Bokeh server thread did not exit within 5 seconds")
+
+        self.server = None
+        self._thread = None
+        self._running = False
 
     def start(self, port: int = None) -> bool:
         """Start the Bokeh server in a background thread.
