@@ -139,12 +139,12 @@ for _entry in "${_log_files[@]}"; do
 
     echo "=== Processing: $_entry ==="
     if ! $_rds_only; then
-        $_rpa_cmd -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
-        $_rpa_cmd --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+        $_rpa_cmd --quiet -o "$_base.txt" "$_entry" || { echo "ERROR: Simple decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
+        $_rpa_cmd --quiet --verbose --raw --unswizzled $_opts -o "$_base-vrb.txt" "$_entry" || { echo "ERROR: Verbose decode failed for $_entry"; _errors=$((_errors + 1)); continue; }
     fi
-    $_rpa_cmd --quiet --generate-script -o "$_base" "$_entry" > /dev/null || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
+    $_rpa_cmd --quiet --generate-script -o "$_base" "$_entry" || { echo "ERROR: Script generation failed for $_entry"; _errors=$((_errors + 1)); continue; }
     if ! $_rds_only; then
-        $_rpa_cmd --save-plot --quiet "$_entry" > /dev/null || true
+        $_rpa_cmd --quiet --save-plot "$_entry" || true
     fi
     _success=$((_success + 1))
 done

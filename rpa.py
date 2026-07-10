@@ -122,7 +122,7 @@ Examples:
         "--quiet",
         "-q",
         action="store_true",
-        help="Do not output to stdout -- disables --verbose, --raw, and --unswizzled.",
+        help="Do not output to stdout. Output file (if specified with -o) is still written.",
     )
 
     # Verbose output
@@ -198,9 +198,6 @@ Examples:
     # Validation
     if not args.input_file:
         parser.error("Input file required")
-
-    if args.quiet and args.verbose:
-        parser.error("--quiet and --verbose are mutually exclusive")
 
     if args.magic is not None and args.protocol != "ruida":
         parser.error("--magic can only be used with the ruida protocol.")
