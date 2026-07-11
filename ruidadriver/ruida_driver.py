@@ -608,7 +608,11 @@ class RdDriver:
                     with self._lock:
                         if self._cancel_flag:
                             self._cancel_flag = False  # Consume even on success
-                    self._session.transport.write(encoded)
+                    self._session.status.block()
+                    try:
+                        self._session.transport.write(encoded)
+                    finally:
+                        self._session.status.unblock()
                 elif encoded and not self._session.is_connected:
                     with self._lock:
                         if self._cancel_flag:

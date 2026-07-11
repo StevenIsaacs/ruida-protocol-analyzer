@@ -348,6 +348,7 @@ class TuiAdapter(App):
         "stop",
         "dryrun",
         "edit",
+        "frame",
         "plot",
         "monitor",
     )
@@ -480,6 +481,7 @@ class TuiAdapter(App):
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
             "edit": "Open loaded script in a full-screen editor",
+            "frame": "Frame job or layer boundaries. /frame job | /frame layer <N>",
             "plot": "Plot loaded script moves in a Bokeh visualization",
             "monitor": "Monitor memory and GC stats. /monitor on|off to toggle auto-update (15s), /monitor for immediate update",
         }
@@ -1037,6 +1039,8 @@ class TuiAdapter(App):
                 self._cmd_dryrun(args)
             elif cmd == "edit":
                 self._cmd_edit(args)
+            elif cmd == "frame":
+                self._cmd_frame(args)
             elif cmd == "plot":
                 self._cmd_plot(args)
             elif cmd == "monitor":
@@ -1840,6 +1844,118 @@ class TuiAdapter(App):
                 self._log_error("Failed to start Bokeh server.")
         except Exception as e:
             self._log_error("Failed to start Bokeh server: {}".format(e))
+
+    def _cmd_frame(self, args: str) -> None:
+        """Frame the job or a specific layer.
+
+        Sets speed to 600 mm/S, moves the laser head to the top-right
+        corner, pauses 2 seconds, then moves to the bottom-left corner.
+
+        Usage: /frame job | /frame layer <N>
+        """
+        if not self._loaded_script:
+            self._log_error("No script loaded. Use /load <path> first.")
+            return
+        if self._ruida_driver is None:
+            self._log_error(
+                "No active session. Use 'session start udp=<IP>' first."
+            )
+            return
+
+        tokens = args.strip().split()
+        if not tokens:
+            self._log_error("Usage: /frame job | /frame layer <N>")
+            return
+
+        mode = tokens[0].lower()
+        layer_idx = None
+        if mode == "layer":
+            if len(tokens) < 2:
+                self._log_error("Usage: /frame layer <N>")
+                return
+            try:
+                layer_idx = int(tokens[1])
+            except ValueError:
+                self._log_error(f"Invalid layer number: {tokens[1]}")
+                return
+        elif mode != "job":
+            self._log_error(
+                f"Unknown mode: {mode}. Use 'job' or 'layer <N>'."
+            )
+            return
+
+        parsed = self._parser.parse_lines(self._loaded_script)
+
+        top_right: tuple[float, float] | None = None
+        bottom_left: tuple[float, float] | None = None
+
+        for cmd in parsed:
+            mnemonic = cmd.get("mnemonic", "")
+            params = cmd.get("params", [])
+
+            if mode == "job":
+                if mnemonic == "JOB_TOP_RIGHT":
+                    top_right = self._extract_xy(params)
+                elif mnemonic == "JOB_BOTTOM_LEFT":
+                    bottom_left = self._extract_xy(params)
+            elif mode == "layer" and layer_idx is not None:
+                if mnemonic in ("LAYER_TOP_RIGHT", "LAYER_BOTTOM_LEFT"):
+                    if len(params) > 0 and params[0].startswith("Layer:"):
+                        try:
+                            lid = int(params[0].split(":", 1)[1])
+                        except (ValueError, IndexError):
+                            continue
+                        if lid == layer_idx:
+                            if mnemonic == "LAYER_TOP_RIGHT":
+                                top_right = self._extract_xy(params[1:])
+                            else:
+                                bottom_left = self._extract_xy(params[1:])
+
+        label = "job" if mode == "job" else f"layer {layer_idx}"
+
+        if top_right is None or bottom_left is None:
+            self._log_error(
+                f"Could not find {label} boundary coordinates."
+            )
+            return
+
+        frame_script = [
+            "SPEED_LASER_1 Speed:600.000mm/S",
+            f"MOVE_RAPID_XY Option:RAPID_ORIGIN X={top_right[0]:.3f}mm Y={top_right[1]:.3f}mm",
+            f"MOVE_RAPID_XY Option:RAPID_ORIGIN X={bottom_left[0]:.3f}mm Y={bottom_left[1]:.3f}mm",
+        ]
+
+        self._log_info(
+            f"Framing {label}: "
+            f"top_right=({top_right[0]:.1f},{top_right[1]:.1f}) "
+            f"bottom_left=({bottom_left[0]:.1f},{bottom_left[1]:.1f})"
+        )
+        self._ruida_driver.run(frame_script)
+
+    @staticmethod
+    def _extract_xy(params: list[str]) -> tuple[float, float] | None:
+        """Extract X,Y coordinate values from parsed command params.
+
+        Handles params in the form ``"X=335.000mm"``, ``"Y=225.000mm"``.
+        Returns ``(x, y)`` or ``None`` if either value is missing.
+        """
+        x_val: float | None = None
+        y_val: float | None = None
+        for p in params:
+            p = p.strip()
+            if p.startswith("X="):
+                try:
+                    x_val = float(p[2:].rstrip("mm").strip())
+                except ValueError:
+                    return None
+            elif p.startswith("Y="):
+                try:
+                    y_val = float(p[2:].rstrip("mm").strip())
+                except ValueError:
+                    return None
+        if x_val is not None and y_val is not None:
+            return (x_val, y_val)
+        return None
 
     def _cmd_monitor(self, args: str) -> None:
         """Handle /monitor subcommand: on, off, or immediate update."""

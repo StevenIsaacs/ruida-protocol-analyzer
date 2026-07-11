@@ -403,13 +403,20 @@ class RdStatus:
         First ping optimization: send immediately on fresh connection
         instead of waiting for the full interval.
         """
+        if self._shutdown.is_set():
+            return "WAIT_TO_PING"
+
+        # Block handling — suppress pings during job execution
+        while self.is_blocked and not self._shutdown.is_set():
+            self.wait_until_unblocked(self.POLL_INTERVAL)
+        if self._shutdown.is_set():
+            return "WAIT_TO_PING"
+
         # Send first ping immediately for fast initial connection
         if self._first_ping:
             self._first_ping = False
             return "SEND_PING"
 
-        if self._shutdown.is_set():
-            return "WAIT_TO_PING"
         event = self._wait_for_event(
             self._ping_interval / 1000.0,
         )
@@ -424,11 +431,14 @@ class RdStatus:
         """SEND_PING state: send the ping command to the controller.
 
         Guard: if transport not open → CONNECTING.
+        Guard: if blocked (job running) → WAIT_TO_PING.
         Send ping_cmd via transport.write([ping_cmd]).
         Notify PING_SENT. Transition to PING_REPLY.
         """
         if not self.transport.is_open:
             return "CONNECTING"
+        if self.is_blocked:
+            return "WAIT_TO_PING"
         if self._ping_cmd is not None:
             self.transport.write([self._ping_cmd])
         self._notify_listeners(RdStatusEvent.PING_SENT)
@@ -515,11 +525,14 @@ class RdStatus:
         """SEND_QUERY state: send all status query commands.
 
         Guard: if transport not open → CONNECTING.
+        Guard: if blocked (job running) → WAIT_TO_POLL.
         Send query_cmds via transport.write(query_cmds). Notify QUERY_SENT.
         Transition to REPLY_PENDING.
         """
         if not self.transport.is_open:
             return "CONNECTING"
+        if self.is_blocked:
+            return "WAIT_TO_POLL"
         if self._query_cmds:
             self.transport.write(self._query_cmds)
             self._notify_listeners(RdStatusEvent.QUERY_SENT)
