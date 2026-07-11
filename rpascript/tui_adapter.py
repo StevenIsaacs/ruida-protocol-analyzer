@@ -2395,8 +2395,7 @@ class TuiAdapter(App):
             )
             self._rpyc_server = server
             self.post_message(Callback(
-                self._log_info,
-                f"RPC server started on {host}:{port}",
+                lambda: self._log_info(f"RPC server started on {host}:{port}")
             ))
             server.start()  # Blocks until server stops
 
@@ -2544,7 +2543,7 @@ class TuiAdapter(App):
         Logs script command replies to the main TUI window.
         Thread-safe: bridges from driver thread to asyncio thread.
         """
-        self.post_message(Callback(self._write_replies, replies))
+        self.post_message(Callback(lambda: self._write_replies(replies)))
 
     def _write_replies(self, replies: list[str]) -> None:
         """Write reply strings to the main log area (asyncio thread only)."""
