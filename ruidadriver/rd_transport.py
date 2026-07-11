@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Callable, Optional
 
+from protocols.ruida.ruida_protocol import ACK
 from rpalib.rpa_swizzler import RpaSwizzler
 from ruidadriver.transport import Transport, UdpTransport, UsbTransport
 from ruidadriver.transport_events import TransportEvent
@@ -268,8 +269,8 @@ class RdTransport:
                         self._notify_status(TransportEvent.TIMEOUT)
                         state = "IDLE"
                         continue
-                    # Validate ACK (single byte 0xC6 after swizzle)
-                    if len(data) == 1 and data[0] == 0xC6:
+                    # Validate ACK (unswizzle then compare with logical ACK byte)
+                    if len(data) == 1 and self._swizzler.unswizzle_byte(data[0], self._swizzler.magic) == ACK:
                         self._notify_status(TransportEvent.ACK_RECEIVED)
                         expect_reply = self._has_get_setting(packet)
                         state = "REPLY_PENDING" if expect_reply else "IDLE"
