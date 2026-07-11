@@ -21,6 +21,7 @@ import types
 import threading
 import gc
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -39,7 +40,7 @@ from rpalib.rpa_swizzler import RpaSwizzler
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.events import DescendantFocus, Key
+from textual.events import Callback, DescendantFocus, Key
 from textual.screen import ModalScreen
 from textual.widgets import DirectoryTree, Header, Input, RichLog, Static, TextArea
 
@@ -429,6 +430,7 @@ class TuiAdapter(App):
         self._reply_count = 0
         self._script_count = 0
         self._logging_enabled: bool = True
+        self._status_log_buffer: deque[str] = deque()
         self._introspect_map: dict[str, Callable[[], Any]] = {
             "session": lambda: self._ruida_driver,
             "transport": lambda: (
@@ -648,7 +650,7 @@ class TuiAdapter(App):
             return
         # Slash-prefixed TUI commands
         if line.startswith("/"):
-            self._handle_slash_command(line)
+            await self._handle_slash_command(line)
             return
         self._log_script(line)
 
@@ -993,7 +995,7 @@ class TuiAdapter(App):
             "  to=   Optional timeout (e.g. to=30s). Default: forever\n"
         )
 
-    def _handle_slash_command(self, raw: str) -> None:
+    async def _handle_slash_command(self, raw: str) -> None:
         """Dispatch a /-prefixed TUI command to its handler."""
         parts = raw[1:].split(None, 1)  # strip leading /
         if not parts:
@@ -1030,7 +1032,7 @@ class TuiAdapter(App):
             elif cmd == "tail":
                 self._cmd_tail(args)
             elif cmd == "list":
-                self._cmd_list(args)
+                await self._cmd_list(args)
             elif cmd == "save":
                 self._cmd_save(args)
             elif cmd == "stop":
@@ -1599,7 +1601,36 @@ class TuiAdapter(App):
         else:
             self._log_error("Usage: /log [on|off|status]")
 
-    def _cmd_list(self, args: str) -> None:
+    async def _write_lines_chunked(self, lines: list[str], prefix: str = "") -> None:
+        """Write lines to the log widget in chunks, yielding between each chunk.
+
+        Calls _update_status_bar() after each write to keep the status bar
+        current while the list is being displayed.
+        """
+        CHUNK_SIZE = 100
+        formatted = [f"{prefix}{line}" for line in lines]
+        for i in range(0, len(formatted), CHUNK_SIZE):
+            chunk = formatted[i:i + CHUNK_SIZE]
+            self._log_widget.write("\n".join(chunk))
+            self._update_status_bar()
+            self._drain_status_log_buffer()
+            if i + CHUNK_SIZE < len(formatted):
+                await asyncio.sleep(0)
+
+    def _drain_status_log_buffer(self) -> None:
+        """Drain buffered status log messages into the status log widget.
+
+        Thread-safe: deque.popleft() is atomic under GIL. Must be called
+        from the event loop thread (for widget safety).
+        """
+        while self._status_log_buffer:
+            try:
+                msg = self._status_log_buffer.popleft()
+            except IndexError:
+                break
+            self._status_log.write(msg)
+
+    async def _cmd_list(self, args: str) -> None:
         """Handle /list subcommands: script, job, head, tail, or auto."""
         action = args.strip().lower()
         if action == "script":
@@ -1607,8 +1638,7 @@ class TuiAdapter(App):
                 self._log_info("No script loaded. Use /load <path> first.")
                 return
             self._log_info(f"Loaded script ({len(self._loaded_script)} lines):")
-            for line in self._loaded_script:
-                self._log_widget.write(f"  {line}")
+            await self._write_lines_chunked(self._loaded_script, prefix="  ")
         elif action == "job":
             if not self._loaded_script:
                 self._log_info("No script loaded. Use /load <path> first.")
@@ -1618,22 +1648,19 @@ class TuiAdapter(App):
                 self._log_error("No job commands found (no START_JOB/EOF markers).")
                 return
             self._log_info(f"Composed job ({len(formatted)} lines):")
-            for line in formatted:
-                self._log_widget.write(f"  {line}")
+            await self._write_lines_chunked(formatted, prefix="  ")
         elif action == "head":
             if not self._head_script:
                 self._log_info("No head script loaded. Use /head <path> first.")
                 return
             self._log_info(f"Head script ({len(self._head_script)} lines):")
-            for line in self._head_script:
-                self._log_widget.write(f"  {line}")
+            await self._write_lines_chunked(self._head_script, prefix="  ")
         elif action == "tail":
             if not self._tail_script:
                 self._log_info("No tail script loaded. Use /tail <path> first.")
                 return
             self._log_info(f"Tail script ({len(self._tail_script)} lines):")
-            for line in self._tail_script:
-                self._log_widget.write(f"  {line}")
+            await self._write_lines_chunked(self._tail_script, prefix="  ")
         elif action == "auto" or action.startswith("auto "):
             arg = action[5:].strip() if len(action) > 5 else ""
             if arg == "on":
@@ -1848,8 +1875,8 @@ class TuiAdapter(App):
     def _cmd_frame(self, args: str) -> None:
         """Frame the job or a specific layer.
 
-        Sets speed to 600 mm/S, moves the laser head to the top-right
-        corner, pauses 2 seconds, then moves to the bottom-left corner.
+        Sets speed to 600 mm/S and moves the laser head to the top-right
+        corner, then to the bottom-left corner using rapid moves.
 
         Usage: /frame job | /frame layer <N>
         """
@@ -1945,12 +1972,12 @@ class TuiAdapter(App):
             p = p.strip()
             if p.startswith("X="):
                 try:
-                    x_val = float(p[2:].rstrip("mm").strip())
+                    x_val = float(p[2:].removesuffix("mm").strip())
                 except ValueError:
                     return None
             elif p.startswith("Y="):
                 try:
-                    y_val = float(p[2:].rstrip("mm").strip())
+                    y_val = float(p[2:].removesuffix("mm").strip())
                 except ValueError:
                     return None
         if x_val is not None and y_val is not None:
@@ -2344,10 +2371,10 @@ class TuiAdapter(App):
                 auto_start=False,
             )
             self._rpyc_server = server
-            self.call_from_thread(
+            self.post_message(Callback(
                 self._log_info,
                 f"RPC server started on {host}:{port}",
-            )
+            ))
             server.start()  # Blocks until server stops
 
         t = threading.Thread(target=_run, daemon=True)
@@ -2390,64 +2417,72 @@ class TuiAdapter(App):
     def on_status_event(self, event: RdStatusEvent | StatusDict) -> None:
         """Handle a status event from the driver.
 
-        Called from the driver's background thread. Bridges to the asyncio
-        event loop thread via call_from_thread for safe widget updates.
+        Called from the driver's background thread. Updates data dicts directly
+        (thread-safe via GIL) so _update_status_bar() can read fresh data even
+        when the message pump is busy. UI updates go through post_message(Callback).
         """
+        # --- Data updates (direct, thread-safe via GIL) ---
+        if isinstance(event, dict):
+            for key, value in event.items():
+                if key == "MEM_CURRENT_POSITION_X":
+                    raw, formatted = value
+                    self._position["X"] = (raw, formatted)
+                    self._last_coord_change["X"] = time.time()
+                elif key == "MEM_CURRENT_POSITION_Y":
+                    raw, formatted = value
+                    self._position["Y"] = (raw, formatted)
+                    self._last_coord_change["Y"] = time.time()
+                elif key == "MEM_CURRENT_POSITION_Z":
+                    raw, formatted = value
+                    self._position["Z"] = (raw, formatted)
+                    self._last_coord_change["Z"] = time.time()
+                elif key == "MEM_CURRENT_POSITION_U":
+                    raw, formatted = value
+                    self._position["U"] = (raw, formatted)
+                    self._last_coord_change["U"] = time.time()
+                elif key == "MEM_CARD_ID":
+                    raw, formatted = value
+                    self._position["Card"] = (raw, formatted)
+                elif key == "MEM_BED_SIZE_X":
+                    raw, formatted = value
+                    self._position["BedX"] = (raw, formatted)
+                elif key == "MEM_BED_SIZE_Y":
+                    raw, formatted = value
+                    self._position["BedY"] = (raw, formatted)
+                elif key == "MEM_MACHINE_STATUS":
+                    raw, formatted = value
+                    self._machine_status = int(raw)
+                    self._machine_status_formatted = formatted
+                elif key in (
+                    "MACHINE_STATUS_MOVING",
+                    "MACHINE_STATUS_LAYER_END",
+                    "MACHINE_STATUS_JOB_RUNNING",
+                ):
+                    self._status_bits[key] = bool(value)
+                else:
+                    logging.getLogger(__name__).warning(
+                        "Unknown status key in StatusDict: %s = %r", key, value
+                    )
+            self._event_count += 1
+            if self._logging_enabled:
+                self._status_log_buffer.append(f"[STATUS] {dict(event)}")
+        else:
+            # RdStatusEvent — only increment counter directly.
+            # _session_disconnected / _session_connected are handled in _update()
+            # below, which checks the flag BEFORE setting it.
+            self._event_count += 1
+            if self._logging_enabled:
+                self._status_log_buffer.append(f"[STATUS] {event.value}")
 
+        # --- UI updates (via message pump) ---
         def _update() -> None:
             if isinstance(event, dict):
-                # StatusDict received — update tracked values
-                for key, value in event.items():
-                    if key == "MEM_CURRENT_POSITION_X":
-                        raw, formatted = value
-                        self._position["X"] = (raw, formatted)
-                        self._last_coord_change["X"] = time.time()
-                    elif key == "MEM_CURRENT_POSITION_Y":
-                        raw, formatted = value
-                        self._position["Y"] = (raw, formatted)
-                        self._last_coord_change["Y"] = time.time()
-                    elif key == "MEM_CURRENT_POSITION_Z":
-                        raw, formatted = value
-                        self._position["Z"] = (raw, formatted)
-                        self._last_coord_change["Z"] = time.time()
-                    elif key == "MEM_CURRENT_POSITION_U":
-                        raw, formatted = value
-                        self._position["U"] = (raw, formatted)
-                        self._last_coord_change["U"] = time.time()
-                    elif key == "MEM_CARD_ID":
-                        raw, formatted = value
-                        self._position["Card"] = (raw, formatted)
-                    elif key == "MEM_BED_SIZE_X":
-                        raw, formatted = value
-                        self._position["BedX"] = (raw, formatted)
-                    elif key == "MEM_BED_SIZE_Y":
-                        raw, formatted = value
-                        self._position["BedY"] = (raw, formatted)
-                    elif key == "MEM_MACHINE_STATUS":
-                        raw, formatted = value
-                        self._machine_status = int(raw)
-                        self._machine_status_formatted = formatted
-                    elif key in (
-                        "MACHINE_STATUS_MOVING",
-                        "MACHINE_STATUS_LAYER_END",
-                        "MACHINE_STATUS_JOB_RUNNING",
-                    ):
-                        self._status_bits[key] = bool(value)
-                    else:
-                        logging.getLogger(__name__).warning(
-                            "Unknown status key in StatusDict: %s = %r", key, value
-                        )
-                if self._logging_enabled:
-                    self._status_log.write(f"[STATUS] {dict(event)}")
-                self._event_count += 1
+                self._drain_status_log_buffer()
                 self._update_status_bar()
                 return
 
             # Script events received via status listener path
-            # (_notify_script_skipped / _notify_script_error in driver)
-            if self._logging_enabled:
-                self._status_log.write(f"[STATUS] {event.value}")
-            self._event_count += 1
+            self._drain_status_log_buffer()
             # Determine transport type for log messages
             transport_type = ""
             if (
@@ -2478,7 +2513,7 @@ class TuiAdapter(App):
                 self._session_connected.set()
             self._update_status_bar()
 
-        self.call_from_thread(_update)
+        self.post_message(Callback(_update))
 
     def on_reply_data(self, replies: list[str]) -> None:
         """Handle formatted reply data from the driver.
@@ -2486,7 +2521,7 @@ class TuiAdapter(App):
         Logs script command replies to the main TUI window.
         Thread-safe: bridges from driver thread to asyncio thread.
         """
-        self.call_from_thread(self._write_replies, replies)
+        self.post_message(Callback(self._write_replies, replies))
 
     def _write_replies(self, replies: list[str]) -> None:
         """Write reply strings to the main log area (asyncio thread only)."""
@@ -2494,12 +2529,12 @@ class TuiAdapter(App):
             self._log_widget.write(f"  ← {formatted}")
 
     def on_error(self, message: str) -> None:
-        """Handle an error condition. Thread-safe via call_from_thread."""
+        """Handle an error condition. Thread-safe via post_message(Callback(...))."""
 
         def _update() -> None:
             self._log_error(message)
 
-        self.call_from_thread(_update)
+        self.post_message(Callback(_update))
 
     def run_script(self, script: list[str], auto_checksum: bool = False) -> None:
         """Queue a script for execution.
@@ -2519,7 +2554,7 @@ class TuiAdapter(App):
             if threading.get_ident() == self._thread_id:
                 _error()
             else:
-                self.call_from_thread(_error)
+                self.post_message(Callback(_error))
             return
 
         def _run() -> None:
@@ -2533,7 +2568,7 @@ class TuiAdapter(App):
         if threading.get_ident() == self._thread_id:
             _run()
         else:
-            self.call_from_thread(_run)
+            self.post_message(Callback(_run))
 
     def set_head_script(self, script: list[str]) -> None:
         """Set the head script to prepend to job execution. Thread-safe.
@@ -2587,7 +2622,7 @@ class TuiAdapter(App):
             if threading.get_ident() == self._thread_id:
                 _error()
             else:
-                self.call_from_thread(_error)
+                self.post_message(Callback(_error))
             return
 
         def _run() -> None:
@@ -2599,7 +2634,7 @@ class TuiAdapter(App):
         if threading.get_ident() == self._thread_id:
             _run()
         else:
-            self.call_from_thread(_run)
+            self.post_message(Callback(_run))
 
     # ------------------------------------------------------------------
     # Introspection (?) subsystem
@@ -2993,8 +3028,7 @@ class TuiAdapter(App):
         if self._auto_display_script:
             max_lines = 200
             self._log_info(f"[RPC] Received script ({len(script)} lines):")
-            for line in script[:max_lines]:
-                self._log_widget.write(f"  [RPC] {line}")
+            self._log_widget.write("\n".join(f"  [RPC] {line}" for line in script[:max_lines]))
             if len(script) > max_lines:
                 self._log_widget.write(
                     f"  [dim]... ({len(script)} total, showing first {max_lines})[/dim]"
