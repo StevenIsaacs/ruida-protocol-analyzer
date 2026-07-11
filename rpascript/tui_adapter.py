@@ -351,6 +351,7 @@ class TuiAdapter(App):
         "edit",
         "frame",
         "plot",
+        "protect",
         "monitor",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
@@ -483,6 +484,7 @@ class TuiAdapter(App):
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
             "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
             "edit": "Open loaded script in a full-screen editor",
+            "protect": "Toggle protect mode (on|off|status). When on, SET_SETTING commands are blocked to prevent hardware damage.",
             "frame": "Frame job or layer boundaries. /frame job | /frame layer <N>",
             "plot": "Plot loaded script moves in a Bokeh visualization",
             "monitor": "Monitor memory and GC stats. /monitor on|off to toggle auto-update (15s), /monitor for immediate update",
@@ -1043,6 +1045,8 @@ class TuiAdapter(App):
                 self._cmd_edit(args)
             elif cmd == "frame":
                 self._cmd_frame(args)
+            elif cmd == "protect":
+                self._cmd_protect(args)
             elif cmd == "plot":
                 self._cmd_plot(args)
             elif cmd == "monitor":
@@ -1742,6 +1746,25 @@ class TuiAdapter(App):
             self._log_info("Dry-run mode OFF — RPC driver.run() will execute normally")
         else:
             self._log_error("Usage: /dryrun on|off")
+
+    def _cmd_protect(self, args: str = "") -> None:
+        """Toggle protect mode (on|off|status)."""
+        arg = args.strip().lower()
+        if arg == "on":
+            if self._ruida_driver is not None:
+                self._ruida_driver.set_protect(True)
+            self._log_info("Protect mode ON — SET_SETTING commands are blocked")
+        elif arg == "off":
+            if self._ruida_driver is not None:
+                self._ruida_driver.set_protect(False)
+            self._log_info("Protect mode OFF — SET_SETTING commands will be sent to controller")
+        elif arg == "" or arg == "status":
+            if self._ruida_driver is not None and self._ruida_driver.protect_enabled:
+                self._log_info("Protect mode: ON — SET_SETTING commands are blocked")
+            else:
+                self._log_info("Protect mode: OFF — SET_SETTING commands will be sent")
+        else:
+            self._log_error("Usage: /protect on|off|status")
 
     def _cmd_run(self) -> None:
         """Execute the most recent RPC-received script (only in dry-run mode).

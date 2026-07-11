@@ -297,6 +297,10 @@ A plain number without a suffix uses the command's default unit.
 Use `GET_SETTING` and `SET_SETTING` with mnemonics from the MT table.
 Mnemonics resolve to 2-byte memory addresses (MSB, LSB).
 
+> **Protect mode**: By default, `SET_SETTING` commands are blocked by the driver's
+> protect mode to prevent accidental hardware damage. Use `/protect off` in the TUI
+> to disable protection, or `/protect on` to re-enable it.
+
 ### Machine Status
 
 | Mnemonic                    | Address   | Value Type      | Description                    |

@@ -104,6 +104,7 @@ class RdDriver:
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
         self._cancel_flag: bool = False
+        self._protect: bool = True
         self._start_udp_host: str = ""
         self._start_usb_device: str = ""
         self._decoded_values: dict[int, Any] = {}
@@ -546,6 +547,13 @@ class RdDriver:
                     if cmd.get("type") == "WAIT":
                         self._handle_wait(cmd)
                         continue
+                    if self._protect and cmd.get("mnemonic") == "SET_SETTING":
+                        self._notify_script_error(
+                            f"SET_SETTING blocked by protect mode "
+                            f"(line {cmd.get('line_num', '?')}). "
+                            f"Use /protect off to allow."
+                        )
+                        continue
                     raw = encode_command(
                         cmd, parser.mnemonic_map, parser.mt_map, encoder
                     )
@@ -666,6 +674,20 @@ class RdDriver:
                 except queue.Empty:
                     break
             self._cancel_flag = True
+
+    def set_protect(self, enabled: bool) -> None:
+        """Enable or disable protect mode.
+
+        When enabled, SET_SETTING commands are blocked from being sent
+        to the controller to prevent accidental hardware bricking.
+        Default: enabled (True).
+        """
+        self._protect = enabled
+
+    @property
+    def protect_enabled(self) -> bool:
+        """Return True if protect mode is active (SET_SETTING blocked)."""
+        return self._protect
 
     # ---- Error / Skip Notification ----
 
