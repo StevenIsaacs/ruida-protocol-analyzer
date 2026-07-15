@@ -2613,8 +2613,7 @@ class TuiAdapter(App):
                         "Unknown status key in StatusDict: %s = %r", key, value
                     )
             self._event_count += 1
-            if self._logging_enabled:
-                self._status_log_buffer.append(f"[STATUS] {dict(event)}")
+            self._status_log_buffer.append(f"[STATUS] {dict(event)}")
         else:
             # RdStatusEvent — only increment counter directly.
             # _session_disconnected / _session_connected are handled in _update()
