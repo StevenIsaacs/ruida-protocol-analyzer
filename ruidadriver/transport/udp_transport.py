@@ -28,6 +28,10 @@ class UdpTransport(Transport):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.setblocking(False)
         try:
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 131072)  # 128KB receive buffer
+        except OSError:
+            pass  # Fall back to OS default if platform rejects the requested size
+        try:
             self._socket.bind((local_ip, 40200))
         except OSError:
             self._socket.close()

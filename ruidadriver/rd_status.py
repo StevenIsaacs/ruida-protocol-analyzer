@@ -49,7 +49,7 @@ class RdStatus:
     """
 
     # Class-level constants
-    PING_RETRY_COUNT = 5  # max consecutive ping failures
+    PING_RETRY_COUNT = 10  # max consecutive ping failures
     PING_RETRY_DELAY = 1.0  # seconds between ping retries
     POLL_INTERVAL = 0.5  # seconds; default query_interval if not set
     CONNECT_RETRY_DELAY = 1.0  # seconds between connect attempts
@@ -104,6 +104,9 @@ class RdStatus:
         # Listeners
         self._listeners: list[Callable] = []
 
+        # Connection logging callback — receives human-readable messages
+        self._connection_log: Optional[Callable[[str], None]] = None
+
         # Mutable config lock
         self._config_lock: threading.Lock = threading.Lock()
 
@@ -124,6 +127,19 @@ class RdStatus:
                 self._listeners.remove(listener)
             except ValueError:
                 pass
+
+    def set_connection_log(self, callback: Optional[Callable[[str], None]]) -> None:
+        """Set or clear the connection logging callback."""
+        self._connection_log = callback
+
+    def _log_connection(self, msg: str) -> None:
+        """Fire the connection log callback if registered."""
+        cb = self._connection_log
+        if cb:
+            try:
+                cb(msg)
+            except Exception:
+                pass  # Never let logging crash the monitor thread
 
     def _notify_listeners(self, event: RdStatusEvent) -> None:
         """Notify all registered listeners of a status event.
@@ -362,6 +378,7 @@ class RdStatus:
             # Notify DISCONNECTED exactly once per disconnect cycle
             if self.transport.is_open and not self._disconnect_fired:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
+                self._log_connection("[STATUS] Disconnecting (transport open, no response)")
                 self._disconnect_fired = True
 
             # If transport is already open and no alternative transport is available,
@@ -373,6 +390,9 @@ class RdStatus:
                 and not self.transport.has_usb
             ):
                 # Wait reconnect interval (responds to transport drops)
+                self._log_connection(
+                    f"[STATUS] Reconnecting (socket alive, waiting {self._connect_interval}ms)..."
+                )
                 self._wait_for_event(self._connect_interval / 1000.0)
                 if self._shutdown.is_set():
                     return "CONNECTING"
@@ -380,6 +400,7 @@ class RdStatus:
                 return "WAIT_TO_PING"
 
             # Normal open path for closed transport (USB reconnect, etc.)
+            self._log_connection("[STATUS] Reopening transport...")
             self.transport.open()
             event = self._wait_for_event(
                 self._connect_interval / 1000.0,
@@ -388,6 +409,7 @@ class RdStatus:
             if self._shutdown.is_set():
                 return "CONNECTING"
             if event is TransportEvent.OPENED:
+                self._log_connection("[STATUS] Transport reopened")
                 self._first_ping = True
                 return "WAIT_TO_PING"
             # Timeout — retry
@@ -467,6 +489,7 @@ class RdStatus:
             if event is TransportEvent.REPLY_FORWARDED:
                 self._notify_listeners(RdStatusEvent.PING_REPLIED)
                 self._notify_listeners(RdStatusEvent.CONNECTED)
+                self._log_connection("[STATUS] Ping OK")
                 self._disconnect_fired = False
                 return ("WAIT_TO_POLL", retries)
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
@@ -474,9 +497,15 @@ class RdStatus:
             # Timeout
             retries -= 1
             if retries > 0:
+                self._log_connection(
+                    f"[STATUS] Ping timeout (retries left: {retries})"
+                )
                 continue  # Self-loop (re-enter PING_REPLY)
             else:
                 self._notify_listeners(RdStatusEvent.DISCONNECTED)
+                self._log_connection(
+                    f"[STATUS] Ping failed after {self.PING_RETRY_COUNT} retries"
+                )
                 self._disconnect_fired = True
                 return ("RESYNC", retries)
         return ("CONNECTING", retries)
@@ -562,11 +591,13 @@ class RdStatus:
                 return "WAIT_TO_POLL"
             if event is TransportEvent.REPLY_FORWARDED:
                 self._notify_listeners(RdStatusEvent.QUERY_RECEIVED)
+                self._log_connection("[STATUS] Query reply received")
                 return "WAIT_TO_POLL"
             if event is TransportEvent.DROPPED or event is TransportEvent.CLOSED:
                 return "CONNECTING"
             # Timeout
             self._notify_listeners(RdStatusEvent.DISCONNECTED)
+            self._log_connection("[STATUS] Query timeout — disconnecting")
             self._disconnect_fired = True
             return "CONNECTING"
         return "WAIT_TO_POLL"

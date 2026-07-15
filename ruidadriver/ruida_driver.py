@@ -186,7 +186,7 @@ class RdDriver:
                 return True
 
         self._session = RdSession()
-        self._session.transport.configure()
+        self._session.transport.configure(timeout=500, gross_timeout=15000)
         self._start_udp_host = udp_host
         self._start_usb_device = usb_device
         opened = self._session.transport.open(

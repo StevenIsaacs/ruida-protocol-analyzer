@@ -427,7 +427,7 @@ class TuiAdapter(App):
             "clear": "Clear all log panels, loaded script, head, and tail",
             "quit": "Exit the TUI",
             "run": "Execute RPC-received script (only in dry-run mode). Use after /dryrun on to run a script received via RPC.",
-            "log": "Toggle display of status/reply messages (on|off|status)",
+            "log": "Toggle logging: /log [on|off|status] for status/reply, /log connection [on|off|status] for transport events",
             "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
             "server": "Start or stop the RPC server. "
             "Server commands: start host=<IP> port=<N> cert=<path> key=<path> token=<token>, or stop",
@@ -475,6 +475,7 @@ class TuiAdapter(App):
         self._session_disconnected: bool = False
         self._machine_status: int = 0
         self._machine_status_formatted: str = "0"
+        self._connection_logging_enabled: bool = False
         self._status_bits: dict[str, bool] = {
             "MACHINE_STATUS_MOVING": False,
             "MACHINE_STATUS_LAYER_END": False,
@@ -1647,9 +1648,31 @@ class TuiAdapter(App):
             sys.exit(1)
 
     def _cmd_log(self, args: str) -> None:
-        """Handle /log subcommands: on, off, status, or toggle."""
-        action = args.strip().lower()
-        if action in ("", "toggle"):
+        """Handle /log subcommands: on, off, status, connection, or toggle."""
+        parts = args.strip().split(None, 1)
+        action = parts[0].lower() if parts else ""
+
+        if action == "connection":
+            sub = parts[1].strip().lower() if len(parts) > 1 else "toggle"
+            if sub in ("", "toggle"):
+                if self._connection_logging_enabled:
+                    self._disable_connection_logging()
+                    self._log_info("Connection logging disabled")
+                else:
+                    self._enable_connection_logging()
+                    self._log_info("Connection logging enabled")
+            elif sub == "on":
+                self._enable_connection_logging()
+                self._log_info("Connection logging enabled")
+            elif sub == "off":
+                self._disable_connection_logging()
+                self._log_info("Connection logging disabled")
+            elif sub == "status":
+                state = "ON" if self._connection_logging_enabled else "OFF"
+                self._log_info(f"Connection logging is {state}")
+            else:
+                self._log_error("Usage: /log connection [on|off|status]")
+        elif action in ("", "toggle"):
             self._logging_enabled = not self._logging_enabled
             state = "ON" if self._logging_enabled else "OFF"
             self._log_info(f"Logging is {state}")
@@ -1663,7 +1686,7 @@ class TuiAdapter(App):
             state = "ON" if self._logging_enabled else "OFF"
             self._log_info(f"Logging is {state}")
         else:
-            self._log_error("Usage: /log [on|off|status]")
+            self._log_error("Usage: /log [on|off|status|connection [on|off|status]]")
 
     async def _write_lines_chunked(self, lines: list[str], prefix: str = "") -> None:
         """Write lines to the log widget in chunks, yielding between each chunk.
@@ -1693,6 +1716,30 @@ class TuiAdapter(App):
             except IndexError:
                 break
             self._status_log.write(msg)
+
+    def _enable_connection_logging(self) -> None:
+        """Register connection log callbacks with driver for TUI display."""
+        if self._ruida_driver and self._ruida_driver._session:
+            transport = self._ruida_driver._session.transport
+            status = self._ruida_driver._session.status
+            transport.set_connection_log(self._on_connection_log)
+            if status:
+                status.set_connection_log(self._on_connection_log)
+        self._connection_logging_enabled = True
+
+    def _disable_connection_logging(self) -> None:
+        """Unregister connection log callbacks from driver."""
+        if self._ruida_driver and self._ruida_driver._session:
+            transport = self._ruida_driver._session.transport
+            status = self._ruida_driver._session.status
+            transport.set_connection_log(None)
+            if status:
+                status.set_connection_log(None)
+        self._connection_logging_enabled = False
+
+    def _on_connection_log(self, msg: str) -> None:
+        """Receive connection log message from background thread, display in TUI log."""
+        self._status_log_buffer.append(msg)
 
     async def _cmd_list(self, args: str) -> None:
         """Handle /list subcommands: script, job, head, tail, or auto."""
@@ -2386,9 +2433,14 @@ class TuiAdapter(App):
 
             self._update_status_bar()
 
+            # Re-enable connection logging if it was already on
+            if self._connection_logging_enabled:
+                self._enable_connection_logging()
+
         except Exception as e:
             self._log_error(f"Failed to start session: {e}")
             if self._ruida_driver is not None:
+                self._disable_connection_logging()
                 self._ruida_driver.stop()
                 self._session_connected.clear()
                 self._ruida_driver = None
@@ -2400,6 +2452,7 @@ class TuiAdapter(App):
             return
 
         try:
+            self._disable_connection_logging()
             self._ruida_driver.stop()
             self._session_connected.clear()
             self._ruida_driver = None
@@ -2498,6 +2551,7 @@ class TuiAdapter(App):
         Used by timeout/cancel paths in _start_session.
         """
         if self._ruida_driver is not None:
+            self._disable_connection_logging()
             self._ruida_driver.stop()
             self._session_connected.clear()
             self._ruida_driver = None

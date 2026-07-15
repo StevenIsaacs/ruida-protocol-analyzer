@@ -38,7 +38,7 @@ class RdTransport:
 
         self._swizzler = RpaSwizzler()
         self._chunk_size = 1024
-        self._timeout = 250  # ms per-call timeout
+        self._timeout = 500  # ms per-call timeout
         self._gross_timeout = 15000  # ms overall gross timeout
         self._use_gross_timeout = False
 
@@ -50,6 +50,9 @@ class RdTransport:
         self._listener_lock = threading.Lock()
         self._status_listeners: list[Callable] = []
         self._reply_listeners: list[Callable] = []
+
+        # Connection logging callback — receives human-readable messages
+        self._connection_log: Optional[Callable[[str], None]] = None
 
         # Handshake thread
         self._handshake_thread: threading.Thread | None = None
@@ -249,6 +252,7 @@ class RdTransport:
                         self._transport.write(packet)
                     except OSError:
                         self._notify_status(TransportEvent.DROPPED)
+                        self._log_connection("[TRANSPORT] DROPPED: write error")
                         state = "IDLE"
                         continue
                     if self._transport.is_udp:
@@ -263,10 +267,14 @@ class RdTransport:
                         data = self._wait_for_data(self._timeout)
                     except OSError:
                         self._notify_status(TransportEvent.READ_ERROR)
+                        self._log_connection("[TRANSPORT] READ_ERROR")
                         state = "IDLE"
                         continue
                     if data is None:
                         self._notify_status(TransportEvent.TIMEOUT)
+                        self._log_connection(
+                            f"[TRANSPORT] TIMEOUT: ACK pending ({self._timeout}ms)"
+                        )
                         state = "IDLE"
                         continue
                     # Validate ACK (unswizzle then compare with logical ACK byte)
@@ -283,10 +291,14 @@ class RdTransport:
                         data = self._wait_for_data(self._timeout)
                     except OSError:
                         self._notify_status(TransportEvent.READ_ERROR)
+                        self._log_connection("[TRANSPORT] READ_ERROR")
                         state = "IDLE"
                         continue
                     if data is None:
                         self._notify_status(TransportEvent.TIMEOUT)
+                        self._log_connection(
+                            f"[TRANSPORT] TIMEOUT: reply pending ({self._timeout}ms)"
+                        )
                         state = "IDLE"
                         continue
                     replies = self._unpack_replies(data)
@@ -363,6 +375,20 @@ class RdTransport:
                 self._reply_listeners.remove(listener)
             except ValueError:
                 pass
+
+    def set_connection_log(self, callback: Optional[Callable[[str], None]]) -> None:
+        """Set or clear the connection logging callback. Thread-safe via _listener_lock."""
+        with self._listener_lock:
+            self._connection_log = callback
+
+    def _log_connection(self, msg: str) -> None:
+        """Fire the connection log callback if registered."""
+        cb = self._connection_log
+        if cb:
+            try:
+                cb(msg)
+            except Exception:
+                pass  # Never let logging crash the handshake thread
 
     # ---- Properties ----
 
