@@ -23,7 +23,7 @@ import gc
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 import argparse
 from rpalib.rpa_emitter import RpaEmitter
@@ -40,9 +40,9 @@ from rpalib.rpa_swizzler import RpaSwizzler
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.events import Callback, DescendantFocus, Key
+from textual.events import Callback, Key
 from textual.screen import ModalScreen
-from textual.widgets import DirectoryTree, Header, Input, RichLog, Static, TextArea
+from textual.widgets import Header, Input, RichLog, Static, TextArea
 
 from rpalib.ruida_transcoder import RdDecoder, RdEncoder
 from rpascript.encoding import encode_command, is_resolvable_address, parse_value
@@ -68,43 +68,6 @@ def _parse_timeout_spec(to_str: str) -> float:
     if unit == "ms":
         return value / 1000.0
     return value
-
-
-class FileBrowserTree(DirectoryTree):
-    """DirectoryTree that filters files by allowed extensions.
-
-    Directories are always shown to allow navigation. When allowed_extensions
-    is None, all files are shown.
-    """
-
-    def __init__(
-        self,
-        path: str | Path,
-        allowed_extensions: set[str] | None = None,
-        on_dir_selected: Callable[[Path], None] | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(path, **kwargs)
-        self._allowed_extensions = allowed_extensions
-        self._on_dir_selected = on_dir_selected
-
-    def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
-        for p in paths:
-            if p.is_dir():
-                yield p
-            elif self._allowed_extensions is None:
-                yield p
-            elif p.suffix.lower() in self._allowed_extensions:
-                yield p
-
-    def on_key(self, event: Key) -> None:
-        """Capture Tab on directories to select them as save targets."""
-        if event.key == "tab" and self.cursor_node is not None:
-            path = self.cursor_node.data.path
-            if path.is_dir() and self._on_dir_selected is not None:
-                self._on_dir_selected(path)
-                event.prevent_default()
-                event.stop()
 
 
 class ErrorScreen(ModalScreen):
@@ -409,13 +372,6 @@ class TuiAdapter(App):
         background: $panel;
         overflow-y: auto;
     }
-
-    FileBrowserTree {
-        max-height: 15;
-        border-top: solid $primary;
-        background: $panel;
-        margin: 0 1;
-    }
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -491,13 +447,14 @@ class TuiAdapter(App):
         }
         self._suggest_matches: list[str] = []
         self._suggest_selected: int = 0
-        self._suggest_mode: str = ""  # 'slash', 'introspect', or '' when no popup
+        self._suggest_mode: str = ""  # 'slash', 'introspect', 'file', or '' when no popup
         self._suppress_popup: bool = (
             False  # Suppress on_input_changed for programmatic value changes
         )
-        self._skip_browser_until_cmd_change: str = (
-            ""  # Suppress browser re-trigger after directory/file selection
-        )
+        self._file_completions: list[tuple[str, bool]] = []  # (name, is_dir) pairs
+        self._file_completion_dir: str = ""  # Current directory being browsed
+        self._file_completion_cmd: str = ""  # Command that triggered completion (e.g., "/load")
+        self._file_completion_prefix: str = ""  # Filename prefix typed so far
         self._command_history: list[str] = []
         self._history_index: int | None = None
         self._position: dict[str, tuple | None] = {
@@ -523,10 +480,6 @@ class TuiAdapter(App):
             "MACHINE_STATUS_LAYER_END": False,
             "MACHINE_STATUS_JOB_RUNNING": False,
         }
-        # File browser tree state
-        self._file_browser: FileBrowserTree | None = None
-        self._file_browse_cmd: str = ""
-
         # Memory monitor state
         self._mem_prev: dict[str, int] | None = None
         self._mem_initial: dict[str, int] = {}
@@ -616,6 +569,9 @@ class TuiAdapter(App):
                     self._suggest_popup.write(f"[reverse]{line}[/reverse]")
                 else:
                     self._suggest_popup.write(line)
+        elif self._suggest_mode == "file":
+            self._render_file_completions()
+            return
 
     @on(Input.Submitted, "#command-input")
     async def on_command(self, event: Input.Submitted) -> None:
@@ -636,6 +592,7 @@ class TuiAdapter(App):
 
         if self._suggest_popup.is_attached:
             self._suggest_popup.remove()
+        self._clear_file_completion_state()
 
         # Introspection mode: ?<object>[.<attr>] [args...]
         if line.startswith("?"):
@@ -719,34 +676,46 @@ class TuiAdapter(App):
         # Suppress popup for programmatic value changes (e.g., history recall)
         if self._suppress_popup:
             self._suppress_popup = False
-            self._suggest_matches = []
-            self._suggest_mode = ""
-            self._dismiss_file_browser()
-            if self._suggest_popup.is_attached:
-                self._suggest_popup.remove()
             return
         value = event.value
 
-        # --- File-browse detection: must precede slash suggest logic ---
+        # --- File-path completion (checked before slash suggest) ---
         cmd, path_part = self._check_file_browse_trigger(value)
-
-        # Suppress re-trigger after a file/directory was just selected via browser.
-        # Prevents browser from reopening when user types a filename after selection.
         if cmd:
-            if cmd == self._skip_browser_until_cmd_change:
-                cmd = None  # Don't re-open browser for this command
+            # File command detected — show/update file completions
+            if self._suggest_mode != "file" or self._file_completion_cmd != cmd:
+                # New file command or different command — fresh scan
+                self._file_completion_cmd = cmd
+                self._file_completions = self._get_file_completions(cmd, path_part)
             else:
-                self._skip_browser_until_cmd_change = ""  # New command, re-enable
-
-        if cmd:
-            self._show_file_browser(cmd, path_part)
+                # Same command — check if directory changed
+                if path_part and "/" in path_part:
+                    dir_part = path_part.rsplit("/", 1)[0]
+                else:
+                    dir_part = ""
+                resolved_dir = str(self._resolve_start_path(dir_part))
+                if resolved_dir != self._file_completion_dir:
+                    # Directory changed — full rescan
+                    self._file_completions = self._get_file_completions(cmd, path_part)
+                else:
+                    # Just prefix changed — update for filtering only
+                    self._file_completion_prefix = (
+                        path_part.split("/")[-1] if "/" in path_part else path_part
+                    )
+            self._suggest_selected = 0
+            self._suggest_mode = "file"
+            if not self._suggest_popup.is_attached:
+                self.query_one("#log-panel").mount(
+                    self._suggest_popup, before="#command-input"
+                )
+            self._render_suggest_popup()
             return
-        elif self._file_browser is not None:
-            # Was browsing but command changed — dismiss
-            self._dismiss_file_browser()
+        elif self._suggest_mode == "file":
+            # Was in file mode but no longer a file command — clear
+            self._clear_file_completion_state()
 
-        # Slash commands
-        if value.startswith("/"):
+        # --- Slash commands (only if no space after command name) ---
+        if value.startswith("/") and " " not in value:
             prefix = value[1:].strip()
             if not prefix:
                 matches = list(self._SLASH_COMMANDS)
@@ -820,7 +789,9 @@ class TuiAdapter(App):
                     )
                 return
 
-        # No popup needed — remove if attached
+        # No popup needed — remove if attached, clear any lingering file state
+        if self._suggest_mode == "file":
+            self._clear_file_completion_state()
         if self._suggest_popup.is_attached:
             self._suggest_popup.remove()
             self._suggest_matches = []
@@ -837,29 +808,13 @@ class TuiAdapter(App):
         Only responds when the command-input widget is focused.
         """
         inp = self.query_one("#command-input", Input)
-        popup_has_focus = (
-            self._suggest_popup.is_attached and self._suggest_popup.has_focus
-        )
-        # File browser keyboard handling — takes priority over history/suggest
-        if self._file_browser is not None:
-            if event.key == "escape":
-                event.stop()
-                self._dismiss_file_browser()
-                inp.focus()
-                return
-            if event.key == "tab":
-                event.stop()
-                if inp.has_focus:
-                    self._file_browser.focus()
-                else:
-                    inp.focus()
-                return
-        if not inp.has_focus and not popup_has_focus:
+        if not inp.has_focus:
             return
 
         if event.key == "up":
             event.stop()
-            if popup_has_focus and self._suggest_matches:
+            # Navigate suggest popup (works for slash, introspect, and file modes)
+            if self._suggest_popup.is_attached and self._suggest_matches:
                 self._suggest_selected = (self._suggest_selected - 1) % len(
                     self._suggest_matches
                 )
@@ -874,13 +829,17 @@ class TuiAdapter(App):
             else:
                 return  # already at oldest
             cmd = self._command_history[self._history_index]
+            if self._suggest_popup.is_attached:
+                self._suggest_popup.remove()
+                self._suggest_matches = []
+                self._suggest_mode = ""
             self._suppress_popup = True
             inp.value = cmd
             inp.cursor_position = len(cmd)
 
         elif event.key == "down":
             event.stop()
-            if popup_has_focus and self._suggest_matches:
+            if self._suggest_popup.is_attached and self._suggest_matches:
                 self._suggest_selected = (self._suggest_selected + 1) % len(
                     self._suggest_matches
                 )
@@ -895,44 +854,141 @@ class TuiAdapter(App):
                 # At newest entry -> clear input
                 self._history_index = None
                 cmd = ""
+            if self._suggest_popup.is_attached:
+                self._suggest_popup.remove()
+                self._suggest_matches = []
+                self._suggest_mode = ""
             self._suppress_popup = True
             inp.value = cmd
             inp.cursor_position = len(cmd)
 
+        elif event.key == "escape":
+            if self._suggest_mode == "file" and self._suggest_popup.is_attached:
+                event.stop()
+                self._clear_file_completion_state()
+                inp.focus()
+                return
+
         elif event.key == "enter":
             """Confirm selection from suggest popup."""
-            if popup_has_focus and self._suggest_matches:
+            if self._suggest_popup.is_attached and self._suggest_matches:
                 event.stop()
                 selected = self._suggest_matches[self._suggest_selected]
-                prefix = "/" if self._suggest_mode == "slash" else "?"
-                self._suppress_popup = True
-                completed_val = f"{prefix}{selected}"
-                inp.focus()  # Must be BEFORE value set (selects old value, harmless)
-                inp.value = completed_val  # Set autocompleted value; End key moves cursor to end
-                self.post_message(Key("end", None))
-                self._suggest_popup.remove()
-                self._suggest_matches = []
-                self._suggest_mode = ""
+
+                if self._suggest_mode == "file":
+                    # File completion: build path relative to cwd
+                    cwd = str(Path.cwd())
+                    display_dir = self._file_completion_dir
+                    if display_dir.startswith(cwd):
+                        display_dir = "." + display_dir[len(cwd):]
+                    if display_dir and display_dir != ".":
+                        new_path = display_dir + "/" + selected
+                    else:
+                        new_path = selected
+                    completed_val = self._file_completion_cmd + " " + new_path
+                    self._suppress_popup = True
+                    inp.focus()
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+                    self._clear_file_completion_state()
+                    if self._suggest_popup.is_attached:
+                        self._suggest_popup.remove()
+                elif self._suggest_mode == "slash":
+                    self._suppress_popup = True
+                    completed_val = f"/{selected}"
+                    inp.focus()
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+                    self._suggest_popup.remove()
+                    self._suggest_matches = []
+                    self._suggest_mode = ""
+                else:  # introspect
+                    self._suppress_popup = True
+                    completed_val = f"?{selected}"
+                    inp.focus()
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+                    self._suggest_popup.remove()
+                    self._suggest_matches = []
+                    self._suggest_mode = ""
                 return
 
         elif event.key == "tab":
-            """Tab autocomplete for / and ? command prefixes."""
-            # If popup has focus, autofill with selected item
-            if popup_has_focus and self._suggest_matches:
+            """Tab autocomplete for slash, introspect, and file completion."""
+
+            # --- File-path completion ---
+            if self._suggest_mode == "file" and self._suggest_popup.is_attached:
+                event.stop()
+                inp.focus()
+
+                if not self._file_completions:
+                    return
+
+                # Get currently displayed completions (filtered by prefix)
+                prefix = self._file_completion_prefix.lower()
+                filtered = [
+                    (name, is_dir)
+                    for name, is_dir in self._file_completions
+                    if name.lower().startswith(prefix)
+                ]
+
+                if not filtered:
+                    return
+
+                cwd = str(Path.cwd())
+                display_dir = self._file_completion_dir
+                if display_dir.startswith(cwd):
+                    display_dir = "." + display_dir[len(cwd):]
+
+                if len(filtered) == 1:
+                    # Single match — auto-complete
+                    selected_name, is_dir = filtered[0]
+                    if display_dir and display_dir != ".":
+                        new_path = display_dir + "/" + selected_name
+                    else:
+                        new_path = selected_name
+                    completed_val = self._file_completion_cmd + " " + new_path
+                    self._suppress_popup = True
+                    inp.value = completed_val
+                    self.post_message(Key("end", None))
+
+                    if is_dir:
+                        # Directory: scan its contents and stay in file mode
+                        self._file_completions = self._get_file_completions(
+                            self._file_completion_cmd, new_path
+                        )
+                        self._file_completion_prefix = ""
+                        self._suggest_selected = 0
+                        self._render_suggest_popup()
+                    else:
+                        # File: complete and dismiss
+                        self._clear_file_completion_state()
+                        if self._suggest_popup.is_attached:
+                            self._suggest_popup.remove()
+                else:
+                    # Multiple matches — cycle to next
+                    self._suggest_selected = (
+                        (self._suggest_selected + 1) % len(filtered)
+                    )
+                    self._render_suggest_popup()
+                return
+
+            # --- Slash/introspect Tab (popup visible, input has focus) ---
+            if self._suggest_popup.is_attached and self._suggest_matches:
                 event.stop()
                 selected = self._suggest_matches[self._suggest_selected]
                 prefix = "/" if self._suggest_mode == "slash" else "?"
                 self._suppress_popup = True
                 completed_val = f"{prefix}{selected}"
-                inp.focus()  # Must be BEFORE value set (selects old value, harmless)
-                inp.value = completed_val  # Set autocompleted value; End key moves cursor to end
+                inp.focus()
+                inp.value = completed_val
                 self.post_message(Key("end", None))
                 self._suggest_popup.remove()
                 self._suggest_matches = []
                 self._suggest_mode = ""
                 return
 
-            # Existing autocomplete when input has focus
+            # --- Auto-complete from input (single-match shortcut) ---
             if not self._suggest_popup.is_attached:
                 return
             event.stop()
@@ -944,7 +1000,9 @@ class TuiAdapter(App):
                     matches = list(self._SLASH_COMMANDS)
                 else:
                     matches = [
-                        c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())
+                        c
+                        for c in self._SLASH_COMMANDS
+                        if c.startswith(prefix.lower())
                     ]
                 if len(matches) == 1:
                     completed_val = f"/{matches[0]}"
@@ -957,7 +1015,9 @@ class TuiAdapter(App):
                 if not prefix:
                     matches = sorted(known)
                 else:
-                    matches = sorted(k for k in known if k.startswith(prefix.lower()))
+                    matches = sorted(
+                        k for k in known if k.startswith(prefix.lower())
+                    )
                 if len(matches) == 1:
                     completed_val = f"?{matches[0]}"
                     inp.value = completed_val
@@ -2040,10 +2100,6 @@ class TuiAdapter(App):
 
         self.push_screen(ScriptEditor("\n".join(self._loaded_script)), on_edit)
 
-    # ------------------------------------------------------------------
-    # File browser helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _file_extensions_for_cmd(cmd: str) -> set[str] | None:
         """Return allowed file extensions for a file-path command.
@@ -2116,87 +2172,104 @@ class TuiAdapter(App):
 
         return (None, "")
 
-    def _show_file_browser(self, cmd_name: str, path_part: str) -> None:
-        """Mount the file browser tree widget and dismiss the suggest popup."""
-        # Dismiss any existing popups
-        if self._suggest_popup.is_attached:
-            self._suggest_popup.remove()
-        self._suggest_matches = []
-        self._suggest_mode = ""
+    def _get_file_completions(self, cmd: str, path_part: str) -> list[tuple[str, bool]]:
+        """Get file/directory completions for a given command and path.
 
-        allowed_exts = self._file_extensions_for_cmd(cmd_name)
-        start_path = self._resolve_start_path(path_part)
+        Returns list of (name, is_dir) tuples, sorted with directories first.
+        Directories are always included. Files are filtered by command extensions.
+        """
+        allowed_exts = self._file_extensions_for_cmd(cmd)
+        if allowed_exts is not None and len(allowed_exts) == 0:
+            return []  # Unknown command, no files shown
 
-        # Re-use existing browser if path and command haven't changed
-        if (self._file_browser is not None
-            and self._file_browse_cmd == cmd_name
-            and self._file_browser.path == start_path
-        ):
-            if not self._file_browser.has_focus:
-                self._file_browser.focus()
-            return
-
-        # Dismiss any existing file browser
-        if self._file_browser is not None:
-            if self._file_browser.is_attached:
-                self._file_browser.remove()
-            self._file_browser = None
-        self._file_browse_cmd = ""
-
-        browser = FileBrowserTree(
-            start_path,
-            allowed_extensions=allowed_exts,
-            on_dir_selected=lambda path: self._set_input_to_path(path),
-        )
-        browser.border_title = f"[bold]Select {cmd_name} file[/bold]"
-        self._file_browser = browser
-        self._file_browse_cmd = cmd_name
-
-        self.query_one("#log-panel").mount(browser, before="#command-input")
-        browser.focus()
-
-    def _dismiss_file_browser(self) -> None:
-        """Remove the file browser tree and reset state."""
-        if self._file_browser is not None:
-            if self._file_browser.is_attached:
-                self._file_browser.remove()
-            self._file_browser = None
-        self._file_browse_cmd = ""
-
-    def _set_input_to_path(self, path: Path) -> None:
-        """Set the command input value to the user's selected file path."""
-        input_widget = self.query_one("#command-input", Input)
-        path_str = str(path)
-
-        if self._file_browse_cmd:
-            self._skip_browser_until_cmd_change = self._file_browse_cmd
-            prefix = f"{self._file_browse_cmd} "
+        # Split path_part to get directory and prefix
+        if path_part and "/" in path_part:
+            dir_part, prefix = path_part.rsplit("/", 1)
+        elif path_part:
+            dir_part, prefix = "", path_part
         else:
+            dir_part, prefix = "", ""
+
+        # Resolve the directory
+        start_dir = self._resolve_start_path(dir_part)
+
+        # Store for later use
+        self._file_completion_dir = str(start_dir)
+        self._file_completion_prefix = prefix
+
+        completions: list[tuple[str, bool]] = []
+        try:
+            with os.scandir(start_dir) as entries:
+                for entry in entries:
+                    name = entry.name
+                    # Skip hidden files (like bash default)
+                    if name.startswith("."):
+                        continue
+                    if entry.is_dir():
+                        completions.append((name + "/", True))
+                    elif entry.is_file():
+                        # Filter by extension
+                        if allowed_exts is None or name.lower().endswith(tuple(allowed_exts)):
+                            completions.append((name, False))
+        except PermissionError:
+            return []
+        except OSError:
+            return []
+
+        # Sort: directories first, then files, alphabetically within each group
+        dirs = sorted((n, d) for n, d in completions if d)
+        files = sorted((n, d) for n, d in completions if not d)
+        return dirs + files
+
+    def _render_file_completions(self) -> None:
+        """Render file completions in the suggest popup."""
+        self._suggest_popup.clear()
+        if not self._file_completions:
+            self._suggest_popup.write("[dim]No matching files[/dim]")
             return
 
-        new_value = f"{prefix}{path_str}"
-        self._suppress_popup = True
-        input_widget.value = new_value
-        input_widget.cursor_position = len(new_value)
-        input_widget.focus()
-        self._dismiss_file_browser()
+        # Filter by prefix
+        prefix = self._file_completion_prefix.lower()
+        filtered = [
+            (name, is_dir) for name, is_dir in self._file_completions
+            if name.lower().startswith(prefix)
+        ]
 
-    @on(DirectoryTree.FileSelected)
-    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
-        """Handle file selection from the file browser tree."""
-        event.stop()
-        if event.control is not self._file_browser:
+        if not filtered:
+            self._suggest_popup.write("[dim]No matching files[/dim]")
             return
-        self._set_input_to_path(event.path)
 
-    @on(DescendantFocus)
-    def on_focus_changed(self, event: DescendantFocus) -> None:
-        """Auto-dismiss file browser when focus leaves it or the command input."""
-        if self._file_browser is None:
-            return
-        new_focused = event.widget
-        if new_focused is not self._file_browser and new_focused is not self.query_one("#command-input", Input):
-            self._dismiss_file_browser()
+        # Show current directory
+        display_dir = self._file_completion_dir
+        cwd = str(Path.cwd())
+        if display_dir.startswith(cwd):
+            display_dir = "." + display_dir[len(cwd):]
+        self._suggest_popup.write(f"[bold]Files in {display_dir}:[/bold]")
+
+        # Render matches
+        for i, (name, is_dir) in enumerate(filtered):
+            line = f"  {name}"
+            if is_dir:
+                line = f"  [bold]{name}[/bold]"
+            if i == self._suggest_selected:
+                self._suggest_popup.write(f"[reverse]{line}[/reverse]")
+            else:
+                self._suggest_popup.write(line)
+
+        # Store filtered list for navigation
+        self._suggest_matches = [name for name, _ in filtered]
+
+    def _clear_file_completion_state(self) -> None:
+        """Reset file completion state and dismiss popup if in file mode."""
+        self._file_completions = []
+        self._file_completion_dir = ""
+        self._file_completion_cmd = ""
+        self._file_completion_prefix = ""
+        if self._suggest_mode == "file":
+            self._suggest_mode = ""
+            self._suggest_matches = []
+            if self._suggest_popup.is_attached:
+                self._suggest_popup.remove()
 
     # ------------------------------------------------------------------
     # Session lifecycle
