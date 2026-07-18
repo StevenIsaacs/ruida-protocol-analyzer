@@ -21,6 +21,8 @@ from ruidadriver.transport_events import TransportEvent
 class RdStatusEvent(Enum):
     """Session-layer events fired by RdStatus to registered listeners."""
 
+    TRANSPORT_UDP = "TRANSPORT_UDP"
+    TRANSPORT_USB = "TRANSPORT_USB"
     CONNECTED = "CONNECTED"
     DISCONNECTED = "DISCONNECTED"
     RECONNECTED = "RECONNECTED"

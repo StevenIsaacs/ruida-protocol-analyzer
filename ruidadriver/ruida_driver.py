@@ -212,9 +212,27 @@ class RdDriver:
     def register_status_listener(
         self, listener: Callable[[RdStatusEvent | StatusDict], None]
     ) -> None:
-        """Register a listener for RdStatusEvent notifications. Thread-safe."""
+        """Register a listener for RdStatusEvent notifications. Thread-safe.
+
+        If a session is already connected when the listener registers,
+        the current transport type and CONNECTED event are replayed to
+        the new listener so it receives up-to-date state.
+        """
         with self._lock:
             self._status_listeners.append(listener)
+            session = self._session
+
+        # Replay current connection state to late-joining listener
+        if session is not None and session.is_connected:
+            if session.is_usb:
+                transport_event = RdStatusEvent.TRANSPORT_USB
+            else:
+                transport_event = RdStatusEvent.TRANSPORT_UDP
+            for event in (transport_event, RdStatusEvent.CONNECTED):
+                try:
+                    listener(event)
+                except Exception:
+                    pass  # Isolate bad callbacks
 
     def register_error_listener(self, listener: Callable[[str], None]) -> None:
         """Register a listener for error message notifications. Thread-safe."""
