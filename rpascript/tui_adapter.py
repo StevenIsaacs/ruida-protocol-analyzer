@@ -415,6 +415,7 @@ class TuiAdapter(App):
         self._rd_script: list[str] | None = None  # most recent RPC-received script, for /run
         self._auto_display_script: bool = False
         self._plot_source: str | None = None  # source label for /plot title (filename or "[RPC]")
+        self._loaded_script_path: str | None = None  # Full path of last /load-ed file, for /save preselect
         self._bokeh_apps: list[BokehApp] = []  # running Bokeh servers for /clear shutdown
         self._rpyc_server: ThreadedServer | None = None
         self._suggest_popup = RichLog(
@@ -1315,6 +1316,7 @@ class TuiAdapter(App):
             self._log_error("Usage: /load <path>")
             return
         path = os.path.expanduser(path)
+        self._loaded_script_path = path
         try:
             with open(path, "r") as f:
                 content = f.read()
@@ -1591,6 +1593,7 @@ class TuiAdapter(App):
             _app.shutdown()
         self._bokeh_apps = []
         self._plot_source = None
+        self._loaded_script_path = None
         self._log_info("Logs, head, and tail cleared")
 
     def _cmd_quit(self) -> None:
@@ -1789,13 +1792,25 @@ class TuiAdapter(App):
             self._log_error("Usage: /list [job|script|head|tail|auto]")
 
     def _cmd_save(self, args: str) -> None:
-        """Handle /save subcommands: job <path>, script <path>, or as <path>."""
+        """Handle /save subcommands: job <path>, script <path>, or as <path>,
+        or bare /save <path> which defaults to script save."""
         parts = args.strip().split(None, 1)
-        if not parts or parts[0] not in ("job", "script", "as") or len(parts) < 2:
-            self._log_error("Usage: /save job <path> | /save script <path> | /save as <path>")
+        if not parts:
+            self._log_error("Usage: /save <path> | /save job <path> | /save script <path> | /save as <path>")
             return
-        subcmd = parts[0]
-        path = parts[1]
+
+        # Determine subcommand and path
+        if parts[0] in ("job", "script", "as"):
+            if len(parts) < 2:
+                self._log_error("Usage: /save {job|script|as} <path>")
+                return
+            subcmd = parts[0]
+            path = parts[1]
+        else:
+            # Bare /save <path> — default to script save
+            subcmd = "script"
+            path = args.strip()
+
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
             return
@@ -2215,7 +2230,7 @@ class TuiAdapter(App):
             if rest == "as" or rest.startswith("as "):
                 path_part = rest[2:].strip() if len(rest) > 2 else ""
                 return ("/save as", path_part)
-            return (None, "")
+            return ("/save", self._loaded_script_path or "")
 
         return (None, "")
 
