@@ -316,6 +316,7 @@ class TuiAdapter(App):
         "plot",
         "protect",
         "monitor",
+        "scan_mem",
     )
     _NORMAL_COMMANDS: tuple[str, ...] = ("session", "server")
 
@@ -445,6 +446,7 @@ class TuiAdapter(App):
             "frame": "Frame job or layer boundaries. /frame job | /frame layer <N>",
             "plot": "Plot loaded script moves in a Bokeh visualization",
             "monitor": "Monitor memory and GC stats. /monitor on|off to toggle auto-update (15s), /monitor for immediate update",
+            "scan_mem": "Generate a GET_SETTING script for all MT memory addresses",
         }
         self._suggest_matches: list[str] = []
         self._suggest_selected: int = 0
@@ -1113,6 +1115,8 @@ class TuiAdapter(App):
                 self._cmd_plot(args)
             elif cmd == "monitor":
                 self._cmd_monitor(args)
+            elif cmd == "scan_mem":
+                self._cmd_scan_mem()
         except Exception as e:
             self._log_error(f"Command /{cmd} failed: {e}")
 
@@ -2148,6 +2152,22 @@ class TuiAdapter(App):
             self._log_info("Monitor OFF")
         else:
             self._log_error("Usage: /monitor [on|off]")
+
+    def _cmd_scan_mem(self) -> None:
+        """Generate a GET_SETTING script for all MT memory addresses."""
+        from protocols.ruida.ruida_protocol import MT, UNKNOWN_ADDRESS
+
+        lines: list[str] = []
+        for msb in sorted(MT):
+            for lsb in sorted(MT[msb]):
+                entry = MT[msb][lsb]
+                if entry is UNKNOWN_ADDRESS:
+                    lines.append(f"GET_SETTING 0x{msb:02X}{lsb:02X}")
+                else:
+                    lines.append(f"GET_SETTING {entry[0]}")
+        self._loaded_script = lines
+        self._log_info(f"Scan script: {len(lines)} GET_SETTING commands staged")
+        self._log_info("Use /exec script to run, or review with /list")
 
     def _cmd_edit(self, args: str = "") -> None:
         """Open the loaded script in a full-screen editor."""
