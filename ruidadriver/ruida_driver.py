@@ -337,9 +337,10 @@ class RdDriver:
         lsb = address & 0xFF
         mt_entry = MT.get(msb, {}).get(lsb)
         if mt_entry is None:
-            # Fallback: raw decode
+            # Fallback: TBD format (binary, hex, decimal)
+            from protocols.ruida.ruida_protocol import TBD
             val = RdDecoder().decode_value(raw_reply)
-            return (None, str(val))
+            return (None, TBD[0].format(val))
 
         mnemonic = mt_entry[0]
         spec = mt_entry[1]  # (format_string, decoder_fn, raw_type)
