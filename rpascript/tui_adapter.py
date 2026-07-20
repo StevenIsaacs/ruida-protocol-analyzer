@@ -169,7 +169,7 @@ class ScriptEditor(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="editor-box"):
             yield TextArea(self._initial, id="editor-area", language="python")
-            yield Static("  [Ctrl+S] Save  [Esc] Cancel  ", id="editor-footer")
+            yield Static("  \\[Ctrl+S] Save  \\[Esc] Cancel  ", id="editor-footer")
 
     def action_save(self) -> None:
         """Save edited text and dismiss."""
@@ -298,10 +298,10 @@ class TuiAdapter(App):
     _SLASH_COMMANDS: tuple[str, ...] = (
         "help",
         "load",
-        "exec",
+        "run",
         "clear",
         "quit",
-        "log",
+        "status",
         "head",
         "import",
         "export",
@@ -423,10 +423,10 @@ class TuiAdapter(App):
         self._cmd_descriptions: dict[str, str] = {
             "help": "Show help text",
             "load": "Load a script file from disk",
-            "exec": "Execute job from loaded script (/exec script for all lines)",
+            "run": "Execute job from loaded script (/run script for all lines)",
             "clear": "Clear all log panels, loaded script, head, and tail",
             "quit": "Exit the TUI",
-            "log": "Toggle logging: /log [on|off|status] for status/reply, /log connection [on|off|status] for transport events",
+            "status": "Toggle logging: /status [on|off|status] for status/reply, /status connection [on|off|status] for transport events",
             "session": "Start or end a controller session (start udp=<IP> usb=<device> to=<timeout> / end)",
             "server": "Start or stop the RPC server. "
             "Server commands: start host=<IP> port=<N> cert=<path> key=<path> token=<token>, or stop",
@@ -437,7 +437,7 @@ class TuiAdapter(App):
             "list": "Display loaded script (/list script), composed job (/list job), head (/list head), tail (/list tail), or toggle auto-display (/list auto [on|off])",
             "save": "Save composed job (/save job <path>) or full script (/save script <path> | /save as <path>)",
             "stop": "Stop the current operation (session connection or script execution). Also bound to Escape.",
-            "dryrun": "Toggle dry-run mode (on|off). When on, /exec runs normally but RPC driver.run() only logs to TUI.",
+            "dryrun": "Toggle dry-run mode (on|off). When on, /run runs normally but RPC driver.run() only logs to TUI.",
             "edit": "Open loaded script in a full-screen editor",
             "protect": "Toggle protect mode (on|off|status). When on, SET_SETTING commands are blocked to prevent hardware damage.",
             "frame": "Frame job or layer boundaries. /frame job | /frame layer <N>",
@@ -1062,12 +1062,12 @@ class TuiAdapter(App):
         """Dispatch a /-prefixed TUI command to its handler."""
         parts = raw[1:].split(None, 1)  # strip leading /
         if not parts:
-            self._log_error("Empty command. Type /help or ? for available commands.")
+            self._log_error("Empty command. Type /help for available commands.")
             return
         cmd = parts[0]
         if cmd not in self._SLASH_COMMANDS:
             self._log_error(
-                f"Unknown TUI command: /{cmd}. Type /help or ? for available commands."
+                f"Unknown TUI command: /{cmd}. Type /help for available commands."
             )
             return
         args = parts[1] if len(parts) > 1 else ""
@@ -1076,7 +1076,7 @@ class TuiAdapter(App):
                 self._log_info(self._handle_help())
             elif cmd == "load":
                 self._cmd_load(args)
-            elif cmd == "exec":
+            elif cmd == "run":
                 self._cmd_exec(args)
             elif cmd == "export":
                 self._cmd_export(args)
@@ -1084,7 +1084,7 @@ class TuiAdapter(App):
                 self._cmd_clear()
             elif cmd == "quit":
                 self._cmd_quit()
-            elif cmd == "log":
+            elif cmd == "status":
                 self._cmd_log(args)
             elif cmd == "head":
                 self._cmd_head(args)
@@ -1209,7 +1209,7 @@ class TuiAdapter(App):
         Decodes the file in-process using the RuidaProtocolAnalyzer pipeline
         (for .log files) or the RdBinaryStream reader + RdParser (for .rd files),
         converts decoded commands to .rds script lines via the _ImportCollector,
-        and loads the result into _loaded_script for /exec or /save.
+        and loads the result into _loaded_script for /run or /save.
         """
         if not args:
             self._log_error("Usage: /import <path> [magic=0xNN]")
@@ -1392,7 +1392,7 @@ class TuiAdapter(App):
 
         Defaults to executing only the job portion (START_JOB to EOF).
         Uses driver.run_job() which composes head + job + tail at runtime.
-        Use '/exec script' to execute all loaded commands.
+        Use '/run script' to execute all loaded commands.
         """
         if not self._loaded_script:
             self._log_error("No script loaded. Use /load <path> first.")
@@ -1414,7 +1414,7 @@ class TuiAdapter(App):
             self._log_info(f"Executing {len(self._loaded_script)} lines...")
             self._ruida_driver.run(self._loaded_script)
         else:
-            self._log_error(f"Unknown exec action: '{action}'. Usage: /exec [script]")
+            self._log_error(f"Unknown run action: '{action}'. Usage: /run [script]")
 
     @staticmethod
     def _filter_job_commands(lines: list[str]) -> list[str]:
@@ -2136,7 +2136,7 @@ class TuiAdapter(App):
                     lines.append(f"GET_SETTING {entry[0]}")
         self._loaded_script = lines
         self._log_info(f"Scan script: {len(lines)} GET_SETTING commands staged")
-        self._log_info("Use /exec script to run, or review with /list")
+        self._log_info("Use /run script to run, or review with /list")
 
     def _cmd_edit(self, args: str = "") -> None:
         """Open the loaded script in a full-screen editor."""
@@ -3192,7 +3192,7 @@ class TuiAdapter(App):
             self._log_info(f"[RPC] driver.run({preview})")
 
         if self._dryrun:
-            self._log_info("[DRY-RUN] Script execution skipped — use /exec after /dryrun off")
+            self._log_info("[DRY-RUN] Script execution skipped — use /run after /dryrun off")
             return
 
         self.run_script(self._loaded_script, auto_checksum=auto_checksum)
