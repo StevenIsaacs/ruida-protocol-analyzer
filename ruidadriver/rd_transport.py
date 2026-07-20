@@ -368,13 +368,12 @@ class RdTransport:
     def _has_get_setting(self, packet: bytearray) -> bool:
         """Check if packet contains a GET_SETTING/memory command.
 
-        Unswizzles the payload (skipping the 2-byte UDP checksum if present)
-        and looks for the 0xDA memory command prefix byte.
+        Swizzles the 0xDA prefix byte and looks for it directly in the
+        swizzled payload (skipping the 2-byte UDP checksum if present).
         """
         offset = 2 if self._transport and self._transport.is_udp else 0
         payload = packet[offset:]
-        unswizzled = self._swizzler.unswizzle(bytearray(payload))
-        return 0xDA in unswizzled
+        return RpaSwizzler.swizzle_byte(0xDA, self._swizzler.magic) in payload
 
     def _notify_status(self, event: TransportEvent) -> None:
         for listener in list(self._status_listeners):
