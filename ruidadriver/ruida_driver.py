@@ -109,7 +109,12 @@ class RdDriver:
         self._start_usb_device: str = ""
         self._decoded_values: dict[int, Any] = {}
         self._build_status_map()
-        self._head_script: list[str] = []
+        self._head_script: list[str] = [
+            "REF_POINT_ABSOLUTE",
+            "SET_ABSOLUTE",
+            "REF_POINT_SET",
+            "ENABLE_BLOCK_CUTTING State:OFF",
+        ]
         self._tail_script: list[str] = []
 
     def _build_status_map(self) -> None:
