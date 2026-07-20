@@ -567,7 +567,7 @@ class RdDriver:
                         self._handle_wait(cmd)
                         continue
                     if self._protect and cmd.get("mnemonic") == "SET_SETTING":
-                        self._notify_script_error(
+                        logging.warning(
                             f"SET_SETTING blocked by protect mode "
                             f"(line {cmd.get('line_num', '?')}). "
                             f"Use /protect off to allow."
