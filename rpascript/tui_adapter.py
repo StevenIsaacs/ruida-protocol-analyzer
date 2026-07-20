@@ -722,7 +722,7 @@ class TuiAdapter(App):
                 matches = list(self._SLASH_COMMANDS)
             else:
                 matches = [
-                    c for c in self._SLASH_COMMANDS if c.startswith(prefix.lower())
+                    c for c in self._SLASH_COMMANDS if c.startswith(prefix)
                 ]
 
             if not self._suggest_popup.is_attached:
@@ -746,7 +746,7 @@ class TuiAdapter(App):
             if not prefix:
                 matches = sorted(known)
             else:
-                matches = sorted(k for k in known if k.startswith(prefix.lower()))
+                matches = sorted(k for k in known if k.startswith(prefix))
 
             if not self._suggest_popup.is_attached:
                 self.query_one("#log-panel").mount(
@@ -764,7 +764,7 @@ class TuiAdapter(App):
 
         # Normal commands (not introspection, not help query)
         if value and not value.startswith("?"):
-            clean = value.strip().lower()
+            clean = value.strip()
 
             if " " in clean:
                 # Space detected — lock to the matched command root, no more filtering
@@ -1003,7 +1003,7 @@ class TuiAdapter(App):
                     matches = [
                         c
                         for c in self._SLASH_COMMANDS
-                        if c.startswith(prefix.lower())
+                        if c.startswith(prefix)
                     ]
                 if len(matches) == 1:
                     completed_val = f"/{matches[0]}"
@@ -1017,7 +1017,7 @@ class TuiAdapter(App):
                     matches = sorted(known)
                 else:
                     matches = sorted(
-                        k for k in known if k.startswith(prefix.lower())
+                        k for k in known if k.startswith(prefix)
                     )
                 if len(matches) == 1:
                     completed_val = f"?{matches[0]}"
@@ -1064,7 +1064,7 @@ class TuiAdapter(App):
         if not parts:
             self._log_error("Empty command. Type /help or ? for available commands.")
             return
-        cmd = parts[0].lower()
+        cmd = parts[0]
         if cmd not in self._SLASH_COMMANDS:
             self._log_error(
                 f"Unknown TUI command: /{cmd}. Type /help or ? for available commands."
@@ -1425,7 +1425,7 @@ class TuiAdapter(App):
         in_job = False
         result: list[str] = []
         for line in lines:
-            stripped = line.strip().upper()
+            stripped = line.strip()
             if stripped == "START_JOB" or stripped.startswith("START_JOB "):
                 in_job = True
             if in_job:
@@ -2200,7 +2200,7 @@ class TuiAdapter(App):
         if space_idx == -1:
             return (None, "")  # No space yet — still typing command name
 
-        cmd = value[:space_idx].lower()
+        cmd = value[:space_idx]
         rest = value[space_idx:].strip()
 
         # Simple path-taking commands: /load, /head, /tail, /import

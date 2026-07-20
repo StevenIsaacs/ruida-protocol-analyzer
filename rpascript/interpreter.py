@@ -228,7 +228,7 @@ class ScriptParser:
         idx = 0
 
         # --- Session meta-commands (live controller testing) ---
-        if tokens[0].lower() == "session":
+        if tokens[0] == "session":
             if len(tokens) < 2:
                 self._warning_callback(
                     f'{line_num}: "session" requires an action: start or end',
@@ -266,7 +266,7 @@ class ScriptParser:
                 return None
 
         # --- Server meta-commands (RPC server control) ---
-        if tokens[0].lower() == "server":
+        if tokens[0] == "server":
             if len(tokens) < 2:
                 self._warning_callback(
                     f'{line_num}: "server" requires an action: start or stop',
@@ -325,7 +325,7 @@ class ScriptParser:
             }
 
         # --- Flow-control: delay ---
-        if tokens[0].lower() == "delay":
+        if tokens[0] == "delay":
             if len(tokens) < 2:
                 self._warning_callback(
                     f'{line_num}: "delay" requires a time argument (e.g. 5s, 500ms)',
@@ -342,7 +342,7 @@ class ScriptParser:
             }
 
         # --- Flow-control: wait ---
-        if tokens[0].lower() == "wait":
+        if tokens[0] == "wait":
             if len(tokens) < 2:
                 self._warning_callback(
                     f'{line_num}: "wait" requires a status argument (e.g. MACHINE_STATUS_JOB_RUNNING)',
@@ -385,7 +385,7 @@ class ScriptParser:
             idx = 1
             # Skip optional 'CMD' decorative keyword after type
             # e.g. "CORE CMD NOP" — 'CMD' is not the mnemonic
-            if len(tokens) > idx and tokens[idx].upper() == "CMD":
+            if len(tokens) > idx and tokens[idx] == "CMD":
                 idx += 1
             if idx >= len(tokens):
                 self._warning_callback(
