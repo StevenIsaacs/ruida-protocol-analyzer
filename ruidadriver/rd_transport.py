@@ -43,7 +43,7 @@ class RdTransport:
         self._use_gross_timeout = False
 
         # Queues for handshake thread
-        self._send_queue: queue.Queue[bytearray] = queue.Queue(maxsize=256)
+        self._send_queue: queue.Queue[list[bytearray]] = queue.Queue(maxsize=256)
         self._shutdown_event = threading.Event()
 
         # Listeners
@@ -99,7 +99,7 @@ class RdTransport:
         else:
             return False
         # Clear stale send queue from any previous connection
-        self._send_queue = queue.Queue(maxsize=256)
+        self._send_queue: queue.Queue[list[bytearray]] = queue.Queue(maxsize=256)
         self._start_handshake_thread()
         self._notify_status(TransportEvent.OPENED)
         return True
@@ -142,18 +142,20 @@ class RdTransport:
         Uses timeout on put() to remain responsive to shutdown signals
         when the queue is full (e.g., during large job execution).
         """
+        packets: list[bytearray] = []
         buf = bytearray()
         for cmd in commands:
             if buf and len(buf) + len(cmd) > self._chunk_size:
-                # Non-blocking put with shutdown-aware retry
-                self._put_with_retry(self._package(buf))
+                packets.append(self._package(buf))
                 buf = bytearray()
             buf.extend(cmd)
         if buf:
-            self._put_with_retry(self._package(buf))
+            packets.append(self._package(buf))
+        if packets:
+            self._put_with_retry(packets)
 
-    def _put_with_retry(self, packet: bytearray) -> None:
-        """Put a packet on the send queue with shutdown-aware retry.
+    def _put_with_retry(self, batch: list[bytearray]) -> None:
+        """Put a batch of packets on the send queue with shutdown-aware retry.
 
         Uses a short timeout so the thread remains responsive to
         shutdown signals when the queue is full. Raises OSError
@@ -164,7 +166,7 @@ class RdTransport:
         retries = 0
         while True:
             try:
-                self._send_queue.put(packet, timeout=0.1)
+                self._send_queue.put(batch, timeout=0.1)
                 return
             except queue.Full:
                 if self._shutdown_event.is_set():
@@ -233,16 +235,36 @@ class RdTransport:
         self._handshake_thread.start()
 
     def _handshake_loop(self) -> None:
-        """Main handshake loop: IDLE -> SEND -> ACK_PENDING/REPLY_PENDING -> IDLE."""
+        """Main handshake loop: IDLE -> SEND -> ACK_PENDING/REPLY_PENDING -> IDLE.
+
+        Processes batches of packets atomically — all packets in a batch are
+        processed before the next batch is retrieved from the queue. This
+        prevents interleaving of status monitor queries between job packets.
+        """
         try:
             state = "IDLE"
             packet: bytearray | None = None
             expect_reply = False
+            batch: list[bytearray] | None = None
+            batch_index: int = 0
+
+            def advance_batch() -> bool:
+                """Advance to next packet in batch. Sets state to SEND if more packets, IDLE if exhausted."""
+                nonlocal batch_index, packet, state
+                batch_index += 1
+                if batch is not None and batch_index < len(batch):
+                    packet = batch[batch_index]
+                    state = "SEND"
+                    return True
+                state = "IDLE"
+                return False
 
             while not self._shutdown_event.is_set():
                 if state == "IDLE":
                     try:
-                        packet = self._send_queue.get(timeout=self._HANDSHAKE_TIMEOUT)
+                        batch = self._send_queue.get(timeout=self._HANDSHAKE_TIMEOUT)
+                        batch_index = 0
+                        packet = batch[0]
                         state = "SEND"
                     except queue.Empty:
                         continue
@@ -253,7 +275,8 @@ class RdTransport:
                     except OSError:
                         self._notify_status(TransportEvent.DROPPED)
                         self._log_connection("[TRANSPORT] DROPPED: write error")
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
                         continue
                     if self._transport.is_udp:
                         state = "ACK_PENDING"
@@ -268,14 +291,16 @@ class RdTransport:
                     except OSError:
                         self._notify_status(TransportEvent.READ_ERROR)
                         self._log_connection("[TRANSPORT] READ_ERROR")
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
                         continue
                     if data is None:
                         self._notify_status(TransportEvent.TIMEOUT)
                         self._log_connection(
                             f"[TRANSPORT] TIMEOUT: ACK pending ({self._timeout}ms)"
                         )
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
                         continue
                     # Validate ACK (unswizzle then compare with logical ACK byte)
                     if len(data) == 1 and self._swizzler.unswizzle_byte(data[0], self._swizzler.magic) == ACK:
@@ -284,7 +309,8 @@ class RdTransport:
                         state = "REPLY_PENDING" if expect_reply else "IDLE"
                     else:
                         self._notify_status(TransportEvent.REPLY_ERROR)
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
 
                 elif state == "REPLY_PENDING":
                     try:
@@ -292,20 +318,23 @@ class RdTransport:
                     except OSError:
                         self._notify_status(TransportEvent.READ_ERROR)
                         self._log_connection("[TRANSPORT] READ_ERROR")
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
                         continue
                     if data is None:
                         self._notify_status(TransportEvent.TIMEOUT)
                         self._log_connection(
                             f"[TRANSPORT] TIMEOUT: reply pending ({self._timeout}ms)"
                         )
-                        state = "IDLE"
+                        # Mid-batch failure: advance to next packet or go IDLE
+                        advance_batch()
                         continue
                     replies = self._unpack_replies(data)
                     if replies:
                         self._notify_reply_listeners(replies)
                         self._notify_status(TransportEvent.REPLY_FORWARDED)
-                        state = "IDLE"
+                        # Advance to next packet in batch or go IDLE
+                        advance_batch()
                     # No valid replies yet (e.g., stray ACK) — stay in REPLY_PENDING
         except Exception:
             self._shutdown_event.set()

@@ -27,8 +27,6 @@ class RdStatusEvent(Enum):
     DISCONNECTED = "DISCONNECTED"
     RECONNECTED = "RECONNECTED"
     TERMINATED = "TERMINATED"
-    BLOCKED = "BLOCKED"
-    UNBLOCKED = "UNBLOCKED"
     SCRIPT_ERROR = "SCRIPT_ERROR"
     PING_SENT = "PING_SENT"
     PING_REPLIED = "PING_REPLIED"
@@ -85,11 +83,6 @@ class RdStatus:
         # Thread synchronization
         self._lock: threading.RLock = threading.RLock()
         self._shutdown: threading.Event = threading.Event()
-        self._block: threading.Event = (
-            threading.Event()
-        )  # set()=unblocked, clear()=blocked
-        self._block.set()  # Start unblocked
-
         # First ping optimization — send immediately on fresh connection
         self._first_ping = True
 
@@ -156,27 +149,6 @@ class RdStatus:
                 listener(event)
             except Exception:
                 pass  # Isolate listener failures
-
-    # ---- Block/Unblock ----
-
-    def block(self) -> None:
-        """Block status queries. Cooperative — takes effect at next WAIT_TO_POLL cycle."""
-        self._block.clear()
-        self._notify_listeners(RdStatusEvent.BLOCKED)
-
-    def unblock(self) -> None:
-        """Unblock status queries. Next WAIT_TO_POLL cycle will proceed to SEND_QUERY."""
-        self._block.set()
-        self._notify_listeners(RdStatusEvent.UNBLOCKED)
-
-    @property
-    def is_blocked(self) -> bool:
-        """True if queries are currently blocked."""
-        return not self._block.is_set()
-
-    def wait_until_unblocked(self, timeout: Optional[float] = None) -> bool:
-        """Wait until unblocked (or timeout). Returns True if unblocked, False if timed out."""
-        return self._block.wait(timeout)
 
     # ---- Mutable Config Setters ----
 
@@ -430,12 +402,6 @@ class RdStatus:
         if self._shutdown.is_set():
             return "WAIT_TO_PING"
 
-        # Block handling — suppress pings during job execution
-        while self.is_blocked and not self._shutdown.is_set():
-            self.wait_until_unblocked(self.POLL_INTERVAL)
-        if self._shutdown.is_set():
-            return "WAIT_TO_PING"
-
         # Send first ping immediately for fast initial connection
         if self._first_ping:
             self._first_ping = False
@@ -455,14 +421,11 @@ class RdStatus:
         """SEND_PING state: send the ping command to the controller.
 
         Guard: if transport not open → CONNECTING.
-        Guard: if blocked (job running) → WAIT_TO_PING.
         Send ping_cmd via transport.write([ping_cmd]).
         Notify PING_SENT. Transition to PING_REPLY.
         """
         if not self.transport.is_open:
             return "CONNECTING"
-        if self.is_blocked:
-            return "WAIT_TO_PING"
         if self._ping_cmd is not None:
             self.transport.write([self._ping_cmd])
         self._notify_listeners(RdStatusEvent.PING_SENT)
@@ -524,20 +487,13 @@ class RdStatus:
         return "CONNECTING"
 
     def _run_wait_to_poll(self) -> str:
-        """WAIT_TO_POLL state: wait for query interval and unblock before sending queries.
+        """WAIT_TO_POLL state: wait for query interval before sending queries.
 
         No connection notification — handled in PING_REPLY's REPLY_FORWARDED handler.
-        If blocked, wait in a loop until unblocked (checks _shutdown each iteration).
         On DROPPED/CLOSED → CONNECTING.
         On timeout → SEND_QUERY.
         """
         while not self._shutdown.is_set():
-            # Block handling
-            while self.is_blocked and not self._shutdown.is_set():
-                self.wait_until_unblocked(self.POLL_INTERVAL)
-            if self._shutdown.is_set():
-                return "WAIT_TO_POLL"
-
             event = self._wait_for_event(
                 self._query_interval / 1000.0,
                 [TransportEvent.DROPPED, TransportEvent.CLOSED, TransportEvent.TIMEOUT],
@@ -556,14 +512,11 @@ class RdStatus:
         """SEND_QUERY state: send all status query commands.
 
         Guard: if transport not open → CONNECTING.
-        Guard: if blocked (job running) → WAIT_TO_POLL.
         Send query_cmds via transport.write(query_cmds). Notify QUERY_SENT.
         Transition to REPLY_PENDING.
         """
         if not self.transport.is_open:
             return "CONNECTING"
-        if self.is_blocked:
-            return "WAIT_TO_POLL"
         if self._query_cmds:
             self.transport.write(self._query_cmds)
             self._notify_listeners(RdStatusEvent.QUERY_SENT)
