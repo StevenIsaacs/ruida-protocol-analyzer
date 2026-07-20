@@ -244,7 +244,6 @@ class RdTransport:
         try:
             state = "IDLE"
             packet: bytearray | None = None
-            expect_reply = False
             batch: list[bytearray] | None = None
             batch_index: int = 0
 
@@ -282,8 +281,11 @@ class RdTransport:
                         state = "ACK_PENDING"
                     else:
                         # USB: no ACK; check if it contains GET_SETTING commands
-                        expect_reply = self._has_get_setting(packet)
-                        state = "REPLY_PENDING" if expect_reply else "IDLE"
+                        if self._has_get_setting(packet):
+                            state = "REPLY_PENDING"
+                        else:
+                            advance_batch()
+                            continue
 
                 elif state == "ACK_PENDING":
                     try:
@@ -305,8 +307,11 @@ class RdTransport:
                     # Validate ACK (unswizzle then compare with logical ACK byte)
                     if len(data) == 1 and self._swizzler.unswizzle_byte(data[0], self._swizzler.magic) == ACK:
                         self._notify_status(TransportEvent.ACK_RECEIVED)
-                        expect_reply = self._has_get_setting(packet)
-                        state = "REPLY_PENDING" if expect_reply else "IDLE"
+                        if self._has_get_setting(packet):
+                            state = "REPLY_PENDING"
+                        else:
+                            advance_batch()
+                            continue
                     else:
                         self._notify_status(TransportEvent.REPLY_ERROR)
                         # Mid-batch failure: advance to next packet or go IDLE
