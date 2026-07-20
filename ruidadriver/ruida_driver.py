@@ -606,23 +606,17 @@ class RdDriver:
                 # Post-loop: verify or fill END_JOB
                 if end_job_value is not None:
                     if file_checksum != end_job_value:
-                        if auto_checksum:
-                            msg = (
-                                f"END_JOB checksum mismatch: "
-                                f"expected {end_job_value}, "
-                                f"calculated {file_checksum}"
-                            )
-                            self._notify_script_error(msg)
-                            # Patch the encoded bytes with the correct checksum
-                            encoded_sum = encoder.encode_uint35(file_checksum)
-                            raw_ej = encoded[end_job_idx]
-                            raw_ej[-5:] = encoded_sum
-                            end_job_value = file_checksum
-                        else:
-                            raise ValueError(
-                                f"END_JOB value {end_job_value} does not match "
-                                f"accumulated file checksum {file_checksum}"
-                            )
+                        logging.warning(
+                            "END_JOB checksum mismatch: "
+                            "expected %d, calculated %d — patching",
+                            end_job_value,
+                            file_checksum,
+                        )
+                        # Patch the encoded bytes with the correct checksum
+                        encoded_sum = encoder.encode_uint35(file_checksum)
+                        raw_ej = encoded[end_job_idx]
+                        raw_ej[-5:] = encoded_sum
+                        end_job_value = file_checksum
                 elif end_job_idx is not None:
                     # Fill omitted checksum: encode value, patch the placeholder bytearray
                     encoded_sum = encoder.encode_uint35(file_checksum)
