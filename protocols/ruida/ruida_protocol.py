@@ -521,7 +521,7 @@ CT = {
         0x00: "START_JOB",
         0x01: "STOP_JOB",
         0x02: "PAUSE_JOB",
-        0x03: "RESTORE_JOB",
+        0x03: "RESUME_JOB",
         0x10: "REF_POINT_ABSOLUTE",
         0x11: "REF_POINT_ANCHOR",
         0x12: "CURRENT_POSITION",  # All moves relative to current position.

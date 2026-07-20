@@ -159,7 +159,7 @@ Each line is parsed as:
 | `START_JOB`           | *(none)*                | Begin processing the current job     |
 | `STOP_JOB`            | *(none)*                | Stop processing                      |
 | `PAUSE_JOB`           | *(none)*                | Pause processing                     |
-| `RESTORE_JOB`         | *(none)*                | Resume paused processing             |
+| `RESUME_JOB`         | *(none)*                | Resume paused processing             |
 | `BLOCK_END`               | *(none)*                | End of a block                       |
 | `END_JOB`            | *(none)* or `= value`   | File checksum (see §7)               |
 | `SET_FILE_NAME`           | `File:string`           | Set the file name for upload         |
