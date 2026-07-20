@@ -145,6 +145,24 @@ class ScriptEditor(ModalScreen):
         border: thick $primary;
         background: $surface;
     }
+    #find-bar {
+        dock: top;
+        height: 3;
+        padding: 0 1;
+        background: $surface;
+        display: none;
+    }
+    #find-bar.visible {
+        display: block;
+    }
+    #find-input {
+        width: 30;
+    }
+    #find-info {
+        width: auto;
+        min-width: 10;
+        content-align: center middle;
+    }
     #editor-area {
         height: 1fr;
     }
@@ -159,17 +177,27 @@ class ScriptEditor(ModalScreen):
 
     BINDINGS = [
         ("ctrl+s", "save", "Save"),
+        ("ctrl+f", "find", "Find"),
         ("escape", "cancel", "Cancel"),
     ]
 
     def __init__(self, initial_text: str) -> None:
         super().__init__()
         self._initial = initial_text
+        self._find_matches: list[tuple[int, int]] = []
+        self._find_index: int = -1
+        self._find_active: bool = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="editor-box"):
+            with Horizontal(id="find-bar"):
+                yield Input(placeholder="Find...", id="find-input")
+                yield Static("", id="find-info")
             yield TextArea(self._initial, id="editor-area", language="python")
-            yield Static("  \\[Ctrl+S] Save  \\[Esc] Cancel  ", id="editor-footer")
+            yield Static(
+                "  \\[Ctrl+S] Save  \\[Ctrl+F] Find  \\[Esc] Cancel  ",
+                id="editor-footer",
+            )
 
     def action_save(self) -> None:
         """Save edited text and dismiss."""
@@ -180,6 +208,113 @@ class ScriptEditor(ModalScreen):
     def action_cancel(self) -> None:
         """Discard changes and dismiss."""
         self.dismiss(None)
+
+    # ------------------------------------------------------------------
+    # Find (Ctrl+F)
+    # ------------------------------------------------------------------
+
+    def action_find(self) -> None:
+        """Toggle the find bar visibility."""
+        find_bar = self.query_one("#find-bar")
+        if self._find_active:
+            find_bar.remove_class("visible")
+            self._find_active = False
+            self.query_one("#editor-area", TextArea).focus()
+        else:
+            find_bar.add_class("visible")
+            self._find_active = True
+            self.query_one("#find-input", Input).focus()
+
+    def on_key(self, event: Key) -> None:
+        """Handle keys for find bar navigation."""
+        if not self._find_active:
+            return
+        if event.key == "escape":
+            find_bar = self.query_one("#find-bar")
+            find_bar.remove_class("visible")
+            self._find_active = False
+            self.query_one("#editor-area", TextArea).focus()
+            event.stop()
+
+    @on(Input.Changed, "#find-input")
+    def _on_find_changed(self, event: Input.Changed) -> None:
+        """Update search matches as user type."""
+        query = event.value
+        textarea = self.query_one("#editor-area", TextArea)
+        info = self.query_one("#find-info", Static)
+
+        if not query:
+            self._find_matches = []
+            self._find_index = -1
+            info.update("")
+            return
+
+        # Find all case-insensitive matches in the full text
+        text = textarea.text
+        lower_text = text.lower()
+        lower_query = query.lower()
+        matches: list[tuple[int, int]] = []
+        start = 0
+        while True:
+            idx = lower_text.find(lower_query, start)
+            if idx == -1:
+                break
+            matches.append((idx, idx + len(query)))
+            start = idx + 1
+
+        self._find_matches = matches
+
+        if matches:
+            self._find_index = 0
+            self._highlight_match(textarea)
+            info.update(f"1 of {len(matches)}")
+        else:
+            self._find_index = -1
+            info.update("No matches")
+
+    @on(Input.Submitted, "#find-input")
+    def _on_find_submit(self, _event: Input.Submitted) -> None:
+        """Navigate to next match on Enter."""
+        self._find_next()
+
+    def _find_next(self) -> None:
+        """Move to the next match."""
+        if not self._find_matches:
+            return
+        self._find_index = (self._find_index + 1) % len(self._find_matches)
+        self._highlight_match(self.query_one("#editor-area", TextArea))
+        self.query_one("#find-info", Static).update(
+            f"{self._find_index + 1} of {len(self._find_matches)}"
+        )
+
+    def _find_prev(self) -> None:
+        """Move to the previous match."""
+        if not self._find_matches:
+            return
+        self._find_index = (self._find_index - 1) % len(self._find_matches)
+        self._highlight_match(self.query_one("#editor-area", TextArea))
+        self.query_one("#find-info", Static).update(
+            f"{self._find_index + 1} of {len(self._find_matches)}"
+        )
+
+    @staticmethod
+    def _compute_location(text: str, offset: int) -> tuple[int, int]:
+        """Convert a flat character offset to (row, col)."""
+        row = text.count("\n", 0, offset)
+        last_nl = text.rfind("\n", 0, offset)
+        col = offset - last_nl - 1 if last_nl >= 0 else offset
+        return (row, col)
+
+    def _highlight_match(self, textarea: TextArea) -> None:
+        """Select and scroll to the current match."""
+        if self._find_index < 0 or self._find_index >= len(self._find_matches):
+            return
+        start, end = self._find_matches[self._find_index]
+        text = textarea.text
+        start_loc = self._compute_location(text, start)
+        end_loc = self._compute_location(text, end)
+        textarea.move_cursor(start_loc, select=False)
+        textarea.move_cursor(end_loc, select=True, center=True)
 
 
 def _deep_getsizeof(obj: Any, seen: set[int] | None = None, _depth: int = 500, _level: int = 0) -> tuple[int, int]:
