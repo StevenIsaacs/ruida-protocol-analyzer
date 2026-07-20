@@ -41,6 +41,7 @@ class RdTransport:
         self._timeout = 500  # ms per-call timeout
         self._gross_timeout = 15000  # ms overall gross timeout
         self._use_gross_timeout = False
+        self._inter_packet_timeout = 50  # ms between reply packets (multi-packet replies)
 
         # Queues for handshake thread
         self._send_queue: queue.Queue[list[bytearray]] = queue.Queue(maxsize=256)
@@ -65,12 +66,14 @@ class RdTransport:
         chunk_size: int = 1024,
         timeout: int = 1000,
         gross_timeout: int = 15000,
+        inter_packet_timeout: int = 50,
     ) -> None:
         """Configure transport parameters. Must be called before open()."""
         self._swizzler.set_magic(magic)
         self._chunk_size = chunk_size
         self._timeout = timeout
         self._gross_timeout = gross_timeout
+        self._inter_packet_timeout = inter_packet_timeout
 
     def open(self, udp_host: str = "", usb_device: str = "") -> bool:
         """Open the preferred transport (USB first, then UDP).
@@ -334,7 +337,23 @@ class RdTransport:
                         # Mid-batch failure: advance to next packet or go IDLE
                         advance_batch()
                         continue
+                    # First reply packet received — accumulate replies
                     replies = self._unpack_replies(data)
+                    # Read additional reply packets (controller may split
+                    # responses across multiple UDP datagrams)
+                    while replies:
+                        try:
+                            data = self._wait_for_data(self._inter_packet_timeout)
+                        except OSError:
+                            self._notify_status(TransportEvent.READ_ERROR)
+                            self._log_connection("[TRANSPORT] READ_ERROR")
+                            break
+                        if data is None:
+                            break  # No more data — all reply packets consumed
+                        more = self._unpack_replies(data)
+                        if not more:
+                            break  # Invalid or partial data — stop accumulating
+                        replies.extend(more)
                     if replies:
                         self._notify_reply_listeners(replies)
                         self._notify_status(TransportEvent.REPLY_FORWARDED)
