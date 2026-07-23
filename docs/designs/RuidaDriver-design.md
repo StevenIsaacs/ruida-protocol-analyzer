@@ -549,6 +549,6 @@ This work is possible because of the hard work of others.
 
  - MeerK40t: https://github.com/meerk40t/meerk40t/tree/main/meerk40t/ruida
  - Ruida protocol: https://edutechwiki.unige.ch/en/Ruida
- - [Ruida RPA](https://github.com/StevenIsaacs/ruida-rpa)
+ - [Ruida PA](https://github.com/StevenIsaacs/ruida-pa)
 
  

@@ -39,7 +39,7 @@ try:
     from importlib.metadata import version as _pkg_version
 
     try:
-        __version__ = _pkg_version("ruida-rpa")
+        __version__ = _pkg_version("ruida-pa")
     except PackageNotFoundError:
         __version__ = "0.11.0"
 except ImportError:

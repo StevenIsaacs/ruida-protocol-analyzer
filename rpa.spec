@@ -20,7 +20,7 @@ a = Analysis(
     binaries=[],
     datas=(
         [(str(root_dir / 'LICENSE'), '.')] +
-        copy_metadata('ruida-rpa')
+        copy_metadata('ruida-pa')
     ),
     hiddenimports=[],
     hookspath=[],

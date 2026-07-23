@@ -1,4 +1,4 @@
-# AGENTS.md — ruida-rpa
+# AGENTS.md — ruida-pa
 
 ## Project at a glance
 
