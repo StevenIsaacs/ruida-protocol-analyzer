@@ -2504,7 +2504,7 @@ class TuiAdapter(App):
             except ImportError:
                 self._log_error(
                     "pyserial is not installed. "
-                    "Install it with: pip install ruida-protocol-analyzer[serial]"
+                    "Install it with: pip install ruida-rpa[serial]"
                 )
                 return
 

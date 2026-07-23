@@ -1,4 +1,4 @@
-# AGENTS.md — ruida-protocol-analyzer
+# AGENTS.md — ruida-rpa
 
 ## Project at a glance
 

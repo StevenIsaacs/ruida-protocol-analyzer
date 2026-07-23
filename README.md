@@ -41,8 +41,8 @@ This tool is laser-focused on the Ruida protocol only.
 ### Option 1: Install from source (recommended for development)
 
 ```bash
-git clone https://github.com/yourusername/ruida-protocol-analyzer.git
-cd ruida-protocol-analyzer
+git clone https://github.com/StevenIsaacs/ruida-rpa.git
+cd ruida-rpa
 
 # Create and activate a virtual environment
 python -m venv .venv
@@ -58,7 +58,7 @@ pip install -e ".[plotting]"
 ### Option 2: Direct install from source
 
 ```bash
-pip install git+https://github.com/yourusername/ruida-protocol-analyzer.git
+pip install git+https://github.com/StevenIsaacs/ruida-rpa.git
 ```
 
 After installation, the `rpa` command is available globally (when the venv is active):
